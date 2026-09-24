@@ -7,7 +7,7 @@
   <title>Schauenburg – Die Burgschenke</title>
   <link rel="preload" as="image" href="assets/maps/terrasse.jpg" fetchpriority="high">
   <link rel="preload" as="audio" href="assets/audio/arrival-in-ashford.mp3">
-  <link rel="stylesheet" href="style.css?v=04">
+  <link rel="stylesheet" href="style.css?v=05">
 </head>
 <body>
   <main id="game" aria-label="Schauenburg – Die Burgschenke">
@@ -23,6 +23,9 @@
 
       <img class="prop collidable" id="stuhl" src="assets/props/stuhl.png?v=03" alt="" draggable="false" data-collision="alpha">
       <img class="prop collidable" id="tafel" src="assets/props/tafel.png?v=03" alt="" draggable="false" data-collision="alpha">
+
+      <!-- Spielbarer Gastwirt: eigenes Sprite, keine Objekt-Kollision mit sich selbst -->
+      <img id="player" src="assets/player/front-4.png" alt="" draggable="false">
     </div>
 
     <audio id="bgMusic" src="assets/audio/arrival-in-ashford.mp3" preload="auto" loop></audio>
@@ -30,6 +33,6 @@
     <div id="loading">DIE BURGSCHENKE WIRD GEÖFFNET …</div>
     <div id="zoomHint" aria-hidden="true">MAUSRAD · 2 ZOOMSTUFEN</div>
   </main>
-  <script src="game.js?v=04"></script>
+  <script src="game.js?v=05"></script>
 </body>
 </html>

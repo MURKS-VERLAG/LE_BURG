@@ -4,6 +4,7 @@ const game = document.getElementById('game');
 const world = document.getElementById('world');
 const map = document.getElementById('map');
 const bgMusic = document.getElementById('bgMusic');
+const player = document.getElementById('player');
 
 const WORLD_W = 1536;
 const WORLD_H = 1024;
@@ -61,6 +62,7 @@ function draw(){
   world.style.transform =
     `translate(-50%, -50%) translate(${currentX}px,${currentY + edgeFixY}px) scale(${baseScale*z})`;
 
+  updatePlayer(performance.now());
   rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
@@ -101,7 +103,7 @@ if(bgMusic){
   window.addEventListener('wheel',playMusic,{passive:true});
 }
 
-/* Alpha-genaue Kollision: nur sichtbare Pixel blockieren. Baum ausgeschlossen. */
+\n\n/* ============================================================\n   SPIELBARER GASTWIRT – v05\n   W / WA / WD: Ruecken 1-2-3-4\n   S / SA / SD: Front 1-4-2-4-3-4\n   D: rechts 1-2-3-4\n   A: dieselben Rechts-Sprites horizontal gespiegelt\n   Kein Crossfade; feste, identische Frame-Abstaende.\n   ============================================================ */\nconst PLAYER = {\n  x:768, y:735,\n  speed:105,                 // Weltpixel/Sekunde: normale Gangart\n  radius:13,\n  frameMs:145,\n  direction:'front',\n  frame:4,\n  sequenceIndex:0,\n  frameClock:0,\n  moving:false\n};\nconst PLAYER_SEQUENCES = {\n  front:[1,4,2,4,3,4],\n  back:[1,2,3,4],\n  right:[1,2,3,4],\n  left:[1,2,3,4]\n};\nconst keys = new Set();\nlet playerLastTime = performance.now();\n\nfunction playerSpritePath(direction,frame){\n  const source = direction==='left' ? 'right' : direction;\n  return `assets/player/${source}-${frame}.png`;\n}\nfunction showPlayerFrame(force=false){\n  if(!player) return;\n  const next=playerSpritePath(PLAYER.direction,PLAYER.frame);\n  if(force || !player.src.endsWith(next)) player.src=next;\n  player.style.transform = PLAYER.direction==='left'\n    ? 'translate(-50%,-100%) scaleX(-1)'\n    : 'translate(-50%,-100%)';\n}\nfunction setPlayerDirection(direction){\n  if(direction===PLAYER.direction) return;\n  PLAYER.direction=direction;\n  PLAYER.sequenceIndex=0;\n  PLAYER.frameClock=0;\n  PLAYER.frame=PLAYER_SEQUENCES[direction][0];\n  showPlayerFrame(true);\n}\nfunction playerCanStand(x,y){\n  const margin=10;\n  if(x<margin || y<margin || x>WORLD_W-margin || y>WORLD_H-margin) return false;\n  return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);\n}\nfunction movePlayerAxis(dx,dy){\n  const nx=PLAYER.x+dx, ny=PLAYER.y+dy;\n  // Achsen getrennt testen: an harten Objektkanten sauber entlanggleiten.\n  if(dx && playerCanStand(nx,PLAYER.y)) PLAYER.x=nx;\n  if(dy && playerCanStand(PLAYER.x,ny)) PLAYER.y=ny;\n}\nfunction updatePlayer(now){\n  if(!player) return;\n  const dt=Math.min(.04,(now-playerLastTime)/1000);\n  playerLastTime=now;\n\n  let dx=0,dy=0;\n  if(keys.has('a')) dx-=1;\n  if(keys.has('d')) dx+=1;\n  if(keys.has('w')) dy-=1;\n  if(keys.has('s')) dy+=1;\n\n  PLAYER.moving=dx!==0 || dy!==0;\n  if(PLAYER.moving){\n    const len=Math.hypot(dx,dy); dx/=len; dy/=len;\n\n    // Gewuenschte Richtungslogik: Vertikale Richtung hat bei Diagonalen Vorrang.\n    if(dy<0) setPlayerDirection('back');\n    else if(dy>0) setPlayerDirection('front');\n    else if(dx>0) setPlayerDirection('right');\n    else if(dx<0) setPlayerDirection('left');\n\n    movePlayerAxis(dx*PLAYER.speed*dt,dy*PLAYER.speed*dt);\n\n    PLAYER.frameClock+=dt*1000;\n    while(PLAYER.frameClock>=PLAYER.frameMs){\n      PLAYER.frameClock-=PLAYER.frameMs;\n      const seq=PLAYER_SEQUENCES[PLAYER.direction];\n      PLAYER.sequenceIndex=(PLAYER.sequenceIndex+1)%seq.length;\n      PLAYER.frame=seq[PLAYER.sequenceIndex];\n      showPlayerFrame();\n    }\n  }else{\n    PLAYER.frameClock=0;\n  }\n\n  player.style.left=`${PLAYER.x}px`;\n  player.style.top=`${PLAYER.y}px`;\n  // Fussposition bestimmt die Tiefe auf der Karte.\n  player.style.zIndex=String(100+Math.round(PLAYER.y));\n}\n\nwindow.addEventListener('keydown',e=>{\n  const k=e.key.toLowerCase();\n  if(['w','a','s','d'].includes(k)){ keys.add(k); e.preventDefault(); }\n});\nwindow.addEventListener('keyup',e=>{\n  const k=e.key.toLowerCase();\n  if(['w','a','s','d'].includes(k)){ keys.delete(k); e.preventDefault(); }\n});\nwindow.addEventListener('blur',()=>keys.clear());\n\n/* Alpha-genaue Kollision: nur sichtbare Pixel blockieren. Baum ausgeschlossen. */
 const collisionSprites=[];
 
 async function buildAlphaCollision(el){
@@ -145,6 +147,7 @@ async function start(){
   const props=[...document.querySelectorAll('.prop')];
   await Promise.all(props.map(el=>el.decode().catch(()=>{})));
 
+  showPlayerFrame(true);
   document.body.classList.add('game-ready');
   cancelAnimationFrame(rafId);
   draw();
