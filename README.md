@@ -1,14 +1,16 @@
-# Schauenburg – Die Burgschenke · v0.1
+# Schauenburg – Die Burgschenke v0.2
 
-Erstes GitHub-Browsergame-Grundgerüst.
+GitHub-Pages-fertiger Browser-Build.
 
-- Startmap: Terrasse
-- 3 feste Zoomstufen per Mausrad
-- äußerste Zoomstufe: gesamte Karte sichtbar
-- kein Maus-Panning auf äußerster Zoomstufe
-- sanftes Hover-Panning auf Zoomstufe 2 und 3
-- keine externen Libraries
-- direkt über GitHub Pages lauffähig
+Neu:
+- Wirtschaft, Baum, 3 Stehtische, Tafel und Stuhl integriert.
+- Größen und Positionen an Referenzbild 1 ausgerichtet.
+- Stuhl liegt eine Render-Ebene hinter der Tafel.
+- Wirtschaft, Tische, Tafel und Stuhl besitzen alpha-genaue harte Kollision.
+- Baum bleibt ohne Kollision.
+- Bestehende 3 Zoomstufen und sanftes Maus-Hover-Panning bleiben erhalten.
+- Keine externen Libraries / kein Build-Schritt.
 
-## GitHub Pages
-Alle Dateien aus diesem Ordner ins Repository-Root laden und GitHub Pages für den Branch aktivieren.
+Kollisions-API für die kommende Spielfigur:
+- BurgCollision.pointBlocked(x, y)
+- BurgCollision.circleBlocked(x, y, radius)

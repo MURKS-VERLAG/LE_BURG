@@ -1,27 +1,88 @@
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #10150f; }
 body { font-family: Georgia, "Times New Roman", serif; user-select: none; }
-#game { position: fixed; inset: 0; overflow: hidden; background: #10150f; cursor: default; }
-#map {
+
+#game {
+  position: fixed; inset: 0; overflow: hidden;
+  background: #10150f; cursor: default;
+}
+
+/*
+  WORLD = exakt 1536 × 1024 Kartenkoordinaten.
+  Dadurch bleiben Hintergrund + alle Props bei Zoom und Hover-Panning
+  hundertprozentig miteinander verriegelt.
+*/
+#world {
   position: absolute;
   left: 50%; top: 50%;
-  width: auto; height: auto;
-  max-width: none; max-height: none;
+  width: 1536px; height: 1024px;
   transform-origin: center center;
   will-change: transform;
+}
+
+#map {
+  position: absolute; inset: 0;
+  width: 1536px; height: 1024px;
+  object-fit: fill;
   pointer-events: none;
   -webkit-user-drag: none;
 }
+
+.prop {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/*
+  Positionen/Größen aus Referenzbild 1 auf die 1536×1024-Welt übertragen.
+  z-index legt die optische Tiefenstaffelung fest.
+*/
+#wirtschaft {
+  left: 640px; top: 56px; width: 280px;
+  z-index: 20;
+}
+
+#baum {
+  left: 220px; top: 220px; width: 292px;
+  z-index: 30;
+}
+
+#stehtischLinks {
+  left: 310px; top: 510px; width: 92px;
+  z-index: 40;
+}
+#stehtischMitte {
+  left: 553px; top: 436px; width: 92px;
+  z-index: 40;
+}
+#stehtischRechts {
+  left: 1058px; top: 472px; width: 92px;
+  z-index: 40;
+}
+
+/* Stuhl zuerst/hinten, Tafel danach/vorne. */
+#stuhl {
+  left: 737px; top: 558px; width: 48px;
+  z-index: 45;
+}
+#tafel {
+  left: 678px; top: 628px; width: 178px;
+  z-index: 50;
+}
+
 #loading {
-  position: absolute; inset: 0; z-index: 5;
+  position: absolute; inset: 0; z-index: 100;
   display: grid; place-items: center;
   background: #10150f; color: #ead8a4;
   letter-spacing: .12em; font-weight: 700;
   transition: opacity .45s ease, visibility .45s ease;
 }
 body.game-ready #loading { opacity: 0; visibility: hidden; }
+
 #zoomHint {
-  position: absolute; right: 18px; bottom: 16px; z-index: 3;
+  position: absolute; right: 18px; bottom: 16px; z-index: 90;
   padding: 7px 10px; border: 1px solid rgba(255,255,255,.25);
   background: rgba(20,15,8,.48); color: rgba(255,245,218,.8);
   font-size: 11px; letter-spacing: .12em; pointer-events: none;

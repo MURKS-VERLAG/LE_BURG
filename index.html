@@ -10,7 +10,31 @@
 </head>
 <body>
   <main id="game" aria-label="Schauenburg – Die Burgschenke">
-    <img id="map" src="assets/maps/terrasse.jpg" alt="Terrasse der Burgschenke" draggable="false">
+    <div id="world">
+      <img id="map" src="assets/maps/terrasse.jpg" alt="Terrasse der Burgschenke" draggable="false">
+
+      <!-- Baum: bewusst OHNE Kollision -->
+      <img class="prop no-collision" id="baum"
+           src="assets/props/baum.png" alt="" draggable="false">
+
+      <!-- Wirtschaft + Mobiliar: Alpha-genaue harte Kollision -->
+      <img class="prop collidable" id="wirtschaft"
+           src="assets/props/wirtschaft.png" alt="" draggable="false" data-collision="alpha">
+
+      <img class="prop collidable" id="stehtischLinks"
+           src="assets/props/stehtisch.png" alt="" draggable="false" data-collision="alpha">
+      <img class="prop collidable" id="stehtischMitte"
+           src="assets/props/stehtisch.png" alt="" draggable="false" data-collision="alpha">
+      <img class="prop collidable" id="stehtischRechts"
+           src="assets/props/stehtisch.png" alt="" draggable="false" data-collision="alpha">
+
+      <!-- Stuhl liegt absichtlich eine Ebene HINTER der Tafel. -->
+      <img class="prop collidable" id="stuhl"
+           src="assets/props/stuhl.png" alt="" draggable="false" data-collision="alpha">
+      <img class="prop collidable" id="tafel"
+           src="assets/props/tafel.png" alt="" draggable="false" data-collision="alpha">
+    </div>
+
     <div id="loading">DIE BURGSCHENKE WIRD GEÖFFNET …</div>
     <div id="zoomHint" aria-hidden="true">MAUSRAD · 3 ZOOMSTUFEN</div>
   </main>
