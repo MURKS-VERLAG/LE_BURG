@@ -104,17 +104,17 @@ const PLAYER={
   moving:false
 };
 const PLAYER_SEQUENCES={
-  front:[1,2,3,2,4],
+  front:[1,2,3,2],
   back:[1,2,3,4],
-  right:[2,4,3,1],
-  left:[2,4,3,1]
+  right:[1,2,3,4],
+  left:[1,2,3,4]
 };
 const keys=new Set();
 let playerLastTime=performance.now();
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  const version=source==='back' ? '' : '?v=08';
+  const version=source==='back' ? '' : '?v=10';
   return `assets/player/${source}-${frame}.png${version}`;
 }
 function showPlayerFrame(force=false){
@@ -123,11 +123,15 @@ function showPlayerFrame(force=false){
   const current=player.getAttribute('src')||'';
   if(force || current!==next) player.setAttribute('src',next);
 
-  // Anhang 2 zeigt den Lauf nach LINKS:
-  // A = Original, D = exakt horizontal gespiegelt.
-  player.style.transform=PLAYER.direction==='right'
-    ? 'translate(-50%,-100%) scaleX(-1)'
-    : 'translate(-50%,-100%)';
+  // NUR W / WA / WD (back) ist 15 % kleiner.
+  // S / SA / SD sowie A / D bleiben bei 100 %.
+  if(PLAYER.direction==='back'){
+    player.style.transform='translate(-50%,-100%) scale(0.85)';
+  }else if(PLAYER.direction==='right'){
+    player.style.transform='translate(-50%,-100%) scaleX(-1)';
+  }else{
+    player.style.transform='translate(-50%,-100%)';
+  }
 }
 function setPlayerDirection(direction){
   if(direction===PLAYER.direction)return;
@@ -237,12 +241,12 @@ function circleBlocked(x,y,r=8){
 window.BurgCollision={pointBlocked,circleBlocked,sprites:collisionSprites};
 
 const PLAYER_FRAME_PATHS = [
-  'assets/player/front-1.png?v=08','assets/player/front-2.png?v=08',
-  'assets/player/front-3.png?v=08','assets/player/front-4.png?v=08',
+  'assets/player/front-1.png?v=10','assets/player/front-2.png?v=10',
+  'assets/player/front-3.png?v=10',
   'assets/player/back-1.png','assets/player/back-2.png',
   'assets/player/back-3.png','assets/player/back-4.png',
-  'assets/player/side-1.png?v=08','assets/player/side-2.png?v=08',
-  'assets/player/side-3.png?v=08','assets/player/side-4.png?v=08'
+  'assets/player/side-1.png?v=10','assets/player/side-2.png?v=10',
+  'assets/player/side-3.png?v=10','assets/player/side-4.png?v=10'
 ];
 async function preloadPlayerFrames(){
   await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
