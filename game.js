@@ -98,33 +98,38 @@ const PLAYER={
   radius:13,
   frameMs:145,
   direction:'front',
-  frame:4,
+  frame:1,
   sequenceIndex:0,
   frameClock:0,
   moving:false
 };
+
 const PLAYER_SEQUENCES={
-  front:[1,2,3,2],
+  front:[1,2,3,2,4],
   back:[1,2,3,4],
   right:[1,2,3,4],
   left:[1,2,3,4]
 };
+
 const keys=new Set();
 let playerLastTime=performance.now();
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  const version=source==='back' ? '' : '?v=10';
+  const version=source==='back' ? '' : '?v=11';
   return `assets/player/${source}-${frame}.png${version}`;
 }
+
 function showPlayerFrame(force=false){
   if(!player)return;
+
   const next=playerSpritePath(PLAYER.direction,PLAYER.frame);
   const current=player.getAttribute('src')||'';
   if(force || current!==next) player.setAttribute('src',next);
 
-  // NUR W / WA / WD (back) ist 15 % kleiner.
-  // S / SA / SD sowie A / D bleiben bei 100 %.
+  // W / WA / WD bleibt 15 % kleiner.
+  // Anhang 2 ist ORIGINAL nach links (A).
+  // Nur D wird horizontal gespiegelt.
   if(PLAYER.direction==='back'){
     player.style.transform='translate(-50%,-100%) scale(0.85)';
   }else if(PLAYER.direction==='right'){
@@ -133,6 +138,7 @@ function showPlayerFrame(force=false){
     player.style.transform='translate(-50%,-100%)';
   }
 }
+
 function setPlayerDirection(direction){
   if(direction===PLAYER.direction)return;
   PLAYER.direction=direction;
@@ -141,6 +147,7 @@ function setPlayerDirection(direction){
   PLAYER.frame=PLAYER_SEQUENCES[direction][0];
   showPlayerFrame(true);
 }
+
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
@@ -151,6 +158,7 @@ function movePlayerAxis(dx,dy){
   if(dx&&playerCanStand(nx,PLAYER.y))PLAYER.x=nx;
   if(dy&&playerCanStand(PLAYER.x,ny))PLAYER.y=ny;
 }
+
 function updatePlayer(now){
   if(!player)return;
   const dt=Math.min(.04,(now-playerLastTime)/1000);
@@ -163,6 +171,7 @@ function updatePlayer(now){
   if(keys.has('s'))dy+=1;
 
   PLAYER.moving=dx!==0||dy!==0;
+
   if(PLAYER.moving){
     const len=Math.hypot(dx,dy);
     dx/=len; dy/=len;
@@ -174,6 +183,7 @@ function updatePlayer(now){
 
     movePlayerAxis(dx*PLAYER.speed*dt,dy*PLAYER.speed*dt);
 
+    // Exakt derselbe Abstand zwischen JEDEM Frame: 145 ms.
     PLAYER.frameClock+=dt*1000;
     while(PLAYER.frameClock>=PLAYER.frameMs){
       PLAYER.frameClock-=PLAYER.frameMs;
@@ -241,13 +251,14 @@ function circleBlocked(x,y,r=8){
 window.BurgCollision={pointBlocked,circleBlocked,sprites:collisionSprites};
 
 const PLAYER_FRAME_PATHS = [
-  'assets/player/front-1.png?v=10','assets/player/front-2.png?v=10',
-  'assets/player/front-3.png?v=10',
+  'assets/player/front-1.png?v=11','assets/player/front-2.png?v=11',
+  'assets/player/front-3.png?v=11','assets/player/front-4.png?v=11',
   'assets/player/back-1.png','assets/player/back-2.png',
   'assets/player/back-3.png','assets/player/back-4.png',
-  'assets/player/side-1.png?v=10','assets/player/side-2.png?v=10',
-  'assets/player/side-3.png?v=10','assets/player/side-4.png?v=10'
+  'assets/player/side-1.png?v=11','assets/player/side-2.png?v=11',
+  'assets/player/side-3.png?v=11','assets/player/side-4.png?v=11'
 ];
+
 async function preloadPlayerFrames(){
   await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
     const img=new Image();
@@ -261,9 +272,9 @@ async function start(){
   calculateBaseScale();
   currentX=currentY=targetX=targetY=0;
 
-  /* Playerframes vorab decodieren: dadurch exakt gleiche Framezeiten ohne Lade-Ruckler. */
   await preloadPlayerFrames();
   showPlayerFrame(true);
+
   if(player){
     player.style.left=`${PLAYER.x}px`;
     player.style.top=`${PLAYER.y}px`;
@@ -274,7 +285,6 @@ async function start(){
   playerLastTime=performance.now();
   rafId=requestAnimationFrame(draw);
 
-  /* Props/Kollision erst NACH sichtbarem Spielstart laden. */
   const collidables=[...document.querySelectorAll('.collidable[data-collision="alpha"]')];
   Promise.all(collidables.map(buildAlphaCollision)).catch(console.error);
 }
