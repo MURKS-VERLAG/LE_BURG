@@ -114,7 +114,7 @@ let playerLastTime=performance.now();
 
 function playerSpritePath(direction,frame){
   const source=direction==='left'?'right':direction;
-  return `assets/player/${source}-${frame}.png`;
+  return `assets/player/${source}-${frame}.png?v=07`;
 }
 function showPlayerFrame(force=false){
   if(!player)return;
@@ -232,11 +232,26 @@ function circleBlocked(x,y,r=8){
 }
 window.BurgCollision={pointBlocked,circleBlocked,sprites:collisionSprites};
 
+const PLAYER_FRAME_PATHS = [
+  'assets/player/front-1.png?v=07','assets/player/front-2.png?v=07','assets/player/front-3.png?v=07','assets/player/front-4.png?v=07',
+  'assets/player/back-1.png','assets/player/back-2.png','assets/player/back-3.png','assets/player/back-4.png',
+  'assets/player/right-1.png?v=07','assets/player/right-2.png?v=07','assets/player/right-3.png?v=07','assets/player/right-4.png?v=07'
+];
+async function preloadPlayerFrames(){
+  await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
+    img.onerror=resolve;
+    img.src=src;
+  })));
+}
+
 async function start(){
   calculateBaseScale();
   currentX=currentY=targetX=targetY=0;
 
-  /* WICHTIG: Start darf nicht mehr auf sämtliche Props warten. */
+  /* Playerframes vorab decodieren: dadurch exakt gleiche Framezeiten ohne Lade-Ruckler. */
+  await preloadPlayerFrames();
   showPlayerFrame(true);
   if(player){
     player.style.left=`${PLAYER.x}px`;
