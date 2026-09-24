@@ -72,3 +72,18 @@ body.game-ready #loading{opacity:0;visibility:hidden}
   pointer-events:none; -webkit-user-drag:none;
   will-change:left,top;
 }
+
+/* v12 – weicher Kartenwechsel per Iris */
+#player{transition:opacity .24s ease}
+#player.map-fading{opacity:0}
+#irisTransition{
+  position:fixed;inset:0;z-index:9999;pointer-events:none;
+  background:radial-gradient(circle at 50% 50%,transparent 150%,#000 150.2%);
+}
+body.map2 #baum,
+body.map2 #wirtschaft,
+body.map2 #stehtischLinks,
+body.map2 #stehtischMitte,
+body.map2 #stehtischRechts,
+body.map2 #stuhl,
+body.map2 #tafel{display:none}

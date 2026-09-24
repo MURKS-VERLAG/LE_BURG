@@ -5,6 +5,7 @@ const world = document.getElementById('world');
 const map = document.getElementById('map');
 const bgMusic = document.getElementById('bgMusic');
 const player = document.getElementById('player');
+const irisTransition = document.getElementById('irisTransition');
 
 const WORLD_W = 1536;
 const WORLD_H = 1024;
@@ -15,6 +16,13 @@ let baseScale = 1;
 let pointerX = 0.5, pointerY = 0.5;
 let currentX = 0, currentY = 0, targetX = 0, targetY = 0;
 let rafId = 0;
+let currentMap = 1;
+let mapTransitioning = false;
+
+/* Weißer Eingangskasten aus Referenz 1 – NUR dieser Bereich wird in der Wirtschafts-Hitbox geöffnet. */
+const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
+/* Rote Linie im weißen Kasten: beim Berühren startet der Kartenwechsel. */
+const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
 function calculateBaseScale(){
@@ -116,7 +124,7 @@ let playerLastTime=performance.now();
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  const version=source==='back' ? '' : '?v=11';
+  const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
 }
 
@@ -151,6 +159,8 @@ function setPlayerDirection(direction){
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
+  // Map 2 ist vorerst komplett frei begehbar; Raum-Kollisionen kommen separat.
+  if(currentMap===2)return true;
   return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);
 }
 function movePlayerAxis(dx,dy){
@@ -159,8 +169,75 @@ function movePlayerAxis(dx,dy){
   if(dy&&playerCanStand(PLAYER.x,ny))PLAYER.y=ny;
 }
 
+function setIrisRadius(percent){
+  if(!irisTransition)return;
+  irisTransition.style.background=`radial-gradient(circle at 50% 50%, transparent 0%, transparent ${percent}%, #000 ${Math.min(150,percent+.35)}%)`;
+}
+function animateIris(from,to,duration){
+  return new Promise(resolve=>{
+    const start=performance.now();
+    const step=now=>{
+      const t=Math.min(1,(now-start)/duration);
+      const eased=t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+      setIrisRadius(from+(to-from)*eased);
+      if(t<1)requestAnimationFrame(step); else resolve();
+    };
+    requestAnimationFrame(step);
+  });
+}
+async function enterWirtschaft(){
+  if(mapTransitioning||currentMap!==1)return;
+  mapTransitioning=true;
+  keys.clear();
+  PLAYER.moving=false;
+  PLAYER.frameClock=0;
+
+  // 1) Figur bleibt auf der roten Linie stehen und fadet weich weg.
+  if(player)player.classList.add('map-fading');
+  await new Promise(r=>setTimeout(r,260));
+
+  // 2) Map 1 per Iris VON AUSSEN NACH INNEN schließen.
+  await animateIris(150,0,650);
+
+  // 3) Innenkarte einsetzen. Außen-Props verschwinden vollständig.
+  currentMap=2;
+  document.body.classList.add('map2');
+  map.src='assets/maps/wirtschaft-innen.jpg';
+  await map.decode().catch(()=>{});
+
+  // Spawn direkt innen am Haupteingang unten Mitte.
+  PLAYER.x=768;
+  PLAYER.y=910;
+  PLAYER.direction='back';
+  PLAYER.sequenceIndex=0;
+  PLAYER.frameClock=0;
+  PLAYER.frame=PLAYER_SEQUENCES.back[0];
+  player.style.left=`${PLAYER.x}px`;
+  player.style.top=`${PLAYER.y}px`;
+  showPlayerFrame(true);
+
+  // 4) Map 2 per Iris VON INNEN NACH AUSSEN freigeben.
+  await animateIris(0,150,700);
+  if(player)player.classList.remove('map-fading');
+  mapTransitioning=false;
+  playerLastTime=performance.now();
+}
+function checkWirtschaftEntrance(){
+  if(currentMap!==1||mapTransitioning)return;
+  const t=WIRTSCHAFT_DOOR_TRIGGER;
+  if(PLAYER.x>=t.x1&&PLAYER.x<=t.x2&&PLAYER.y<=t.y+PLAYER.radius&&PLAYER.y>=t.y-18){
+    // Exakt auf der Eintrittslinie fixieren, bevor die Figur verschwindet.
+    PLAYER.y=t.y+PLAYER.radius;
+    enterWirtschaft();
+  }
+}
+
 function updatePlayer(now){
   if(!player)return;
+  if(mapTransitioning){
+    playerLastTime=now;
+    return;
+  }
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
 
@@ -182,6 +259,7 @@ function updatePlayer(now){
     else if(dx<0)setPlayerDirection('left');
 
     movePlayerAxis(dx*PLAYER.speed*dt,dy*PLAYER.speed*dt);
+    checkWirtschaftEntrance();
 
     // Exakt derselbe Abstand zwischen JEDEM Frame: 145 ms.
     PLAYER.frameClock+=dt*1000;
@@ -229,6 +307,12 @@ async function buildAlphaCollision(el){
 }
 function px(el,prop){return parseFloat(getComputedStyle(el)[prop])||0;}
 function pointHitsSprite(s,x,y){
+  // NUR der markierte weiße Eingangskasten der Wirtschaft ist durchlässig.
+  if(currentMap===1 && s.el.id==='wirtschaft' &&
+     x>=WIRTSCHAFT_DOOR_PASSAGE.x1 && x<=WIRTSCHAFT_DOOR_PASSAGE.x2 &&
+     y>=WIRTSCHAFT_DOOR_PASSAGE.y1 && y<=WIRTSCHAFT_DOOR_PASSAGE.y2){
+    return false;
+  }
   const el=s.el,left=px(el,'left'),top=px(el,'top');
   const dw=el.offsetWidth,dh=el.offsetHeight;
   if(!dw||!dh)return false;
@@ -251,12 +335,12 @@ function circleBlocked(x,y,r=8){
 window.BurgCollision={pointBlocked,circleBlocked,sprites:collisionSprites};
 
 const PLAYER_FRAME_PATHS = [
-  'assets/player/front-1.png?v=11','assets/player/front-2.png?v=11',
-  'assets/player/front-3.png?v=11','assets/player/front-4.png?v=11',
+  'assets/player/front-1.png?v=12','assets/player/front-2.png?v=12',
+  'assets/player/front-3.png?v=12','assets/player/front-4.png?v=12',
   'assets/player/back-1.png','assets/player/back-2.png',
   'assets/player/back-3.png','assets/player/back-4.png',
-  'assets/player/side-1.png?v=11','assets/player/side-2.png?v=11',
-  'assets/player/side-3.png?v=11','assets/player/side-4.png?v=11'
+  'assets/player/side-1.png?v=12','assets/player/side-2.png?v=12',
+  'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12'
 ];
 
 async function preloadPlayerFrames(){
@@ -270,6 +354,7 @@ async function preloadPlayerFrames(){
 
 async function start(){
   calculateBaseScale();
+  setIrisRadius(150);
   currentX=currentY=targetX=targetY=0;
 
   await preloadPlayerFrames();

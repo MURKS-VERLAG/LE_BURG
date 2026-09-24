@@ -7,7 +7,8 @@
   <title>Schauenburg – Die Burgschenke</title>
   <link rel="preload" as="image" href="assets/maps/terrasse.jpg" fetchpriority="high">
   <link rel="preload" as="audio" href="assets/audio/arrival-in-ashford.mp3">
-  <link rel="stylesheet" href="style.css?v=04">
+  <link rel="preload" as="image" href="assets/maps/wirtschaft-innen.jpg">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
   <main id="game" aria-label="Schauenburg – Die Burgschenke">
@@ -22,13 +23,14 @@
       <img class="prop collidable" id="stuhl" src="assets/props/stuhl.png?v=03" alt="" draggable="false" data-collision="alpha">
       <img class="prop collidable" id="tafel" src="assets/props/tafel.png?v=03" alt="" draggable="false" data-collision="alpha">
 
-      <img id="player" src="assets/player/front-1.png?v=11" alt="" draggable="false">
+      <img id="player" src="assets/player/front-1.png?v=12" alt="" draggable="false">
     </div>
 
     <audio id="bgMusic" src="assets/audio/arrival-in-ashford.mp3" preload="auto" loop></audio>
     <div id="loading">DIE BURGSCHENKE WIRD GEÖFFNET …</div>
     <div id="zoomHint" aria-hidden="true">MAUSRAD · 2 ZOOMSTUFEN</div>
+    <div id="irisTransition" aria-hidden="true"></div>
   </main>
-  <script src="game.js?v=11"></script>
+  <script src="game.js?v=12"></script>
 </body>
 </html>
