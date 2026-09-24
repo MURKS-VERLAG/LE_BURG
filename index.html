@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#10150f">
+  <meta name="theme-color" content="#c9a56b">
   <title>Schauenburg – Die Burgschenke</title>
   <link rel="preload" as="image" href="assets/maps/terrasse.jpg" fetchpriority="high">
-  <link rel="stylesheet" href="style.css?v=03">
+  <link rel="preload" as="audio" href="assets/audio/arrival-in-ashford.mp3">
+  <link rel="stylesheet" href="style.css?v=04">
 </head>
 <body>
   <main id="game" aria-label="Schauenburg – Die Burgschenke">
@@ -14,7 +15,6 @@
       <img id="map" src="assets/maps/terrasse.jpg" alt="Terrasse der Burgschenke" draggable="false">
 
       <img class="prop no-collision" id="baum" src="assets/props/baum.png?v=03" alt="" draggable="false">
-
       <img class="prop collidable" id="wirtschaft" src="assets/props/wirtschaft.png?v=03" alt="" draggable="false" data-collision="alpha">
 
       <img class="prop collidable" id="stehtischLinks" src="assets/props/stehtisch.png?v=03" alt="" draggable="false" data-collision="alpha">
@@ -25,9 +25,11 @@
       <img class="prop collidable" id="tafel" src="assets/props/tafel.png?v=03" alt="" draggable="false" data-collision="alpha">
     </div>
 
+    <audio id="bgMusic" src="assets/audio/arrival-in-ashford.mp3" preload="auto" loop></audio>
+
     <div id="loading">DIE BURGSCHENKE WIRD GEÖFFNET …</div>
-    <div id="zoomHint" aria-hidden="true">MAUSRAD · 3 ZOOMSTUFEN</div>
+    <div id="zoomHint" aria-hidden="true">MAUSRAD · 2 ZOOMSTUFEN</div>
   </main>
-  <script src="game.js?v=03"></script>
+  <script src="game.js?v=04"></script>
 </body>
 </html>

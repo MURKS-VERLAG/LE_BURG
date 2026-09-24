@@ -3,10 +3,13 @@
 const game = document.getElementById('game');
 const world = document.getElementById('world');
 const map = document.getElementById('map');
+const bgMusic = document.getElementById('bgMusic');
 
 const WORLD_W = 1536;
 const WORLD_H = 1024;
-const ZOOM_LEVELS = [1, 1.45, 2.05];
+
+/* FIX: nur noch zwei Zoomstufen. */
+const ZOOM_LEVELS = [1, 1.55];
 
 let zoomIndex = 0;
 let baseScale = 1;
@@ -42,14 +45,29 @@ function draw(){
   const z=ZOOM_LEVELS[zoomIndex];
   currentX+=(targetX-currentX)*.055;
   currentY+=(targetY-currentY)*.055;
-  if(zoomIndex===0){currentX*=.82;currentY*=.82;}
-  world.style.transform=`translate(-50%, -50%) translate(${currentX}px,${currentY}px) scale(${baseScale*z})`;
+
+  if(zoomIndex===0){
+    currentX*=.82;
+    currentY*=.82;
+  }
+
+  /*
+    FIX für die hauchdünne Unterkante:
+    Welt auf der vollständig herausgezoomten Stufe um exakt 1 CSS-Pixel nach unten.
+    Das Motiv schließt damit unten sauber; der gewollte Seitenrand bleibt erhalten.
+  */
+  const edgeFixY = zoomIndex===0 ? 1 : 0;
+
+  world.style.transform =
+    `translate(-50%, -50%) translate(${currentX}px,${currentY + edgeFixY}px) scale(${baseScale*z})`;
+
   rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
   zoomIndex=Math.max(0,Math.min(ZOOM_LEVELS.length-1,i));
   updateTargetFromPointer();clampPosition();
 }
+
 game.addEventListener('mousemove',e=>{
   const r=game.getBoundingClientRect();
   pointerX=(e.clientX-r.left)/r.width;
@@ -64,6 +82,24 @@ game.addEventListener('wheel',e=>{
 window.addEventListener('resize',()=>{
   calculateBaseScale();updateTargetFromPointer();clampPosition();
 });
+
+/* Musik: Browser blockieren Autoplay mit Ton häufig.
+   Wir versuchen sofort zu starten und entsperren sie sonst beim ersten Klick,
+   Mausrad oder Tastendruck automatisch. */
+if(bgMusic){
+  bgMusic.volume=.48;
+  const playMusic=()=>{
+    bgMusic.play().then(()=>{
+      window.removeEventListener('pointerdown',playMusic);
+      window.removeEventListener('keydown',playMusic);
+      window.removeEventListener('wheel',playMusic);
+    }).catch(()=>{});
+  };
+  playMusic();
+  window.addEventListener('pointerdown',playMusic,{passive:true});
+  window.addEventListener('keydown',playMusic);
+  window.addEventListener('wheel',playMusic,{passive:true});
+}
 
 /* Alpha-genaue Kollision: nur sichtbare Pixel blockieren. Baum ausgeschlossen. */
 const collisionSprites=[];
@@ -106,7 +142,6 @@ async function start(){
   calculateBaseScale();
   currentX=currentY=targetX=targetY=0;
 
-  /* Erst ALLE Bilder sicher laden, dann sichtbar schalten. */
   const props=[...document.querySelectorAll('.prop')];
   await Promise.all(props.map(el=>el.decode().catch(()=>{})));
 
@@ -114,7 +149,6 @@ async function start(){
   cancelAnimationFrame(rafId);
   draw();
 
-  /* Kollision danach aufbauen, damit sie den ersten sichtbaren Frame nicht blockiert. */
   const collidables=[...document.querySelectorAll('.collidable[data-collision="alpha"]')];
   Promise.all(collidables.map(buildAlphaCollision)).catch(console.error);
 }
