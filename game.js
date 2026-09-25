@@ -29,64 +29,39 @@ const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
   Rosa = harte Linie. Rot = Lücke/Passage in dieser Linie.
 */
 const MAP2_WALLS=[
-  /* äußerer rosa Laufbereich */
-  [84,836,126,474],
-  [126,474,126,247],
-  [126,247,138,85],
-  [138,85,1430,99],
-  [1430,99,1470,474],
-  [1470,474,1515,838],
-
-  /* untere Frontwand – rote Haupttür bleibt offen */
-  [84,836,724,836],
-  [817,836,1515,838],
-
-  /* Trennung Gastraum / Küchen-Personalzone – rote Tür offen */
-  [126,474,626,474],
-  [716,474,1470,474],
-
-  /* Küche: obere rosa Begrenzung – rote Küchentür offen */
-  [126,247,520,247],
-  [590,247,1128,247],
-
-  /* Küche rechts */
-  [1128,247,1142,474],
-
-  /* Lager / oberer Gang: untere/seitliche rosa Kanten */
-  [138,85,138,247],
-  [138,85,1430,99],
-
-  /* Personalbüro / kleiner Türhals rechts oben */
-  [1142,247,1162,247],
-  [1162,247,1162,292],
-  [1162,292,1267,292],
-  [1267,292,1267,474],
-
-  /* Theke selbst: linke Öffnung bleibt bewusst frei */
-  [161,596,161,652],
-  [161,652,499,652],
-  [499,652,499,596],
-  [499,596,546,596],
-  [546,596,546,474]
+  [141,107,125,235],
+  [125,235,97,784],
+  [97,784,47,833],
+  [141,107,1414,122],
+  [1414,122,1511,836],
+  [47,833,670,833],
+  [820,833,1511,836],
+  [97,480,597,480],
+  [663,480,951,480],
+  [125,236,493,236],
+  [563,236,933,236],
+  [933,236,969,236],
+  [969,236,969,368],
+  [969,368,1086,368],
+  [1086,368,1086,480],
+  [969,236,969,281],
+  [1064,281,1080,281],
+  [1080,281,1080,368],
+  [165,600,493,600],
+  [493,600,493,522],
+  [493,522,459,480]
 ];
 
-/* Rote Übergänge auf Map 2. */
-const MAP2_EXIT_TRIGGER={x1:724,x2:817,y:836};
+const MAP2_EXIT_TRIGGER={x1:670,x2:820,y:833};
+const MAP2_SPAWN={x:752,y:627};
 
-/* Spawn = Mittelpunkt des roten Kreises der Referenz. */
-const MAP2_SPAWN={x:774,y:642};
-
-/*
-  Grüne Sichtkanten. Nur wenn der Fußpunkt auf der HINTEREN/oberen Seite steht
-  und die Figur die Linie optisch schneidet, wird alles UNTER der Linie weggeclippt.
-*/
+/* GRÜNE LINIEN der Referenz: Sicht-/Abschneidekanten */
 const MAP2_OCCLUDERS=[
-  {x1:137,x2:1139,y:168},
-  {x1:126,x2:1128,y:406},
-  {x1:1267,x2:1470,y:406},
-  {x1:84,x2:1515,y:756},
-  /* obere Kante der Theke */
-  {x1:161,x2:499,y:596}
+  {x1:135,x2:964,y:147},
+  {x1:108,x2:939,y:368},
+  {x1:1086,x2:1445,y:368},
+  {x1:60,x2:1499,y:746},
+  {x1:165,x2:459,y:522}
 ];
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
@@ -289,20 +264,16 @@ function updateMap2Occlusion(){
     player.style.webkitClipPath='none';
     return;
   }
-
-  const h=player.offsetHeight;
-  const s=playerVisualScale();
-  if(!h||!s){ player.style.clipPath='none'; return; }
+  const h=player.offsetHeight, s=playerVisualScale();
+  if(!h||!s)return;
   const visualTop=PLAYER.y-h*s;
-
   let cutY=null;
+
   for(const o of MAP2_OCCLUDERS){
-    const horizontallyInside=PLAYER.x>=o.x1-PLAYER.radius && PLAYER.x<=o.x2+PLAYER.radius;
-    const behindLine=PLAYER.y<=o.y+PLAYER.radius;
-    const bodyCrosses=visualTop<o.y && PLAYER.y>o.y-h*.08;
-    if(horizontallyInside && behindLine && bodyCrosses){
-      if(cutY===null || o.y<cutY)cutY=o.y;
-    }
+    const inX=PLAYER.x>=o.x1 && PLAYER.x<=o.x2;
+    const behind=PLAYER.y<o.y;
+    const crosses=visualTop<o.y && PLAYER.y>=o.y-34;
+    if(inX&&behind&&crosses && (cutY===null||o.y>cutY)) cutY=o.y;
   }
 
   if(cutY===null){
@@ -310,12 +281,9 @@ function updateMap2Occlusion(){
     player.style.webkitClipPath='none';
     return;
   }
-
-  // clip-path arbeitet in den unskalierten Bildkoordinaten.
   const localCut=(cutY-visualTop)/s;
   const visible=Math.max(0,Math.min(h,localCut));
-  const bottomInset=Math.max(0,h-visible);
-  const clip=`inset(0 0 ${bottomInset}px 0)`;
+  const clip=`inset(0 0 ${Math.max(0,h-visible)}px 0)`;
   player.style.clipPath=clip;
   player.style.webkitClipPath=clip;
 }
