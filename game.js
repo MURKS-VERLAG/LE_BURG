@@ -35,13 +35,14 @@ let map2Room='guestroom';
 /* Aus 2048×1365 Referenz auf 1536×1024: Faktor 0.75.
    Mittelwand: Oberkante ~239, Unterkante ~360.
    Frontwand: Oberkante ~690, Unterkante ~866. */
-const MAP2_REAR_EDGE=137; // sichtbare UNTERKANTE der Rückwand; nicht passierbar
-const MAP2_MIDDLE_WALL={top:239,bottom:360,left:79,right:1457};
-const MAP2_FRONT_WALL={top:690,bottom:866,left:31,right:1505};
+const MAP2_REAR_EDGE=137; // Rückwand war bereits korrekt und bleibt unverändert
+// ROSA Effektlinien + ROTE Kollisionslinien aus der markierten Referenz.
+const MAP2_MIDDLE_WALL={top:248,bottom:365,left:120,right:1420};
+const MAP2_FRONT_WALL={top:709,bottom:860,left:57,right:1485};
 
 /* Reale Türöffnungen an den jeweiligen Unterkanten. */
-const MAP2_KITCHEN_DOOR={x1:382,x2:489,y1:239,y2:366};
-const MAP2_FRONT_DOOR={x1:681,x2:839,y1:690,y2:874};
+const MAP2_KITCHEN_DOOR={x1:382,x2:489,y1:248,y2:371};
+const MAP2_FRONT_DOOR={x1:681,x2:839,y1:709,y2:874};
 
 /* Normale Bodenflächen. Die perspektivischen Seitenkanten bleiben erhalten. */
 const MAP2_GUEST_POLY=[[72,360],[1465,360],[1510,866],[25,866]];
@@ -69,19 +70,22 @@ function inMiddleWallBand(x,y){
          y>=MAP2_MIDDLE_WALL.top && y<=MAP2_MIDDLE_WALL.bottom;
 }
 
-/* Seitenwände: Kollision an der sichtbaren UNTERKANTE (innere Bodenkante), perspektivisch linear. */
+/* Seitenwände: exakt die ROT markierte sichtbare UNTERKANTE.
+   Eine durchgehende perspektivische Linie; keine horizontalen Ersatzstücke. */
+const MAP2_SIDE_Y1=137;
+const MAP2_SIDE_Y2=860;
+const MAP2_LEFT_X1=150;
+const MAP2_LEFT_X2=57;
+const MAP2_RIGHT_X1=1390;
+const MAP2_RIGHT_X2=1485;
+
 function map2LeftInnerEdge(y){
-  // echte innere Bodenkante der linken Seitenwand: Rückraum -> Mittelwand -> Gastraum
-  if(y<=MAP2_REAR_EDGE)return 93;
-  if(y<=MAP2_MIDDLE_WALL.bottom)return 93+(79-93)*((y-MAP2_REAR_EDGE)/(MAP2_MIDDLE_WALL.bottom-MAP2_REAR_EDGE));
-  if(y<=MAP2_FRONT_WALL.top)return 79+(31-79)*((y-MAP2_MIDDLE_WALL.bottom)/(MAP2_FRONT_WALL.top-MAP2_MIDDLE_WALL.bottom));
-  return 31;
+  const t=Math.max(0,Math.min(1,(y-MAP2_SIDE_Y1)/(MAP2_SIDE_Y2-MAP2_SIDE_Y1)));
+  return MAP2_LEFT_X1+(MAP2_LEFT_X2-MAP2_LEFT_X1)*t;
 }
 function map2RightInnerEdge(y){
-  if(y<=MAP2_REAR_EDGE)return 1443;
-  if(y<=MAP2_MIDDLE_WALL.bottom)return 1443+(1457-1443)*((y-MAP2_REAR_EDGE)/(MAP2_MIDDLE_WALL.bottom-MAP2_REAR_EDGE));
-  if(y<=MAP2_FRONT_WALL.top)return 1457+(1505-1457)*((y-MAP2_MIDDLE_WALL.bottom)/(MAP2_FRONT_WALL.top-MAP2_MIDDLE_WALL.bottom));
-  return 1505;
+  const t=Math.max(0,Math.min(1,(y-MAP2_SIDE_Y1)/(MAP2_SIDE_Y2-MAP2_SIDE_Y1)));
+  return MAP2_RIGHT_X1+(MAP2_RIGHT_X2-MAP2_RIGHT_X1)*t;
 }
 function insideMap2SideEdges(x,y){
   return x>=map2LeftInnerEdge(y) && x<=map2RightInnerEdge(y);
@@ -402,7 +406,7 @@ async function enterWirtschaft(){
   map2Room='guestroom';
   map2InMiddleWall=false;
   document.body.classList.add('map2');
-  await swapMap('assets/maps/wirtschaft-innen.jpg?v=17');
+  await swapMap('assets/maps/wirtschaft-innen.jpg?v=18');
 
   PLAYER.x=MAP2_SPAWN.x;
   PLAYER.y=MAP2_SPAWN.y;
@@ -463,9 +467,11 @@ function updateMap2RoomAndTransitions(){
     map2Room='kitchen';
   }
 
-  // Küche -> Mittelwand: nur durch dieselbe Tür; keine zusätzliche Kante an y=239.
+  // Küche -> Mittelwand: Oberkante ist KEINE Hitbox.
+  // Beim Herunterlaufen muss der Effekt deshalb über die GANZE Wandbreite wieder einsetzen.
+  // Erst die rote UNTERKANTE blockiert wieder; dort bleibt ausschließlich die Tür passierbar.
   if(map2Room==='kitchen' &&
-     PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
+     PLAYER.x>=MAP2_MIDDLE_WALL.left && PLAYER.x<=MAP2_MIDDLE_WALL.right &&
      PLAYER.y>MAP2_MIDDLE_WALL.top){
     map2Room='guestroom';
     map2InMiddleWall=true;
