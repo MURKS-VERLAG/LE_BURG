@@ -35,10 +35,9 @@ let map2Room='guestroom';
 /* Aus 2048×1365 Referenz auf 1536×1024: Faktor 0.75.
    Mittelwand: Oberkante ~239, Unterkante ~360.
    Frontwand: Oberkante ~690, Unterkante ~866. */
-const MAP2_MIDDLE_WALL={top:239,bottom:360,left:72,right:1465};
-// Visuelle Freigabe endet etwas VOR der geometrischen Oberkante: Figur erscheint beim Verlassen früher.
-const MAP2_MIDDLE_REVEAL_TOP=252;
-const MAP2_FRONT_WALL={top:690,bottom:866,left:25,right:1510};
+const MAP2_REAR_EDGE=137; // sichtbare UNTERKANTE der Rückwand; nicht passierbar
+const MAP2_MIDDLE_WALL={top:239,bottom:360,left:79,right:1457};
+const MAP2_FRONT_WALL={top:690,bottom:866,left:31,right:1505};
 
 /* Reale Türöffnungen an den jeweiligen Unterkanten. */
 const MAP2_KITCHEN_DOOR={x1:382,x2:489,y1:239,y2:366};
@@ -72,47 +71,48 @@ function inMiddleWallBand(x,y){
 
 /* Seitenwände: Kollision an der sichtbaren UNTERKANTE (innere Bodenkante), perspektivisch linear. */
 function map2LeftInnerEdge(y){
-  if(y<=239)return 92;
-  if(y<=360)return 92+(72-92)*((y-239)/(360-239));
-  return 72+(25-72)*((y-360)/(866-360));
+  // echte innere Bodenkante der linken Seitenwand: Rückraum -> Mittelwand -> Gastraum
+  if(y<=MAP2_REAR_EDGE)return 93;
+  if(y<=MAP2_MIDDLE_WALL.bottom)return 93+(79-93)*((y-MAP2_REAR_EDGE)/(MAP2_MIDDLE_WALL.bottom-MAP2_REAR_EDGE));
+  if(y<=MAP2_FRONT_WALL.top)return 79+(31-79)*((y-MAP2_MIDDLE_WALL.bottom)/(MAP2_FRONT_WALL.top-MAP2_MIDDLE_WALL.bottom));
+  return 31;
 }
 function map2RightInnerEdge(y){
-  if(y<=239)return 1444;
-  if(y<=360)return 1444+(1465-1444)*((y-239)/(360-239));
-  return 1465+(1510-1465)*((y-360)/(866-360));
+  if(y<=MAP2_REAR_EDGE)return 1443;
+  if(y<=MAP2_MIDDLE_WALL.bottom)return 1443+(1457-1443)*((y-MAP2_REAR_EDGE)/(MAP2_MIDDLE_WALL.bottom-MAP2_REAR_EDGE));
+  if(y<=MAP2_FRONT_WALL.top)return 1457+(1505-1457)*((y-MAP2_MIDDLE_WALL.bottom)/(MAP2_FRONT_WALL.top-MAP2_MIDDLE_WALL.bottom));
+  return 1505;
 }
 function insideMap2SideEdges(x,y){
   return x>=map2LeftInnerEdge(y) && x<=map2RightInnerEdge(y);
 }
 
 function map2CanStand(x,y){
-  // Seitenwände gelten in ALLEN Bereichen ausschließlich an ihrer sichtbaren unteren Innenkante.
+  // Füße dürfen niemals über die sichtbaren unteren Innenkanten der Seitenwände.
   if(!insideMap2SideEdges(x,y))return false;
+  // Rückwand: ausschließlich ihre sichtbare Unterkante begrenzt den Küchenboden.
+  if(y<MAP2_REAR_EDGE)return false;
 
   if(map2Room==='kitchen'){
-    /* KEINE Hitbox an der Oberkante der Mittelwand/Küche. Oben begrenzen nur die
-       echten Rück-/Seitenwände der Karte; der Übergang zurück erfolgt an der Mittelwand
-       ausschließlich durch die Tür. */
-    if(y<MAP2_MIDDLE_WALL.top)return true;
-    if(inRect(x,y,MAP2_KITCHEN_DOOR))return true;
-    return false;
+    // In der Küche existiert KEINE Kollisionskante an der Oberkante der Mittelwand.
+    // Die Wandtiefe darf betreten werden; ihre UNTERKANTE bei y=360 ist nur an der Tür passierbar.
+    if(y<MAP2_MIDDLE_WALL.bottom)return true;
+    return inRect(x,y,MAP2_KITCHEN_DOOR);
   }
 
   if(map2InMiddleWall){
-    /* Hinter der Mittelwand: über die GANZE Breite A/D möglich. Die Wandoberkante
-       ist KEINE Kollisionskante. W führt direkt in die Küche; S zurück in Gaststube. */
-    if(y<=MAP2_MIDDLE_WALL.bottom && y>=MAP2_MIDDLE_WALL.top)return true;
-    if(y<MAP2_MIDDLE_WALL.top)return true;
-    if(y>MAP2_MIDDLE_WALL.bottom)return true;
+    // Hinter der Mittelwand ist die komplette Wandtiefe horizontal begehbar.
+    // Es gibt hier bewusst KEINE zweite/obere Hitbox.
+    if(y<MAP2_MIDDLE_WALL.bottom)return true;
+    return inRect(x,y,MAP2_KITCHEN_DOOR);
   }
 
-  /* Gaststube: Mittelwand darf von unten nur durch die echte Tür betreten werden.
-     Frontwand-Tiefe ist begehbar; deren UNTERKANTE stoppt den Spieler außer am Ausgang. */
   if(map2Room==='guestroom'){
-    if(y>=MAP2_MIDDLE_WALL.bottom && y<=MAP2_FRONT_WALL.bottom)return true;
-    if(inRect(x,y,MAP2_KITCHEN_DOOR))return true;
-    if(inRect(x,y,MAP2_FRONT_DOOR))return true;
-    return false;
+    // Gaststube: obere Grenze ist ausschließlich die UNTERKANTE der Mittelwand.
+    if(y<MAP2_MIDDLE_WALL.bottom)return inRect(x,y,MAP2_KITCHEN_DOOR);
+    // Untere Frontwand: Wandtiefe begehbar; ihre UNTERKANTE stoppt außer im Ausgang.
+    if(y<=MAP2_FRONT_WALL.bottom)return true;
+    return inRect(x,y,MAP2_FRONT_DOOR);
   }
   return false;
 }
@@ -329,19 +329,26 @@ function finishIrisOpen(){
 }
 
 function setPlayerVisibleFraction(fraction){
-  /* fraction 0 = komplett hinter Wand; 1 = komplett sichtbar.
-     Freigabe immer von KOPF nach unten. */
   const f=Math.max(0,Math.min(1,fraction));
   const cutBottom=(1-f)*100;
   player.style.clipPath=`inset(0 0 ${cutBottom}% 0)`;
   player.style.webkitClipPath=`inset(0 0 ${cutBottom}% 0)`;
 }
 
-function wallVisibilityBottomToTop(y,top,bottom){
-  /* Beim HINEINLAUFEN von oben nach unten: erst Füße/Unterkörper verdeckt,
-     dann immer mehr bis zum Kopf. Beim HERAUSLAUFEN exakt reversibel. */
-  const t=Math.max(0,Math.min(1,(y-top)/Math.max(1,bottom-top)));
-  return 1-t;
+function playerWorldHeight(){
+  // clipPath arbeitet auf dem unskalierten Element; für die Weltposition brauchen wir
+  // die tatsächlich sichtbare Höhe inklusive Map-2-Skalierung.
+  return Math.max(1,player.offsetHeight*playerVisualScale());
+}
+
+function visibleAboveWallTop(footY,wallTop){
+  // EIN einziges geometrisches Occlusion-Modell:
+  // Sichtbar bleibt exakt der Teil des Sprites, der oberhalb der Wand-Oberkante liegt.
+  // Dadurch beginnt die Freigabe erst, wenn die Haarspitze die Oberkante berührt,
+  // und es gibt keine zweite künstliche Kante mehr.
+  const h=playerWorldHeight();
+  const spriteTop=footY-h;
+  return Math.max(0,Math.min(1,(wallTop-spriteTop)/h));
 }
 
 function updateMap2Occlusion(){
@@ -350,24 +357,19 @@ function updateMap2Occlusion(){
   player.style.webkitClipPath='none';
   if(currentMap!==2)return;
 
-  /* MITTELWAND: Nach Eintritt durch die Tür gilt derselbe Occlusion-Effekt über
-     die komplette Wandbreite. Keine Kollisions-Hitbox an ihrer Oberkante. */
-  if(map2InMiddleWall && PLAYER.y>=MAP2_MIDDLE_REVEAL_TOP && PLAYER.y<=MAP2_MIDDLE_WALL.bottom){
-    const visible=(MAP2_MIDDLE_WALL.bottom-PLAYER.y)/
-                  (MAP2_MIDDLE_WALL.bottom-MAP2_MIDDLE_REVEAL_TOP);
-    setPlayerVisibleFraction(visible);
+  // MITTELWAND: Effekt nur nachdem die Tür von der Gaststube aus betreten wurde.
+  // Danach über die gesamte Wandbreite, bis die Figur oberhalb der Wand wieder frei ist.
+  if(map2InMiddleWall){
+    setPlayerVisibleFraction(visibleAboveWallTop(PLAYER.y,MAP2_MIDDLE_WALL.top));
     return;
   }
 
-  /* FRONTWAND: NICHT abrupt verschwinden. Von der sichtbaren Oberkante bis zur
-     Unterkante wird der Sprite kontinuierlich VON UNTEN NACH OBEN verdeckt.
-     Der gleiche Ausdruck läuft beim Zurückgehen exakt rückwärts: oben -> unten frei. */
-  if(map2Room==='guestroom' && !map2InMiddleWall &&
+  // FRONTWAND: ebenfalls nur EIN Occluder. Beginn exakt an der sichtbaren Oberkante.
+  // Beim Rückweg erscheint zuerst die Haarspitze, exakt wenn sie diese Kante erreicht.
+  if(map2Room==='guestroom' &&
      PLAYER.x>=MAP2_FRONT_WALL.left && PLAYER.x<=MAP2_FRONT_WALL.right &&
      PLAYER.y>=MAP2_FRONT_WALL.top && PLAYER.y<=MAP2_FRONT_WALL.bottom){
-    setPlayerVisibleFraction(wallVisibilityBottomToTop(
-      PLAYER.y,MAP2_FRONT_WALL.top,MAP2_FRONT_WALL.bottom));
-    return;
+    setPlayerVisibleFraction(visibleAboveWallTop(PLAYER.y,MAP2_FRONT_WALL.top));
   }
 }
 
@@ -400,7 +402,7 @@ async function enterWirtschaft(){
   map2Room='guestroom';
   map2InMiddleWall=false;
   document.body.classList.add('map2');
-  await swapMap('assets/maps/wirtschaft-innen.jpg?v=16');
+  await swapMap('assets/maps/wirtschaft-innen.jpg?v=17');
 
   PLAYER.x=MAP2_SPAWN.x;
   PLAYER.y=MAP2_SPAWN.y;
@@ -447,37 +449,36 @@ async function leaveWirtschaft(){
 function updateMap2RoomAndTransitions(){
   if(currentMap!==2||mapTransitioning)return;
 
-  /* Eintritt in die Mittelwand NUR durch die sichtbare Küchentür an y=360. */
+  // Gaststube -> Mittelwand: ausschließlich durch die echte Tür an der UNTERKANTE y=360.
   if(map2Room==='guestroom' && !map2InMiddleWall &&
      PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
      PLAYER.y<MAP2_MIDDLE_WALL.bottom){
     map2InMiddleWall=true;
   }
 
-  /* In der Wand darf nun A/D über die ganze Breite benutzt werden.
-     Erst nach vollständigem Überschreiten der Oberkante sind wir in der Küche. */
-  if(map2InMiddleWall && PLAYER.y<=MAP2_MIDDLE_REVEAL_TOP){
+  // Mittelwand -> Küche: KEINE obere Hitbox. Sobald die Füße die visuelle Oberkante
+  // überschritten haben, ist die Figur in der Küche und wird wieder normal gezeichnet.
+  if(map2InMiddleWall && PLAYER.y<=MAP2_MIDDLE_WALL.top){
     map2InMiddleWall=false;
     map2Room='kitchen';
   }
 
-  /* Rückweg Küche -> Wand wiederum ausschließlich durch dieselbe Tür. */
+  // Küche -> Mittelwand: nur durch dieselbe Tür; keine zusätzliche Kante an y=239.
   if(map2Room==='kitchen' &&
      PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
-     PLAYER.y>MAP2_MIDDLE_REVEAL_TOP){
+     PLAYER.y>MAP2_MIDDLE_WALL.top){
     map2Room='guestroom';
     map2InMiddleWall=true;
   }
 
-  /* Wenn man aus der Wand wieder nach unten in die Gaststube kommt. */
+  // Mittelwand -> Gaststube: erst nach vollständigem Überschreiten der unteren Wandkante.
   if(map2InMiddleWall && PLAYER.y>=MAP2_MIDDLE_WALL.bottom){
     map2InMiddleWall=false;
     map2Room='guestroom';
-    PLAYER.y=MAP2_MIDDLE_WALL.bottom+1;
+    PLAYER.y=MAP2_MIDDLE_WALL.bottom;
   }
 
-  /* Frontwand: Außenkante wirklich UNTEN bei y=866.
-     Mapwechsel ausschließlich durch die mittige Haupttür. */
+  // Ausgang Map 2 -> Map 1 ausschließlich an der Haupttür der Front-Unterkante.
   if(map2Room==='guestroom' && !map2InMiddleWall &&
      PLAYER.x>=MAP2_FRONT_DOOR.x1 && PLAYER.x<=MAP2_FRONT_DOOR.x2 &&
      PLAYER.y>=MAP2_FRONT_WALL.bottom){
