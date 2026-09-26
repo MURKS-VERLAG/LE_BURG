@@ -23,46 +23,8 @@ let mapTransitioning = false;
 const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
-/*
-  MAP 2 – aus der eingezeichneten Referenz auf 1536x1024 Weltkoordinaten übertragen.
-  Kollisionen gelten ausschließlich für den Fußpunkt (PLAYER.x / PLAYER.y).
-  Rosa = harte Linie. Rot = Lücke/Passage in dieser Linie.
-*/
-const MAP2_WALLS=[
-  [141,107,125,235],
-  [125,235,97,784],
-  [97,784,47,833],
-  [141,107,1414,122],
-  [1414,122,1511,836],
-  [47,833,670,833],
-  [820,833,1511,836],
-  [97,480,597,480],
-  [663,480,951,480],
-  [125,236,493,236],
-  [563,236,933,236],
-  [933,236,969,236],
-  [969,236,969,368],
-  [969,368,1086,368],
-  [1086,368,1086,480],
-  [969,236,969,281],
-  [1064,281,1080,281],
-  [1080,281,1080,368],
-  [165,600,493,600],
-  [493,600,493,522],
-  [493,522,459,480]
-];
-
-const MAP2_EXIT_TRIGGER={x1:670,x2:820,y:833};
-const MAP2_SPAWN={x:752,y:627};
-
-/* GRÜNE LINIEN der Referenz: Sicht-/Abschneidekanten */
-const MAP2_OCCLUDERS=[
-  {x1:135,x2:964,y:147},
-  {x1:108,x2:939,y:368},
-  {x1:1086,x2:1445,y:368},
-  {x1:60,x2:1499,y:746},
-  {x1:165,x2:459,y:522}
-];
+/* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
+const MAP2_SPAWN={x:768,y:735};
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
 function calculateBaseScale(){
@@ -199,23 +161,11 @@ function setPlayerDirection(direction){
   showPlayerFrame(true);
 }
 
-function pointSegmentDistance(px,py,x1,y1,x2,y2){
-  const vx=x2-x1,vy=y2-y1;
-  const wx=px-x1,wy=py-y1;
-  const vv=vx*vx+vy*vy;
-  const t=vv ? Math.max(0,Math.min(1,(wx*vx+wy*vy)/vv)) : 0;
-  const dx=px-(x1+t*vx),dy=py-(y1+t*vy);
-  return Math.hypot(dx,dy);
-}
-function map2FootBlocked(x,y){
-  const r=PLAYER.radius;
-  return MAP2_WALLS.some(([x1,y1,x2,y2])=>pointSegmentDistance(x,y,x1,y1,x2,y2)<r);
-}
 
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
-  if(currentMap===2)return !map2FootBlocked(x,y);
+  if(currentMap===2)return true; // neue Map 2: keine Hitboxen
   return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);
 }
 function movePlayerAxis(dx,dy){
@@ -259,33 +209,8 @@ function finishIrisOpen(){
 
 function updateMap2Occlusion(){
   if(!player)return;
-  if(currentMap!==2){
-    player.style.clipPath='none';
-    player.style.webkitClipPath='none';
-    return;
-  }
-  const h=player.offsetHeight, s=playerVisualScale();
-  if(!h||!s)return;
-  const visualTop=PLAYER.y-h*s;
-  let cutY=null;
-
-  for(const o of MAP2_OCCLUDERS){
-    const inX=PLAYER.x>=o.x1 && PLAYER.x<=o.x2;
-    const behind=PLAYER.y<o.y;
-    const crosses=visualTop<o.y && PLAYER.y>=o.y-34;
-    if(inX&&behind&&crosses && (cutY===null||o.y>cutY)) cutY=o.y;
-  }
-
-  if(cutY===null){
-    player.style.clipPath='none';
-    player.style.webkitClipPath='none';
-    return;
-  }
-  const localCut=(cutY-visualTop)/s;
-  const visible=Math.max(0,Math.min(h,localCut));
-  const clip=`inset(0 0 ${Math.max(0,h-visible)}px 0)`;
-  player.style.clipPath=clip;
-  player.style.webkitClipPath=clip;
+  player.style.clipPath='none';
+  player.style.webkitClipPath='none';
 }
 
 async function swapMap(src){
@@ -327,54 +252,12 @@ async function enterWirtschaft(){
   playerLastTime=performance.now();
 }
 
-async function leaveWirtschaft(){
-  if(mapTransitioning||currentMap!==2)return;
-  mapTransitioning=true;
-  keys.clear();
-  PLAYER.moving=false;
-  PLAYER.frameClock=0;
-
-  if(player)player.classList.add('map-fading');
-  await new Promise(r=>setTimeout(r,220));
-  await animateIris(150,0,650);
-
-  currentMap=1;
-  document.body.classList.remove('map2');
-  await swapMap('assets/maps/terrasse.jpg');
-
-  // Direkt vor dem Eingang auf Map 1, nicht wieder sofort im Trigger.
-  PLAYER.x=(WIRTSCHAFT_DOOR_TRIGGER.x1+WIRTSCHAFT_DOOR_TRIGGER.x2)/2;
-  PLAYER.y=WIRTSCHAFT_DOOR_PASSAGE.y2+PLAYER.radius+8;
-  PLAYER.direction='front';
-  PLAYER.sequenceIndex=0;
-  PLAYER.frameClock=0;
-  PLAYER.frame=PLAYER_SEQUENCES.front[0];
-  player.style.left=`${PLAYER.x}px`;
-  player.style.top=`${PLAYER.y}px`;
-  showPlayerFrame(true);
-
-  if(player)player.classList.remove('map-fading');
-  await animateIris(0,150,700);
-  finishIrisOpen();
-
-  mapTransitioning=false;
-  playerLastTime=performance.now();
-}
-
 function checkMapTransition(){
-  if(mapTransitioning)return;
-  if(currentMap===1){
-    const t=WIRTSCHAFT_DOOR_TRIGGER;
-    if(PLAYER.x>=t.x1&&PLAYER.x<=t.x2&&PLAYER.y<=t.y+PLAYER.radius&&PLAYER.y>=t.y-18){
-      PLAYER.y=t.y+PLAYER.radius;
-      enterWirtschaft();
-    }
-  }else{
-    const t=MAP2_EXIT_TRIGGER;
-    if(PLAYER.x>=t.x1&&PLAYER.x<=t.x2 && Math.abs(PLAYER.y-t.y)<=PLAYER.radius+5){
-      PLAYER.y=t.y-PLAYER.radius;
-      leaveWirtschaft();
-    }
+  if(mapTransitioning||currentMap!==1)return;
+  const t=WIRTSCHAFT_DOOR_TRIGGER;
+  if(PLAYER.x>=t.x1&&PLAYER.x<=t.x2&&PLAYER.y<=t.y+PLAYER.radius&&PLAYER.y>=t.y-18){
+    PLAYER.y=t.y+PLAYER.radius;
+    enterWirtschaft();
   }
 }
 
