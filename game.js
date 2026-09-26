@@ -174,37 +174,67 @@ function movePlayerAxis(dx,dy){
   if(dy&&playerCanStand(PLAYER.x,ny))PLAYER.y=ny;
 }
 
-/* IRIS: Overlay bleibt während BEIDER Hälften aktiv. */
+/* IRIS – vollständig JS-gesteuert, unabhängig von altem CSS.
+   150 = komplett offen, 0 = komplett schwarz.
+   Beim Kartenwechsel bleibt der Screen bei Radius 0 geschlossen,
+   die Map wird darunter getauscht, danach öffnet dieselbe Iris 0 -> 150. */
 function setIrisRadius(percent){
   if(!irisTransition)return;
-  irisTransition.style.display='block';
-  irisTransition.style.visibility='visible';
-  irisTransition.style.opacity='1';
-  irisTransition.style.pointerEvents='none';
-  irisTransition.style.zIndex='999999';
   const p=Math.max(0,Math.min(150,percent));
-  const edge=Math.min(150,p+.45);
-  irisTransition.style.background=`radial-gradient(circle at 50% 50%, transparent 0%, transparent ${p}%, #000 ${edge}%, #000 100%)`;
+
+  Object.assign(irisTransition.style,{
+    display:'block',
+    position:'fixed',
+    inset:'0',
+    width:'100vw',
+    height:'100vh',
+    zIndex:'999999',
+    pointerEvents:'none',
+    visibility:'visible',
+    opacity:'1',
+    background:'#000',
+    transition:'none'
+  });
+
+  // Ein echtes Loch in der schwarzen Ebene statt eines CSS-Hintergrund-Tricks.
+  // Dadurch funktioniert insbesondere die zweite Hälfte 0 -> 150 zuverlässig.
+  const mask=`radial-gradient(circle at 50% 50%, transparent 0%, transparent ${p}%, #000 ${Math.min(150,p+0.7)}%, #000 100%)`;
+  irisTransition.style.webkitMaskImage=mask;
+  irisTransition.style.maskImage=mask;
+  irisTransition.style.webkitMaskRepeat='no-repeat';
+  irisTransition.style.maskRepeat='no-repeat';
 }
+
 function animateIris(from,to,duration){
   return new Promise(resolve=>{
+    setIrisRadius(from);
     const start=performance.now();
+
     const step=now=>{
       const t=Math.min(1,(now-start)/duration);
       const eased=t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
       setIrisRadius(from+(to-from)*eased);
-      if(t<1)requestAnimationFrame(step); else resolve();
+
+      if(t<1){
+        requestAnimationFrame(step);
+      }else{
+        setIrisRadius(to);
+        resolve();
+      }
     };
+
     requestAnimationFrame(step);
   });
 }
+
 function finishIrisOpen(){
-  setIrisRadius(150);
-  if(irisTransition){
-    irisTransition.style.background='transparent';
-    irisTransition.style.opacity='0';
-    irisTransition.style.visibility='hidden';
-  }
+  if(!irisTransition)return;
+  irisTransition.style.webkitMaskImage='none';
+  irisTransition.style.maskImage='none';
+  irisTransition.style.background='transparent';
+  irisTransition.style.opacity='0';
+  irisTransition.style.visibility='hidden';
+  irisTransition.style.display='none';
 }
 
 function updateMap2Occlusion(){
@@ -214,6 +244,13 @@ function updateMap2Occlusion(){
 }
 
 async function swapMap(src){
+  const next=new Image();
+  next.src=src;
+  await new Promise((resolve,reject)=>{
+    next.onload=resolve;
+    next.onerror=reject;
+  }).catch(()=>{});
+  await next.decode().catch(()=>{});
   map.src=src;
   await map.decode().catch(()=>{});
 }
@@ -229,10 +266,11 @@ async function enterWirtschaft(){
   await new Promise(r=>setTimeout(r,260));
 
   await animateIris(150,0,650);
+  setIrisRadius(0); // während des Map-Tauschs garantiert geschlossen
 
   currentMap=2;
   document.body.classList.add('map2');
-  await swapMap('assets/maps/wirtschaft-innen.jpg');
+  await swapMap('assets/maps/wirtschaft-innen-neu.jpg?v=14');
 
   PLAYER.x=MAP2_SPAWN.x;
   PLAYER.y=MAP2_SPAWN.y;
@@ -245,7 +283,10 @@ async function enterWirtschaft(){
   showPlayerFrame(true);
 
   if(player)player.classList.remove('map-fading');
-  await animateIris(0,150,700); // Map 2 jetzt sichtbar VON INNEN NACH AUSSEN.
+
+  // Einen echten Paint der neuen Karte unter der geschlossenen Iris erzwingen.
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  await animateIris(0,150,700);
   finishIrisOpen();
 
   mapTransitioning=false;
