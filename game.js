@@ -27,22 +27,30 @@ const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 const MAP2_SPAWN={x:768,y:640};
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
-/* MAP 2 – finale Innenkarte: Fuß-Kollisionen liegen an den sichtbaren UNTERKANTEN der Wände.
-   Wandtiefe wird ausschließlich in den echten Türöffnungen betreten. */
+/* MAP 2 – finale Innenkarte, direkt auf die 1536×1024-Welt skaliert.
+   Entscheidend: Kollisionskante = sichtbare UNTERKANTE der jeweiligen Wand.
+   Die Wandtiefe selbst darf betreten werden; durch die Unterkante geht es NUR an Türen. */
 let map2Room='guestroom';
 
-// Gaststube: seitliche Grenzen folgen der Perspektive; vorne ist die UNTERKANTE der Frontwand maßgeblich.
-const MAP2_GUEST_POLY=[[72,355],[1464,355],[1510,856],[25,856]];
-// Küche: hintere/seitliche begehbare Fläche bis zur OBERKANTE der Mittelwand.
-const MAP2_KITCHEN_POLY=[[122,138],[1408,138],[1443,250],[92,250]];
+/* Aus 2048×1365 Referenz auf 1536×1024: Faktor 0.75.
+   Mittelwand: Oberkante ~239, Unterkante ~360.
+   Frontwand: Oberkante ~690, Unterkante ~866. */
+const MAP2_MIDDLE_WALL={top:239,bottom:360,left:72,right:1465};
+const MAP2_FRONT_WALL={top:690,bottom:866,left:25,right:1510};
 
-// Echte Türkanäle durch die Wandtiefe.
-const MAP2_KITCHEN_DOOR={x1:382,x2:488,y1:250,y2:356};
-const MAP2_FRONT_DOOR={x1:682,x2:837,y1:689,y2:858};
+/* Reale Türöffnungen an den jeweiligen Unterkanten. */
+const MAP2_KITCHEN_DOOR={x1:382,x2:489,y1:239,y2:366};
+const MAP2_FRONT_DOOR={x1:681,x2:839,y1:690,y2:874};
 
-// Sichtbare Wandhöhen: Spieler wird NUR während des Türdurchgangs hinter der Wand verdeckt.
-const MAP2_MIDDLE_WALL={top:250,bottom:356};
-const MAP2_FRONT_WALL={top:689,bottom:858};
+/* Normale Bodenflächen. Die perspektivischen Seitenkanten bleiben erhalten. */
+const MAP2_GUEST_POLY=[[72,360],[1465,360],[1510,866],[25,866]];
+const MAP2_KITCHEN_POLY=[[122,137],[1409,137],[1444,239],[92,239]];
+
+/* Sobald die Mittelwand über die Tür betreten wurde, befindet sich der Spieler
+   IN/HINTER der Wand. Dann darf er innerhalb der gesamten Wandtiefe links/rechts
+   laufen und bleibt verdeckt. Das verhindert gleichzeitig, dass man die Wand
+   von der Gaststube aus irgendwo anders betreten kann. */
+let map2InMiddleWall=false;
 
 function pointInPoly(x,y,poly){
   let inside=false;
@@ -54,16 +62,37 @@ function pointInPoly(x,y,poly){
   return inside;
 }
 function inRect(x,y,r){return x>=r.x1&&x<=r.x2&&y>=r.y1&&y<=r.y2;}
+
+function inMiddleWallBand(x,y){
+  return x>=MAP2_MIDDLE_WALL.left && x<=MAP2_MIDDLE_WALL.right &&
+         y>=MAP2_MIDDLE_WALL.top && y<=MAP2_MIDDLE_WALL.bottom;
+}
+
 function map2CanStand(x,y){
-  if(map2Room==='guestroom'){
-    // Gaststube. Die Mittelwand ist nur durch die Küchentür passierbar;
-    // die Frontwand nur durch die mittige Haupttür.
+  if(map2Room==='kitchen'){
+    /* Küche bis exakt an die Oberkante. Zurück in die Wand nur durch die Tür. */
+    if(pointInPoly(x,y,MAP2_KITCHEN_POLY))return true;
+    if(inRect(x,y,MAP2_KITCHEN_DOOR))return true;
+    return false;
+  }
+
+  /* Gaststube einschließlich Frontwand-Tiefe. Die untere Außenkante liegt erst
+     bei y=866; nur die Haupttür darf darüber hinaus Richtung Map 1 führen. */
+  if(map2Room==='guestroom' && !map2InMiddleWall){
+    if(pointInPoly(x,y,MAP2_GUEST_POLY))return true;
     if(inRect(x,y,MAP2_KITCHEN_DOOR))return true;
     if(inRect(x,y,MAP2_FRONT_DOOR))return true;
-    return pointInPoly(x,y,MAP2_GUEST_POLY) && y>=MAP2_MIDDLE_WALL.bottom && y<=MAP2_FRONT_WALL.top;
+    return false;
   }
-  // Küche + derselbe Türkanal zurück.
-  return pointInPoly(x,y,MAP2_KITCHEN_POLY) || inRect(x,y,MAP2_KITCHEN_DOOR);
+
+  /* Nach Eintritt durch die Küchentür: freie Links/Rechts-Bewegung HINTER
+     der gesamten Mittelwand, nicht nur innerhalb des schmalen Türrechtecks. */
+  if(map2InMiddleWall){
+    return inMiddleWallBand(x,y) || inRect(x,y,MAP2_KITCHEN_DOOR) ||
+           pointInPoly(x,y,MAP2_KITCHEN_POLY) || pointInPoly(x,y,MAP2_GUEST_POLY);
+  }
+
+  return false;
 }
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
@@ -277,12 +306,11 @@ function finishIrisOpen(){
   irisTransition.style.display='none';
 }
 
-function clipPlayerThroughWall(wallTop,wallBottom){
-  // An der Unterkante komplett verdeckt; beim Weiterlaufen Richtung Oberkante
-  // wird der Sprite von KOPF nach unten kontinuierlich wieder freigegeben.
-  const depth=Math.max(1,wallBottom-wallTop);
-  const t=Math.max(0,Math.min(1,(wallBottom-PLAYER.y)/depth));
-  const cutBottom=(1-t)*100;
+function setPlayerVisibleFraction(fraction){
+  /* fraction 0 = komplett hinter Wand; 1 = komplett sichtbar.
+     Freigabe immer von KOPF nach unten. */
+  const f=Math.max(0,Math.min(1,fraction));
+  const cutBottom=(1-f)*100;
   player.style.clipPath=`inset(0 0 ${cutBottom}% 0)`;
   player.style.webkitClipPath=`inset(0 0 ${cutBottom}% 0)`;
 }
@@ -293,19 +321,28 @@ function updateMap2Occlusion(){
   player.style.webkitClipPath='none';
   if(currentMap!==2)return;
 
-  /* MITTELWAND: Effekt ausschließlich im echten Türkanal.
-     Beim Betreten an der Unterkante (y=356) verschwindet der Spieler hinter der Wand.
-     Mit weiterem W-Laufen tauchen Kopf/Oberkörper über der Oberkante (y=250) progressiv wieder auf. */
-  if(inRect(PLAYER.x,PLAYER.y,MAP2_KITCHEN_DOOR) &&
-     PLAYER.y>MAP2_MIDDLE_WALL.top && PLAYER.y<=MAP2_MIDDLE_WALL.bottom){
-    clipPlayerThroughWall(MAP2_MIDDLE_WALL.top,MAP2_MIDDLE_WALL.bottom);
+  /* MITTELWAND:
+     An der sichtbaren UNTERKANTE y=360 beginnt die Verdeckung.
+     Nach Eintritt durch die Tür gilt sie über die GANZE Wandbreite, damit A/D
+     hinter der Wand möglich ist und der Spieler dort weiterhin verborgen bleibt.
+     Richtung Küche (W) erscheint er zwischen y=360 -> 239 von Kopf nach unten. */
+  if(map2InMiddleWall && inMiddleWallBand(PLAYER.x,PLAYER.y)){
+    const depth=MAP2_MIDDLE_WALL.bottom-MAP2_MIDDLE_WALL.top;
+    const visible=(MAP2_MIDDLE_WALL.bottom-PLAYER.y)/depth;
+    setPlayerVisibleFraction(visible);
     return;
   }
 
-  /* FRONTWAND: identische Tiefenlogik, ausschließlich im Haupttürkanal. */
-  if(inRect(PLAYER.x,PLAYER.y,MAP2_FRONT_DOOR) &&
-     PLAYER.y>=MAP2_FRONT_WALL.top && PLAYER.y<MAP2_FRONT_WALL.bottom){
-    clipPlayerThroughWall(MAP2_FRONT_WALL.top,MAP2_FRONT_WALL.bottom);
+  /* FRONTWAND:
+     Sie beginnt perspektivisch an ihrer OBERKANTE y=690. Ab dort liegt die Wand
+     vor dem Spieler. Die Fuß-Kollisionskante ist aber erst die UNTERKANTE y=866.
+     Daher darf der Spieler bis y=866 laufen, bleibt im Wandbereich verborgen,
+     und nur die echte Haupttür führt anschließend nach Map 1. */
+  if(map2Room==='guestroom' &&
+     PLAYER.x>=MAP2_FRONT_WALL.left && PLAYER.x<=MAP2_FRONT_WALL.right &&
+     PLAYER.y>=MAP2_FRONT_WALL.top && PLAYER.y<=MAP2_FRONT_WALL.bottom){
+    setPlayerVisibleFraction(0);
+    return;
   }
 }
 
@@ -336,6 +373,7 @@ async function enterWirtschaft(){
 
   currentMap=2;
   map2Room='guestroom';
+  map2InMiddleWall=false;
   document.body.classList.add('map2');
   await swapMap('assets/maps/wirtschaft-innen.jpg?v=15');
 
@@ -368,7 +406,7 @@ async function leaveWirtschaft(){
   await new Promise(r=>setTimeout(r,220));
   await animateIris(150,0,650);
   setIrisRadius(0);
-  currentMap=1; map2Room='guestroom';
+  currentMap=1; map2Room='guestroom'; map2InMiddleWall=false;
   document.body.classList.remove('map2');
   await swapMap('assets/maps/terrasse.jpg');
   PLAYER.x=778; PLAYER.y=356; PLAYER.direction='front';
@@ -384,14 +422,41 @@ async function leaveWirtschaft(){
 function updateMap2RoomAndTransitions(){
   if(currentMap!==2||mapTransitioning)return;
 
-  // Raumwechsel ausschließlich nach vollständigem Passieren der Mittelwand.
-  if(inRect(PLAYER.x,PLAYER.y,MAP2_KITCHEN_DOOR)){
-    if(PLAYER.y<=MAP2_MIDDLE_WALL.top) map2Room='kitchen';
-    else if(PLAYER.y>=MAP2_MIDDLE_WALL.bottom) map2Room='guestroom';
+  /* Eintritt in die Mittelwand NUR durch die sichtbare Küchentür an y=360. */
+  if(map2Room==='guestroom' && !map2InMiddleWall &&
+     PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
+     PLAYER.y<MAP2_MIDDLE_WALL.bottom){
+    map2InMiddleWall=true;
   }
 
-  // Map 1 erst an der sichtbaren UNTERKANTE der Frontwand verlassen.
-  if(map2Room==='guestroom' && inRect(PLAYER.x,PLAYER.y,MAP2_FRONT_DOOR) && PLAYER.y>=MAP2_FRONT_WALL.bottom-2){
+  /* In der Wand darf nun A/D über die ganze Breite benutzt werden.
+     Erst nach vollständigem Überschreiten der Oberkante sind wir in der Küche. */
+  if(map2InMiddleWall && PLAYER.y<=MAP2_MIDDLE_WALL.top){
+    map2InMiddleWall=false;
+    map2Room='kitchen';
+    PLAYER.y=MAP2_MIDDLE_WALL.top-1;
+  }
+
+  /* Rückweg Küche -> Wand wiederum ausschließlich durch dieselbe Tür. */
+  if(map2Room==='kitchen' &&
+     PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
+     PLAYER.y>MAP2_MIDDLE_WALL.top){
+    map2Room='guestroom';
+    map2InMiddleWall=true;
+  }
+
+  /* Wenn man aus der Wand wieder nach unten in die Gaststube kommt. */
+  if(map2InMiddleWall && PLAYER.y>=MAP2_MIDDLE_WALL.bottom){
+    map2InMiddleWall=false;
+    map2Room='guestroom';
+    PLAYER.y=MAP2_MIDDLE_WALL.bottom+1;
+  }
+
+  /* Frontwand: Außenkante wirklich UNTEN bei y=866.
+     Mapwechsel ausschließlich durch die mittige Haupttür. */
+  if(map2Room==='guestroom' && !map2InMiddleWall &&
+     PLAYER.x>=MAP2_FRONT_DOOR.x1 && PLAYER.x<=MAP2_FRONT_DOOR.x2 &&
+     PLAYER.y>=MAP2_FRONT_WALL.bottom){
     leaveWirtschaft();
   }
 }
