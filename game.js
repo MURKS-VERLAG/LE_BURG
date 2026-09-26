@@ -270,7 +270,7 @@ async function enterWirtschaft(){
 
   currentMap=2;
   document.body.classList.add('map2');
-  await swapMap('assets/maps/wirtschaft-innen-neu.jpg?v=14');
+  await swapMap('assets/maps/wirtschaft-innen.jpg?v=15');
 
   PLAYER.x=MAP2_SPAWN.x;
   PLAYER.y=MAP2_SPAWN.y;
