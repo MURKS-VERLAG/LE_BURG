@@ -27,6 +27,91 @@ const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 const MAP2_SPAWN={x:768,y:640};
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
+/* MAP 2 – THEKE.
+   Position/Größe aus der beigefügten Map-2-Referenz auf 1536×1024 übertragen.
+   Die Theke selbst ist von links/rechts/oben betretbar. Ausschließlich ihre sichtbare
+   UNTERKANTE ist eine Hitbox. Befinden sich die Füße oberhalb dieser Kante innerhalb
+   der Thekenbreite, wird der Spieler hinter der Theke gezeichnet. */
+const MAP2_BAR={
+  left:682,
+  top:408,
+  width:172,
+  height:80,
+  bottom:488
+};
+let map2Bar=null;
+
+function ensureMap2Bar(){
+  if(map2Bar)return map2Bar;
+  map2Bar=document.getElementById('map2Bar');
+  if(!map2Bar){
+    map2Bar=document.createElement('img');
+    map2Bar.id='map2Bar';
+    map2Bar.src='assets/props/theke.png?v=01';
+    map2Bar.alt='';
+    map2Bar.draggable=false;
+    Object.assign(map2Bar.style,{
+      position:'absolute',
+      left:`${MAP2_BAR.left}px`,
+      top:`${MAP2_BAR.top}px`,
+      width:`${MAP2_BAR.width}px`,
+      height:`${MAP2_BAR.height}px`,
+      objectFit:'contain',
+      pointerEvents:'none',
+      userSelect:'none',
+      display:'none',
+      zIndex:'600'
+    });
+    world.appendChild(map2Bar);
+  }
+  return map2Bar;
+}
+
+function updateMap2BarVisibility(){
+  const bar=ensureMap2Bar();
+  bar.style.display=currentMap===2 ? 'block' : 'none';
+}
+
+/* Nur die Unterkante kollidiert. Da movePlayerAxis achsenweise prüft, wird die Kante
+   ausschließlich bei einer Y-Bewegung von oben nach unten bzw. unten nach oben getestet.
+   Links/rechts sowie das Betreten des gesamten Bereichs von oben bleiben frei. */
+function map2BarBlocksMove(fromX,fromY,toX,toY){
+  if(currentMap!==2)return false;
+  const pad=PLAYER.radius;
+  const withinX=toX>=MAP2_BAR.left-pad && toX<=MAP2_BAR.left+MAP2_BAR.width+pad;
+  if(!withinX)return false;
+
+  // Die Fußposition darf die sichtbare Unterkante nicht kreuzen.
+  if(fromY < MAP2_BAR.bottom && toY >= MAP2_BAR.bottom)return true;
+  if(fromY > MAP2_BAR.bottom && toY <= MAP2_BAR.bottom)return true;
+  return false;
+}
+
+function updateMap2BarDepth(){
+  const bar=ensureMap2Bar();
+  if(currentMap!==2){
+    bar.style.display='none';
+    return;
+  }
+  bar.style.display='block';
+
+  const insideBarWidth=
+    PLAYER.x>=MAP2_BAR.left-PLAYER.radius &&
+    PLAYER.x<=MAP2_BAR.left+MAP2_BAR.width+PLAYER.radius;
+
+  // Oberhalb der Unterkante = Spieler hinter der Theke.
+  // Unterhalb = Spieler vor der Theke.
+  const playerBehindBar=insideBarWidth && PLAYER.y<MAP2_BAR.bottom;
+  if(playerBehindBar){
+    bar.style.zIndex='900';
+    player.style.zIndex='800';
+  }else{
+    bar.style.zIndex='600';
+    player.style.zIndex=String(100+Math.round(PLAYER.y));
+  }
+}
+
+
 /* MAP 2 – finale Innenkarte, direkt auf die 1536×1024-Welt skaliert.
    Entscheidend: Kollisionskante = sichtbare UNTERKANTE der jeweiligen Wand.
    Die Wandtiefe selbst darf betreten werden; durch die Unterkante geht es NUR an Türen. */
@@ -266,7 +351,8 @@ function playerCanStand(x,y){
 function movePlayerAxis(dx,dy){
   const nx=PLAYER.x+dx,ny=PLAYER.y+dy;
   if(dx&&playerCanStand(nx,PLAYER.y))PLAYER.x=nx;
-  if(dy&&playerCanStand(PLAYER.x,ny))PLAYER.y=ny;
+  if(dy&&playerCanStand(PLAYER.x,ny) &&
+     !map2BarBlocksMove(PLAYER.x,PLAYER.y,PLAYER.x,ny))PLAYER.y=ny;
 }
 
 /* IRIS – vollständig JS-gesteuert, unabhängig von altem CSS.
@@ -406,6 +492,7 @@ async function enterWirtschaft(){
   map2Room='guestroom';
   map2InMiddleWall=false;
   document.body.classList.add('map2');
+  updateMap2BarVisibility();
   await swapMap('assets/maps/wirtschaft-innen.jpg?v=18');
 
   PLAYER.x=MAP2_SPAWN.x;
@@ -439,6 +526,7 @@ async function leaveWirtschaft(){
   setIrisRadius(0);
   currentMap=1; map2Room='guestroom'; map2InMiddleWall=false;
   document.body.classList.remove('map2');
+  updateMap2BarVisibility();
   await swapMap('assets/maps/terrasse.jpg');
   PLAYER.x=778; PLAYER.y=356; PLAYER.direction='front';
   PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES.front[0];
@@ -544,6 +632,7 @@ function updatePlayer(now){
   player.style.top=`${PLAYER.y}px`;
   player.style.zIndex=String(100+Math.round(PLAYER.y));
   updateMap2Occlusion();
+  updateMap2BarDepth();
 }
 
 window.addEventListener('keydown',e=>{
@@ -620,6 +709,8 @@ async function start(){
   currentX=currentY=targetX=targetY=0;
 
   await preloadPlayerFrames();
+  ensureMap2Bar();
+  updateMap2BarVisibility();
   showPlayerFrame(true);
   if(player){
     player.style.left=`${PLAYER.x}px`;
