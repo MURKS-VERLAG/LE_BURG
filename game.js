@@ -24,7 +24,34 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:735};
+const MAP2_SPAWN={x:768,y:640};
+const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
+
+/* MAP 2 – präzise Raumlogik direkt nach der finalen 1536×1024-Karte.
+   Die Koordinaten beziehen sich ausschließlich auf die FUSSPOSITION des Spielers. */
+let map2Room='guestroom';
+const MAP2_GUEST_POLY=[[72,365],[1464,365],[1510,711],[25,711]];
+const MAP2_KITCHEN_POLY=[[122,138],[1408,138],[1443,250],[92,250]];
+const MAP2_KITCHEN_DOOR={x1:390,x2:500,y1:245,y2:372};
+
+function pointInPoly(x,y,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+    const hit=((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi);
+    if(hit)inside=!inside;
+  }
+  return inside;
+}
+function inRect(x,y,r){return x>=r.x1&&x<=r.x2&&y>=r.y1&&y<=r.y2;}
+function map2CanStand(x,y){
+  if(map2Room==='guestroom'){
+    // Gaststube + exakt der Türkanal zur Küche + Haupttür nach draußen.
+    return pointInPoly(x,y,MAP2_GUEST_POLY) || inRect(x,y,MAP2_KITCHEN_DOOR) || inRect(x,y,MAP2_EXIT_TRIGGER);
+  }
+  // Küche: Küchenboden + derselbe Türkanal zurück zur Gaststube.
+  return pointInPoly(x,y,MAP2_KITCHEN_POLY) || inRect(x,y,MAP2_KITCHEN_DOOR);
+}
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
 function calculateBaseScale(){
@@ -165,7 +192,7 @@ function setPlayerDirection(direction){
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
-  if(currentMap===2)return true; // neue Map 2: keine Hitboxen
+  if(currentMap===2)return map2CanStand(x,y);
   return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);
 }
 function movePlayerAxis(dx,dy){
@@ -241,6 +268,26 @@ function updateMap2Occlusion(){
   if(!player)return;
   player.style.clipPath='none';
   player.style.webkitClipPath='none';
+
+  if(currentMap!==2 || map2Room!=='kitchen')return;
+
+  /* Nur in der Küche liegt der Spieler perspektivisch HINTER der Trennwand.
+     Im offenen Türbereich wird niemals abgeschnitten. Außerhalb der Tür blendet
+     die Wand exakt den Teil des Sprites aus, der unter ihre Oberkante ragt. */
+  const wallTop=250;
+  const doorX1=390,doorX2=500;
+  if(PLAYER.x>=doorX1&&PLAYER.x<=doorX2)return;
+
+  const s=playerVisualScale();
+  const visualH=132*s;
+  const top=PLAYER.y-visualH;
+  if(top<wallTop && PLAYER.y>wallTop){
+    const visible=Math.max(0,Math.min(visualH,wallTop-top));
+    const cutBottom=Math.max(0,visualH-visible);
+    const pct=Math.min(100,cutBottom/visualH*100);
+    player.style.clipPath=`inset(0 0 ${pct}% 0)`;
+    player.style.webkitClipPath=`inset(0 0 ${pct}% 0)`;
+  }
 }
 
 async function swapMap(src){
@@ -269,6 +316,7 @@ async function enterWirtschaft(){
   setIrisRadius(0); // während des Map-Tauschs garantiert geschlossen
 
   currentMap=2;
+  map2Room='guestroom';
   document.body.classList.add('map2');
   await swapMap('assets/maps/wirtschaft-innen.jpg?v=15');
 
@@ -291,6 +339,42 @@ async function enterWirtschaft(){
 
   mapTransitioning=false;
   playerLastTime=performance.now();
+}
+
+async function leaveWirtschaft(){
+  if(mapTransitioning||currentMap!==2)return;
+  mapTransitioning=true;
+  keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
+  if(player)player.classList.add('map-fading');
+  await new Promise(r=>setTimeout(r,220));
+  await animateIris(150,0,650);
+  setIrisRadius(0);
+  currentMap=1; map2Room='guestroom';
+  document.body.classList.remove('map2');
+  await swapMap('assets/maps/terrasse.jpg');
+  PLAYER.x=778; PLAYER.y=356; PLAYER.direction='front';
+  PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES.front[0];
+  player.style.left=`${PLAYER.x}px`; player.style.top=`${PLAYER.y}px`;
+  showPlayerFrame(true);
+  if(player)player.classList.remove('map-fading');
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  await animateIris(0,150,700); finishIrisOpen();
+  mapTransitioning=false; playerLastTime=performance.now();
+}
+
+function updateMap2RoomAndTransitions(){
+  if(currentMap!==2||mapTransitioning)return;
+
+  // Raumwechsel ausschließlich durch die sichtbare Küchentür.
+  if(inRect(PLAYER.x,PLAYER.y,MAP2_KITCHEN_DOOR)){
+    if(PLAYER.y<=252) map2Room='kitchen';
+    else if(PLAYER.y>=365) map2Room='guestroom';
+  }
+
+  // Untere Haupttür: zurück auf Map 1.
+  if(map2Room==='guestroom' && inRect(PLAYER.x,PLAYER.y,MAP2_EXIT_TRIGGER) && PLAYER.y>=708){
+    leaveWirtschaft();
+  }
 }
 
 function checkMapTransition(){
@@ -326,7 +410,8 @@ function updatePlayer(now){
     else if(dx<0)setPlayerDirection('left');
 
     movePlayerAxis(dx*PLAYER.speed*dt,dy*PLAYER.speed*dt);
-    checkMapTransition();
+    if(currentMap===1)checkMapTransition();
+    else updateMap2RoomAndTransitions();
 
     PLAYER.frameClock+=dt*1000;
     while(PLAYER.frameClock>=PLAYER.frameMs){
