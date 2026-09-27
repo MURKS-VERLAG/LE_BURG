@@ -61,9 +61,13 @@ let map1BockFog=null;
 let map1BockPuff=null;
 let map1BockStage='idle';
 const MAP1_BOCK_FRAME_MS=175;
-const MAP1_BOCK_RIDE_DURATION=5200;
+const MAP1_BOCK_RIDE_DURATION=9000; // deutlich langsamer
 const MAP1_BOCK_PATH_START=[1365,18];
 const MAP1_BOCK_PATH_END=[768,560];
+const MAP1_BOCK_PATH=[
+  [1365,18],[1358,72],[1305,166],[1200,255],[1082,333],[1018,382],
+  [932,486],[912,585],[768,560]
+];
 
 function ensureMap1BockFX(){
   if(!map1BockDark){
@@ -94,7 +98,7 @@ function ensureMap1BockFX(){
         background:'radial-gradient(ellipse at center, rgba(245,248,250,.58) 0%, rgba(220,228,232,.35) 36%, rgba(190,200,205,.10) 68%, rgba(255,255,255,0) 78%)',
         filter:`blur(${18+i*4}px)`,
         opacity:String(.52+(i%2)*.12),
-        animation:`bockFogDrift ${8.5+i*.9}s linear ${i*.35}s infinite`
+        animation:`bockFogDrift ${12.5+i*.45}s ease-in-out ${i*.16}s 1 forwards`
       });
       map1BockFog.appendChild(f);
     }
@@ -104,8 +108,10 @@ function ensureMap1BockFX(){
       st.id='bockFogStyle';
       st.textContent=`
         @keyframes bockFogDrift{
-          from{transform:translate3d(0,0,0) scale(1.12)}
-          to{transform:translate3d(245%,0,0) scale(1.24)}
+          0%{transform:translate3d(-135%,0,0) scale(1.12);opacity:0}
+          10%{opacity:.9}
+          72%{opacity:.76}
+          100%{transform:translate3d(245%,0,0) scale(1.24);opacity:0}
         }
         @keyframes bockPuff{
           0%{opacity:0;transform:translate(-50%,-50%) scale(.25)}
@@ -127,7 +133,7 @@ function ensureMap1BockRider(){
   map1BockRider.alt='';
   map1BockRider.draggable=false;
   Object.assign(map1BockRider.style,{
-    position:'absolute',left:'0',top:'0',width:'155px',height:'auto',
+    position:'absolute',left:'0',top:'0',width:'108.5px',height:'auto',
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',opacity:'1',zIndex:'19000',
     willChange:'left,top,transform,opacity,filter'
@@ -137,11 +143,14 @@ function ensureMap1BockRider(){
 }
 
 function bockPointAt(t){
-  const e=t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
-  return [
-    MAP1_BOCK_PATH_START[0]+(MAP1_BOCK_PATH_END[0]-MAP1_BOCK_PATH_START[0])*e,
-    MAP1_BOCK_PATH_START[1]+(MAP1_BOCK_PATH_END[1]-MAP1_BOCK_PATH_START[1])*e
-  ];
+  const pts=MAP1_BOCK_PATH,lens=[];let total=0;
+  for(let i=0;i<pts.length-1;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);total+=l;}
+  let d=Math.max(0,Math.min(1,t))*total;
+  for(let i=0;i<lens.length;i++){
+    if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return [pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}
+    d-=lens[i];
+  }
+  return MAP1_BOCK_PATH_END;
 }
 
 function showBockPuff(x,y){
@@ -174,6 +183,7 @@ function startMap1BockEvent(){
   clearTimeout(map1RunnerTimer);
   clearTimeout(map1BockSpawnTimer);
   clearTimeout(map1BockArrivalTimer);
+  clearTimeout(map1BockFinalTimer);
   map1RunnerSound.onended=null;
   map1RunnerSound.pause();
   map1RunnerSound.currentTime=0;
@@ -181,8 +191,11 @@ function startMap1BockEvent(){
   map1BockSong.currentTime=0;
   if(bgMusic)bgMusic.pause();
 
-  // Sofort: kreischende Frau; Lauf beginnt wie bei Event 1 nach 0,5 s.
+  // Schrei UND "Der Bock geht um" starten exakt gleichzeitig.
   map1RunnerSound.play().catch(()=>{});
+  map1BockSong.currentTime=0;
+  map1BockSong.volume=.72;
+  map1BockSong.play().catch(()=>{});
   map1RunnerTimer=setTimeout(()=>{
     if(!map1BockActive||currentMap!==1)return;
     const woman=ensureMap1Runner();
@@ -206,12 +219,41 @@ function startMap1BockEvent(){
     rider.style.filter='none';
   },3000);
 
-  // Erst wenn der Schrei komplett vorbei ist, startet "Der Bock geht um" sofort.
-  map1RunnerSound.onended=()=>{
-    if(!map1BockActive||currentMap!==1)return;
-    map1BockSong.currentTime=0;
-    map1BockSong.play().catch(()=>{});
-  };
+}
+
+
+let map1BockFinal=null;
+let map1BockFinalTimer=0;
+
+function ensureMap1BockFinal(){
+  if(map1BockFinal)return map1BockFinal;
+  map1BockFinal=document.createElement('img');
+  map1BockFinal.id='map1BockFinal';
+  map1BockFinal.src='assets/npc/bock-final.png?v=28';
+  map1BockFinal.alt=''; map1BockFinal.draggable=false;
+  Object.assign(map1BockFinal.style,{position:'absolute',left:'0',top:'0',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',opacity:'1',zIndex:'19600'});
+  world.appendChild(map1BockFinal);
+  const sync=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||96;map1BockFinal.style.width=`${w}px`;};
+  sync();requestAnimationFrame(sync);return map1BockFinal;
+}
+function bockFadeAudio(audio,target,duration,done){
+  const from=audio.volume,start=performance.now();
+  const step=now=>{const t=Math.min(1,(now-start)/duration);audio.volume=from+(target-from)*t;if(t<1)requestAnimationFrame(step);else done?.();};
+  requestAnimationFrame(step);
+}
+function finishMap1BockEvent(){
+  if(!map1BockActive)return;
+  const final=ensureMap1BockFinal();
+  final.style.transition='opacity 1100ms ease';final.style.opacity='0';
+  bockFadeAudio(map1BockSong,0,1800,()=>{map1BockSong.pause();map1BockSong.currentTime=0;map1BockSong.volume=.72;});
+  const {dark,fog}=ensureMap1BockFX();
+  dark.style.transition='opacity 1800ms ease';dark.style.opacity='0';
+  fog.style.transition='opacity 1600ms ease';fog.style.opacity='0';
+  setTimeout(()=>{
+    final.style.display='none';fog.style.display='none';dark.style.display='none';
+    map1BockActive=false;map1BockStage='idle';
+    if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}
+  },1900);
 }
 
 function updateMap1Bock(now){
@@ -243,24 +285,40 @@ function updateMap1Bock(now){
 
   if(t>=1){
     map1BockStage='arrived';
-    // Ankunft: Frame 1 exakt 1,5 s stehen lassen.
-    rider.src='assets/npc/bock-reiter-1.png?v=27';
-    rider.style.transform='translate(-50%,-100%) scale(1.14)';
+
+    // ANKUNFT: Anhang 1 LINKS = Stehenbleiben, exakt 1,5 s.
+    rider.src='assets/npc/bock-stop.png?v=28';
+    rider.style.transform='translate(-50%,-100%) scale(.798)';
+    rider.style.opacity='1';rider.style.filter='none';
+
     map1BockArrivalTimer=setTimeout(()=>{
       if(!map1BockActive)return;
-      // Danach mittleres Bild (Frame 2) exakt 0,5 s.
-      rider.src='assets/npc/bock-reiter-2.png?v=27';
+
+      // Danach Anhang 1 MITTE = Absteigen, exakt 0,5 s. Rechtes Bild wird NICHT benutzt.
+      rider.src='assets/npc/bock-dismount.png?v=28';
+
       map1BockArrivalTimer=setTimeout(()=>{
         if(!map1BockActive)return;
-        // Weißer Puff: Reiter löst sich weich auf.
         showBockPuff(MAP1_BOCK_PATH_END[0],MAP1_BOCK_PATH_END[1]);
-        rider.style.transition='opacity 520ms ease, filter 520ms ease, transform 520ms ease';
-        rider.style.opacity='0';
-        rider.style.filter='blur(8px) brightness(2.1)';
-        rider.style.transform='translate(-50%,-100%) scale(1.22)';
+        rider.style.transition='opacity 520ms ease,filter 520ms ease,transform 520ms ease';
+        rider.style.opacity='0';rider.style.filter='blur(8px) brightness(2.1)';
+        rider.style.transform='translate(-50%,-100%) scale(.854)';
         map1BockStage='puff';
-        // HIER folgt im nächsten Schritt Anhang 4 als bleibendes Endbild.
-        // Der Effekt und das Event bleiben bewusst aktiv.
+
+        setTimeout(()=>{
+          rider.style.display='none';
+          const final=ensureMap1BockFinal();
+          final.style.left=`${MAP1_BOCK_PATH_END[0]}px`;
+          final.style.top=`${MAP1_BOCK_PATH_END[1]}px`;
+          final.style.transform='translate(-50%,-100%)';
+          final.style.transition='opacity 380ms ease';
+          final.style.opacity='0';final.style.display='block';
+          requestAnimationFrame(()=>{final.style.opacity='1';});
+          map1BockStage='final';
+
+          // 5 Sekunden stehen, dann Song/Nebel/Dunkelheit weich raus + normale Musik weich rein.
+          map1BockFinalTimer=setTimeout(finishMap1BockEvent,5000);
+        },540);
       },500);
     },1500);
   }
@@ -1426,7 +1484,10 @@ async function preloadMap1BearFrames(){
     'assets/npc/baer-run-3.png?v=22',
     'assets/npc/bock-reiter-1.png?v=27',
     'assets/npc/bock-reiter-2.png?v=27',
-    'assets/npc/bock-reiter-3.png?v=27'
+    'assets/npc/bock-reiter-3.png?v=27',
+    'assets/npc/bock-stop.png?v=28',
+    'assets/npc/bock-dismount.png?v=28',
+    'assets/npc/bock-final.png?v=28'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
