@@ -337,7 +337,7 @@ function ensureMap1Runner(){
   if(map1Runner)return map1Runner;
   map1Runner=document.createElement('img');
   map1Runner.id='map1Runner';
-  map1Runner.src='assets/npc/frau-run-1.png?v=01';
+  map1Runner.src='assets/npc/frau-run-1.png?v=02';
   map1Runner.alt='';
   map1Runner.draggable=false;
   Object.assign(map1Runner.style,{
@@ -392,8 +392,8 @@ function updateMap1Runner(now){
   // Gewünschte Folge: Anhang 1 -> gespiegelt -> Anhang 2 -> gespiegelt.
   const useSecond=phase>=2;
   const mirrored=(phase===1||phase===3);
-  const wanted=useSecond?'assets/npc/frau-run-2.png?v=01':'assets/npc/frau-run-1.png?v=01';
-  if(!el.src.endsWith(wanted))el.src=wanted;
+  const wanted=useSecond?'assets/npc/frau-run-2.png?v=02':'assets/npc/frau-run-1.png?v=02';
+  if(el.getAttribute('src')!==wanted)el.setAttribute('src',wanted);
   const perspective=.82+t*.34;
   el.style.left=`${x}px`;
   el.style.top=`${y}px`;
