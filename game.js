@@ -13,6 +13,12 @@ let map1RunnerActive=false;
 let map1RunnerStart=0;
 const MAP1_RUNNER_DURATION=3600;
 const MAP1_RUNNER_FRAME_MS=115;
+const MAP1_BEAR_DELAY=1500;
+const MAP1_BEAR_DURATION=5600; // deutlich langsamer als die Frau
+const MAP1_BEAR_FRAME_MS=170;
+let map1Bear=null;
+let map1BearActive=false;
+let map1BearStart=0;
 const MAP1_RUNNER_PATH=[
   [1297,18],[1293,72],[1252,166],[1172,255],[1082,333],[1018,382],
   [932,486],[912,585],[925,650],[973,711],[1078,782],[1205,849],
@@ -341,11 +347,18 @@ function ensureMap1Runner(){
   map1Runner.alt='';
   map1Runner.draggable=false;
   Object.assign(map1Runner.style,{
-    position:'absolute',left:'0px',top:'0px',width:'220px',height:'auto',
+    position:'absolute',left:'0px',top:'0px',height:'auto',
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',
     zIndex:'12000',willChange:'left,top,transform'
   });
   world.appendChild(map1Runner);
+  // Frau exakt auf dieselbe Basisgröße wie die Spielfigur setzen.
+  const syncRunnerSize=()=>{
+    const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
+    map1Runner.style.width=`${w}px`;
+  };
+  syncRunnerSize();
+  requestAnimationFrame(syncRunnerSize);
   return map1Runner;
 }
 
@@ -372,6 +385,7 @@ function startMap1Runner(){
   const el=ensureMap1Runner();
   map1RunnerActive=true;
   map1RunnerStart=performance.now();
+  startMap1Bear(map1RunnerStart);
   el.style.display='block';
   el.style.opacity='1';
   map1RunnerSound.pause();
@@ -403,6 +417,58 @@ function updateMap1Runner(now){
     map1RunnerActive=false;
     el.style.display='none';
   }
+}
+
+function ensureMap1Bear(){
+  if(map1Bear)return map1Bear;
+  map1Bear=document.createElement('img');
+  map1Bear.id='map1Bear';
+  map1Bear.src='assets/npc/baer-run-1.png?v=01';
+  map1Bear.alt='';
+  map1Bear.draggable=false;
+  Object.assign(map1Bear.style,{
+    position:'absolute',left:'0px',top:'0px',height:'auto',
+    transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',
+    zIndex:'11999',willChange:'left,top,transform'
+  });
+  world.appendChild(map1Bear);
+  // Bär exakt doppelte Basisbreite der Spielfigur.
+  const syncBearSize=()=>{
+    const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
+    map1Bear.style.width=`${w*2}px`;
+  };
+  syncBearSize();
+  requestAnimationFrame(syncBearSize);
+  return map1Bear;
+}
+
+function startMap1Bear(startTime){
+  const el=ensureMap1Bear();
+  map1BearActive=true;
+  map1BearStart=startTime+MAP1_BEAR_DELAY;
+  el.style.display='none';
+}
+
+function updateMap1Bear(now){
+  const el=ensureMap1Bear();
+  if(!map1BearActive){el.style.display='none';return;}
+  if(currentMap!==1 || mapTransitioning){map1BearActive=false;el.style.display='none';return;}
+  if(now<map1BearStart){el.style.display='none';return;}
+  el.style.display='block';
+  const t=Math.min(1,(now-map1BearStart)/MAP1_BEAR_DURATION);
+  const [x,y]=map1RunnerPointAt(t);
+  const phase=Math.floor((now-map1BearStart)/MAP1_BEAR_FRAME_MS)%4;
+  // Folge: Bär 1 -> Bär 2 -> Bär 1 gespiegelt -> Bär 2 gespiegelt -> repeat.
+  const useSecond=(phase===1||phase===3);
+  const mirrored=phase>=2;
+  const wanted=useSecond?'assets/npc/baer-run-2.png?v=01':'assets/npc/baer-run-1.png?v=01';
+  if(el.getAttribute('src')!==wanted)el.setAttribute('src',wanted);
+  const perspective=.82+t*.34;
+  el.style.left=`${x}px`;
+  el.style.top=`${y}px`;
+  el.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
+  el.style.zIndex=String(11999+Math.round(y));
+  if(t>=1){map1BearActive=false;el.style.display='none';}
 }
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
