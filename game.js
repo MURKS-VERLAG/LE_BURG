@@ -32,10 +32,17 @@ const map1BearSound3=new Audio('assets/audio/bearattack_3.mp3');
 const map1BearSong=new Audio('assets/audio/The Hold Steady - The Bear and the Maiden Fair.mp3');
 [map1BearSound1,map1BearSound2,map1BearSound3].forEach(a=>{a.preload='auto';a.volume=1;});
 map1BearSong.preload='auto';
-map1BearSong.volume=.46;
+map1BearSong.volume=.52;
 let map1BearAudioStarted=false;
 let map1BearLoopTimer=null;
 let map1RunnerTimer=null;
+let map1BearSongStartTimer=null;
+let map1BearSongFadeRAF=0;
+let map1BearSongWatchRAF=0;
+const MAP1_BEAR_SONG_END=46;
+const MAP1_BEAR_SONG_FADE_START=43.5;
+const MAP1_BEAR_SONG_VOLUME=.52;
+const MAP1_BG_VOLUME=.40;
 map1RunnerSound.preload='auto';
 map1RunnerSound.volume=1;
 
@@ -402,15 +409,82 @@ function stopMap1BearAudioLoop(){
   map1BearAudioStarted=false;
 }
 
+/* Nur die BÄRENSOUNDS enden mit dem Bären. Der Song läuft unabhängig bis exakt 46 s. */
 function stopMap1BearEventAudio(){
   stopMap1BearAudioLoop();
+}
+
+function cancelMap1BearSongAutomation(stopSong=false){
+  clearTimeout(map1BearSongStartTimer);
+  map1BearSongStartTimer=null;
+  if(map1BearSongFadeRAF)cancelAnimationFrame(map1BearSongFadeRAF);
+  if(map1BearSongWatchRAF)cancelAnimationFrame(map1BearSongWatchRAF);
+  map1BearSongFadeRAF=0;
+  map1BearSongWatchRAF=0;
+  if(stopSong){
+    map1BearSong.pause();
+    map1BearSong.currentTime=0;
+    map1BearSong.volume=MAP1_BEAR_SONG_VOLUME;
+  }
+}
+
+function finishMap1BearSong(){
+  if(map1BearSong.currentTime<MAP1_BEAR_SONG_END){
+    try{map1BearSong.currentTime=MAP1_BEAR_SONG_END;}catch(_){}
+  }
   map1BearSong.pause();
-  map1BearSong.currentTime=0;
-  // Nach Ende der Bärenjagd wieder normale Burgschenken-Musik.
+  map1BearSong.volume=MAP1_BEAR_SONG_VOLUME;
+  map1BearSongWatchRAF=0;
+  map1BearSongFadeRAF=0;
   if(bgMusic){
-    bgMusic.volume=.40;
+    bgMusic.volume=MAP1_BG_VOLUME;
     bgMusic.play().catch(()=>{});
   }
+}
+
+/* Song beginnt 0,3 s nach Schrei-Beginn.
+   Ab Songsekunde 43,5 startet ein sauberer 2,5-s-Crossfade:
+   Bear/Maiden 0.52 -> 0 und Arrival in Ashford 0 -> 0.40.
+   Bei exakt Songsekunde 46 ist Bear/Maiden aus und die alte Musik voll da. */
+function startMap1BearSong(){
+  cancelMap1BearSongAutomation(true);
+  if(bgMusic){
+    bgMusic.pause();
+    bgMusic.volume=MAP1_BG_VOLUME;
+  }
+  map1BearSong.currentTime=0;
+  map1BearSong.volume=MAP1_BEAR_SONG_VOLUME;
+  map1BearSong.play().catch(()=>{});
+
+  const watch=()=>{
+    if(map1BearSong.paused){
+      map1BearSongWatchRAF=0;
+      return;
+    }
+
+    const t=map1BearSong.currentTime;
+
+    if(t>=MAP1_BEAR_SONG_END){
+      finishMap1BearSong();
+      return;
+    }
+
+    if(t>=MAP1_BEAR_SONG_FADE_START){
+      const p=Math.max(0,Math.min(1,
+        (t-MAP1_BEAR_SONG_FADE_START)/(MAP1_BEAR_SONG_END-MAP1_BEAR_SONG_FADE_START)
+      ));
+      map1BearSong.volume=MAP1_BEAR_SONG_VOLUME*(1-p);
+
+      if(bgMusic){
+        if(bgMusic.paused)bgMusic.play().catch(()=>{});
+        bgMusic.volume=MAP1_BG_VOLUME*p;
+      }
+    }
+
+    map1BearSongWatchRAF=requestAnimationFrame(watch);
+  };
+
+  map1BearSongWatchRAF=requestAnimationFrame(watch);
 }
 
 function startMap1BearAudioLoop(){
@@ -424,13 +498,7 @@ function startMap1BearAudioLoop(){
     map1BearSound1.currentTime=0;
     map1BearSound1.play().catch(()=>{});
     map1BearSound1.onended=()=>{
-      if(!stillRunning())return;
-      // Nach dem ERSTEN Bärensound startet der gewohnte Song.
-      // Normale Hintergrundmusik bleibt während des Songs aus.
-      if(bgMusic)bgMusic.pause();
-      map1BearSong.currentTime=0;
-      map1BearSong.play().catch(()=>{});
-      map1BearLoopTimer=setTimeout(play2,500);
+      if(stillRunning())map1BearLoopTimer=setTimeout(play2,500);
     };
   };
   const play2=()=>{
@@ -457,15 +525,23 @@ function startMap1Runner(){
   if(currentMap!==1 || mapTransitioning || map1RunnerActive)return;
   const el=ensureMap1Runner();
 
-  // Taste 1: sofort Schrei. Musik pausiert während Schrei + erstem Bärensound.
+  // Taste 1: Schrei SOFORT. Er läuft vollständig weiter und wird NICHT vom Song beendet.
   clearTimeout(map1RunnerTimer);
   stopMap1BearAudioLoop();
+  cancelMap1BearSongAutomation(true);
+  map1RunnerSound.onended=null;
   map1RunnerSound.pause();
   map1RunnerSound.currentTime=0;
   if(bgMusic)bgMusic.pause();
   map1RunnerSound.play().catch(()=>{});
 
-  // Frau rennt erst 0,5 s NACH Beginn des Schreis los.
+  // Exakt 0,3 s nach Beginn des Schreis startet Bear and the Maiden Fair parallel zum Schrei.
+  map1BearSongStartTimer=setTimeout(()=>{
+    if(currentMap!==1)return;
+    startMap1BearSong();
+  },300);
+
+  // Frau rennt weiterhin erst 0,5 s nach Beginn des Schreis los.
   map1RunnerTimer=setTimeout(()=>{
     if(currentMap!==1 || mapTransitioning)return;
     map1RunnerActive=true;
@@ -474,10 +550,10 @@ function startMap1Runner(){
     el.style.opacity='1';
   },500);
 
-  // Erst wenn der Frauenschrei KOMPLETT vorbei ist: erster Bärensound + Bärenablauf.
+  // Bär + Bärensounds weiterhin erst nach komplettem Frauenschrei.
   map1RunnerSound.onended=()=>{
     if(currentMap!==1 || mapTransitioning)return;
-    startMap1Bear(performance.now()-MAP1_BEAR_DELAY); // Bär erscheint jetzt sofort.
+    startMap1Bear(performance.now()-MAP1_BEAR_DELAY);
     startMap1BearAudioLoop();
   };
 }
@@ -615,7 +691,8 @@ function updateMap1Bear(now){
   if(t>=1){
     map1BearActive=false;
     el.style.display='none';
-    // Bär ist von der Karte: Bärensounds UND Song sofort beenden.
+    // Bär ist von der Karte: NUR Bärensounds beenden.
+    // Bear and the Maiden Fair läuft unabhängig bis exakt Songsekunde 46 weiter.
     stopMap1BearEventAudio();
   }
 }
@@ -683,7 +760,7 @@ window.addEventListener('resize',()=>{
 });
 
 if(bgMusic){
-  bgMusic.volume=.40;
+  bgMusic.volume=MAP1_BG_VOLUME;
   const playMusic=()=>{
     bgMusic.play().then(()=>{
       window.removeEventListener('pointerdown',playMusic);
