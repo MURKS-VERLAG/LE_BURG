@@ -48,8 +48,8 @@ let map2BarServeTimer=0;
 const MAP2_BAR_INTERACT={
   // Spieler muss direkt hinter und annähernd mittig an der Theke stehen.
   xTolerance:52,
-  yMin:MAP2_BAR.top+22,
-  yMax:MAP2_BAR.bottom-1,
+  yMin:MAP2_BAR.top+48,
+  yMax:MAP2_BAR.bottom-0.1,
   duration:3000
 };
 
@@ -88,8 +88,11 @@ function ensureMap2BarAction(){
     map2BarAction.alt='';
     map2BarAction.draggable=false;
     Object.assign(map2BarAction.style,{
-      position:'absolute',left:`${MAP2_BAR.left}px`,top:`${MAP2_BAR.top}px`,
-      width:`${MAP2_BAR.width}px`,height:`${MAP2_BAR.height}px`,objectFit:'fill',
+      position:'absolute',
+      // Ausschank-Asset ist intern kleiner als theke.png. Diese Werte gleichen die
+      // sichtbaren Thekenkanten pixelgenau an das normale Thekenmotiv an.
+      left:`${MAP2_BAR.left-13}px`,top:`${MAP2_BAR.top-47}px`,
+      width:`${MAP2_BAR.width*1.123}px`,height:`${MAP2_BAR.height*1.379}px`,objectFit:'fill',
       pointerEvents:'none',userSelect:'none',display:'none',opacity:'0',zIndex:'10002',
       transition:'opacity 220ms ease'
     });
@@ -123,15 +126,13 @@ function map2BarCanInteract(){
 function updateMap2BarInteractionCue(){
   const {bar}=ensureMap2BarAction();
   if(currentMap!==2 || map2BarServing){
-    bar.style.filter='none'; bar.style.outline='none';
+    bar.style.filter='none';
     return;
   }
   if(map2BarCanInteract()){
     bar.style.filter='brightness(1.22) drop-shadow(0 0 5px rgba(255,225,110,.95))';
-    bar.style.outline='2px solid rgba(255,225,105,.72)';
-    bar.style.outlineOffset='1px';
   }else{
-    bar.style.filter='none'; bar.style.outline='none';
+    bar.style.filter='none';
   }
 }
 
@@ -140,7 +141,7 @@ function startMap2BarServe(){
   const {bar,action,progress}=ensureMap2BarAction();
   map2BarServing=true;
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
-  bar.style.filter='none'; bar.style.outline='none';
+  bar.style.filter='none';
   action.style.display='block';
   progress.style.display='block';
   // gleicher Paint-Zyklus: Spieler blendet aus, Ausschankbild blendet ein.
