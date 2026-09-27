@@ -40,6 +40,18 @@ const MAP2_BAR={
   bottom:533
 };
 let map2Bar=null;
+let map2BarAction=null;
+let map2BarProgress=null;
+let map2BarServing=false;
+let map2BarServeTimer=0;
+
+const MAP2_BAR_INTERACT={
+  // Spieler muss direkt hinter und annähernd mittig an der Theke stehen.
+  xTolerance:52,
+  yMin:MAP2_BAR.top+22,
+  yMax:MAP2_BAR.bottom-1,
+  duration:3000
+};
 
 function ensureMap2Bar(){
   if(map2Bar)return map2Bar;
@@ -67,9 +79,105 @@ function ensureMap2Bar(){
   return map2Bar;
 }
 
+function ensureMap2BarAction(){
+  const bar=ensureMap2Bar();
+  if(!map2BarAction){
+    map2BarAction=document.createElement('img');
+    map2BarAction.id='map2BarAction';
+    map2BarAction.src='assets/props/theke-ausschank.png?v=01';
+    map2BarAction.alt='';
+    map2BarAction.draggable=false;
+    Object.assign(map2BarAction.style,{
+      position:'absolute',left:`${MAP2_BAR.left}px`,top:`${MAP2_BAR.top}px`,
+      width:`${MAP2_BAR.width}px`,height:`${MAP2_BAR.height}px`,objectFit:'fill',
+      pointerEvents:'none',userSelect:'none',display:'none',opacity:'0',zIndex:'10002',
+      transition:'opacity 220ms ease'
+    });
+    world.appendChild(map2BarAction);
+  }
+  if(!map2BarProgress){
+    map2BarProgress=document.createElement('div');
+    map2BarProgress.id='map2BarProgress';
+    Object.assign(map2BarProgress.style,{
+      position:'absolute',left:`${MAP2_BAR.left+MAP2_BAR.width/2-18}px`,
+      top:`${MAP2_BAR.top+MAP2_BAR.height/2-18}px`,width:'36px',height:'36px',
+      borderRadius:'50%',pointerEvents:'none',display:'none',zIndex:'10003',
+      background:'conic-gradient(#ffd42a 0deg, rgba(255,212,42,.18) 0deg)',
+      boxShadow:'0 0 9px rgba(255,210,35,.8)',
+      WebkitMask:'radial-gradient(circle, transparent 54%, #000 57%)',
+      mask:'radial-gradient(circle, transparent 54%, #000 57%)'
+    });
+    world.appendChild(map2BarProgress);
+  }
+  return {bar,action:map2BarAction,progress:map2BarProgress};
+}
+
+function map2BarCanInteract(){
+  if(currentMap!==2 || mapTransitioning || map2BarServing)return false;
+  const cx=MAP2_BAR.left+MAP2_BAR.width/2;
+  return PLAYER.direction==='front' &&
+    Math.abs(PLAYER.x-cx)<=MAP2_BAR_INTERACT.xTolerance &&
+    PLAYER.y>=MAP2_BAR_INTERACT.yMin && PLAYER.y<=MAP2_BAR_INTERACT.yMax;
+}
+
+function updateMap2BarInteractionCue(){
+  const {bar}=ensureMap2BarAction();
+  if(currentMap!==2 || map2BarServing){
+    bar.style.filter='none'; bar.style.outline='none';
+    return;
+  }
+  if(map2BarCanInteract()){
+    bar.style.filter='brightness(1.22) drop-shadow(0 0 5px rgba(255,225,110,.95))';
+    bar.style.outline='2px solid rgba(255,225,105,.72)';
+    bar.style.outlineOffset='1px';
+  }else{
+    bar.style.filter='none'; bar.style.outline='none';
+  }
+}
+
+function startMap2BarServe(){
+  if(!map2BarCanInteract())return;
+  const {bar,action,progress}=ensureMap2BarAction();
+  map2BarServing=true;
+  keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
+  bar.style.filter='none'; bar.style.outline='none';
+  action.style.display='block';
+  progress.style.display='block';
+  // gleicher Paint-Zyklus: Spieler blendet aus, Ausschankbild blendet ein.
+  requestAnimationFrame(()=>{
+    action.style.opacity='1';
+    player.style.transition='opacity 220ms ease';
+    player.style.opacity='0';
+  });
+  const start=performance.now();
+  const tick=now=>{
+    if(!map2BarServing)return;
+    const t=Math.min(1,(now-start)/MAP2_BAR_INTERACT.duration);
+    progress.style.background=`conic-gradient(#ffd42a ${t*360}deg, rgba(255,212,42,.18) ${t*360}deg)`;
+    if(t<1){ map2BarServeTimer=requestAnimationFrame(tick); return; }
+    action.style.opacity='0';
+    player.style.opacity='1';
+    progress.style.display='none';
+    setTimeout(()=>{
+      action.style.display='none';
+      player.style.transition='';
+      map2BarServing=false;
+      updateMap2BarInteractionCue();
+    },230);
+  };
+  map2BarServeTimer=requestAnimationFrame(tick);
+}
+
 function updateMap2BarVisibility(){
   const bar=ensureMap2Bar();
   bar.style.display=currentMap===2 ? 'block' : 'none';
+  ensureMap2BarAction();
+  if(currentMap!==2){
+    map2BarAction.style.display='none';
+    map2BarProgress.style.display='none';
+    map2BarServing=false;
+    player.style.opacity='1';
+  }
 }
 
 /* Nur die Unterkante kollidiert. Da movePlayerAxis achsenweise prüft, wird die Kante
@@ -594,7 +702,7 @@ function checkMapTransition(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(mapTransitioning){ playerLastTime=now; return; }
+  if(mapTransitioning || map2BarServing){ playerLastTime=now; updateMap2BarInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -636,12 +744,20 @@ function updatePlayer(now){
   player.style.zIndex=String(100+Math.round(PLAYER.y));
   updateMap2Occlusion();
   updateMap2BarDepth();
+  updateMap2BarInteractionCue();
 }
 
 window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(['w','a','s','d'].includes(k)){keys.add(k);e.preventDefault();}
 });
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(!e.repeat)startMap2BarServe();
+  }
+});
+
 window.addEventListener('keyup',e=>{
   const k=e.key.toLowerCase();
   if(['w','a','s','d'].includes(k)){keys.delete(k);e.preventDefault();}
@@ -713,6 +829,7 @@ async function start(){
 
   await preloadPlayerFrames();
   ensureMap2Bar();
+  ensureMap2BarAction();
   updateMap2BarVisibility();
   showPlayerFrame(true);
   if(player){
