@@ -11,10 +11,10 @@ const irisTransition = document.getElementById('irisTransition');
 let map1Runner=null;
 let map1RunnerActive=false;
 let map1RunnerStart=0;
-const MAP1_RUNNER_DURATION=3600;
+const MAP1_RUNNER_DURATION=4500;
 const MAP1_RUNNER_FRAME_MS=115;
 const MAP1_BEAR_DELAY=1500;
-const MAP1_BEAR_DURATION=5600; // deutlich langsamer als die Frau
+const MAP1_BEAR_DURATION=7500; // 40 % geringere Geschwindigkeit als die Frau
 const MAP1_BEAR_FRAME_MS=170;
 let map1Bear=null;
 let map1BearActive=false;
@@ -506,6 +506,7 @@ function draw(now){
 
   updatePlayer(now);
   updateMap1Runner(now);
+  updateMap1Bear(now);
   rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
@@ -985,6 +986,7 @@ async function start(){
 
   await preloadPlayerFrames();
   ensureMap1Runner();
+  ensureMap1Bear();
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
