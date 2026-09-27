@@ -33,11 +33,11 @@ const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
    UNTERKANTE ist eine Hitbox. Befinden sich die Füße oberhalb dieser Kante innerhalb
    der Thekenbreite, wird der Spieler hinter der Theke gezeichnet. */
 const MAP2_BAR={
-  left:682,
-  top:408,
-  width:172,
-  height:97,
-  bottom:505
+  left:644,
+  top:425,
+  width:249,
+  height:141,
+  bottom:566
 };
 let map2Bar=null;
 
@@ -47,7 +47,7 @@ function ensureMap2Bar(){
   if(!map2Bar){
     map2Bar=document.createElement('img');
     map2Bar.id='map2Bar';
-    map2Bar.src='assets/props/theke.png?v=02';
+    map2Bar.src='assets/props/theke.png?v=03';
     map2Bar.alt='';
     map2Bar.draggable=false;
     Object.assign(map2Bar.style,{
@@ -104,11 +104,13 @@ function updateMap2BarDepth(){
   // Fußpunkt UNTERHALB/auf der Kante -> Figur vor der Theke.
   const playerBehindBar=insideBarWidth && PLAYER.y<MAP2_BAR.bottom;
   if(playerBehindBar){
+    // Oberhalb der Unterkante: Figur läuft HINTER der Theke.
     bar.style.zIndex='10000';
     player.style.zIndex='9999';
   }else{
+    // Auf/unterhalb der Unterkante: Figur steht VOR der Theke und bleibt vollständig sichtbar.
     bar.style.zIndex='600';
-    player.style.zIndex=String(100+Math.round(PLAYER.y));
+    player.style.zIndex='10000';
   }
 }
 
