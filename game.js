@@ -7,6 +7,21 @@ const bgMusic = document.getElementById('bgMusic');
 const player = document.getElementById('player');
 const irisTransition = document.getElementById('irisTransition');
 
+/* MAP 1 – panisch davonrennende Magd (Taste 1). */
+let map1Runner=null;
+let map1RunnerActive=false;
+let map1RunnerStart=0;
+const MAP1_RUNNER_DURATION=3600;
+const MAP1_RUNNER_FRAME_MS=115;
+const MAP1_RUNNER_PATH=[
+  [1297,18],[1293,72],[1252,166],[1172,255],[1082,333],[1018,382],
+  [932,486],[912,585],[925,650],[973,711],[1078,782],[1205,849],
+  [1345,930],[1460,995],[1575,1065]
+];
+const map1RunnerSound=new Audio('assets/audio/girlyscream_01.mp3');
+map1RunnerSound.preload='auto';
+map1RunnerSound.volume=1;
+
 const WORLD_W = 1536;
 const WORLD_H = 1024;
 const ZOOM_LEVELS = [1, 1.55];
@@ -318,6 +333,78 @@ function map2CanStand(x,y){
   return false;
 }
 
+function ensureMap1Runner(){
+  if(map1Runner)return map1Runner;
+  map1Runner=document.createElement('img');
+  map1Runner.id='map1Runner';
+  map1Runner.src='assets/npc/frau-run-1.png?v=01';
+  map1Runner.alt='';
+  map1Runner.draggable=false;
+  Object.assign(map1Runner.style,{
+    position:'absolute',left:'0px',top:'0px',width:'220px',height:'auto',
+    transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',
+    zIndex:'12000',willChange:'left,top,transform'
+  });
+  world.appendChild(map1Runner);
+  return map1Runner;
+}
+
+function map1RunnerPointAt(progress){
+  const pts=MAP1_RUNNER_PATH;
+  const lens=[]; let total=0;
+  for(let i=1;i<pts.length;i++){
+    const d=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+    lens.push(d); total+=d;
+  }
+  let target=Math.max(0,Math.min(1,progress))*total;
+  for(let i=0;i<lens.length;i++){
+    if(target<=lens[i]){
+      const q=lens[i] ? target/lens[i] : 0;
+      return [pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];
+    }
+    target-=lens[i];
+  }
+  return pts[pts.length-1];
+}
+
+function startMap1Runner(){
+  if(currentMap!==1 || mapTransitioning || map1RunnerActive)return;
+  const el=ensureMap1Runner();
+  map1RunnerActive=true;
+  map1RunnerStart=performance.now();
+  el.style.display='block';
+  el.style.opacity='1';
+  map1RunnerSound.pause();
+  map1RunnerSound.currentTime=0;
+  map1RunnerSound.play().catch(()=>{});
+}
+
+function updateMap1Runner(now){
+  const el=ensureMap1Runner();
+  if(!map1RunnerActive){ el.style.display='none'; return; }
+  if(currentMap!==1 || mapTransitioning){
+    map1RunnerActive=false; el.style.display='none'; map1RunnerSound.pause(); return;
+  }
+  const t=Math.min(1,(now-map1RunnerStart)/MAP1_RUNNER_DURATION);
+  // Gleichmäßiger Lauf entlang der exakt nachgezeichneten roten Route.
+  const [x,y]=map1RunnerPointAt(t);
+  const phase=Math.floor((now-map1RunnerStart)/MAP1_RUNNER_FRAME_MS)%4;
+  // Gewünschte Folge: Anhang 1 -> gespiegelt -> Anhang 2 -> gespiegelt.
+  const useSecond=phase>=2;
+  const mirrored=(phase===1||phase===3);
+  const wanted=useSecond?'assets/npc/frau-run-2.png?v=01':'assets/npc/frau-run-1.png?v=01';
+  if(!el.src.endsWith(wanted))el.src=wanted;
+  const perspective=.82+t*.34;
+  el.style.left=`${x}px`;
+  el.style.top=`${y}px`;
+  el.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
+  el.style.zIndex=String(12000+Math.round(y));
+  if(t>=1){
+    map1RunnerActive=false;
+    el.style.display='none';
+  }
+}
+
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
 function calculateBaseScale(){
   const {w,h}=viewport();
@@ -352,6 +439,7 @@ function draw(now){
     `translate(-50%, -50%) translate(${currentX}px,${currentY+edgeFixY}px) scale(${baseScale*z})`;
 
   updatePlayer(now);
+  updateMap1Runner(now);
   rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
@@ -751,6 +839,7 @@ function updatePlayer(now){
 window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(['w','a','s','d'].includes(k)){keys.add(k);e.preventDefault();}
+  if(k==='1' && !e.repeat){e.preventDefault();startMap1Runner();}
 });
 window.addEventListener('keydown',e=>{
   if(e.code==='Space'){
@@ -829,6 +918,7 @@ async function start(){
   currentX=currentY=targetX=targetY=0;
 
   await preloadPlayerFrames();
+  ensureMap1Runner();
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
