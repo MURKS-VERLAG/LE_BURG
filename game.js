@@ -11,10 +11,10 @@ const irisTransition = document.getElementById('irisTransition');
 let map1Runner=null;
 let map1RunnerActive=false;
 let map1RunnerStart=0;
-const MAP1_RUNNER_DURATION=5625;
+const MAP1_RUNNER_DURATION=7031; // Frau 20 % langsamer
 const MAP1_RUNNER_FRAME_MS=115;
 const MAP1_BEAR_DELAY=1500;
-const MAP1_BEAR_DURATION=9375; // 40 % geringere Geschwindigkeit als die Frau
+const MAP1_BEAR_DURATION=7969; // Bär 15 % schneller als bisher
 const MAP1_BEAR_FRAME_MS=170;
 let map1Bear=null;
 let map1BearActive=false;
@@ -26,6 +26,15 @@ const MAP1_RUNNER_PATH=[
   [1345,930],[1460,995],[1575,1065]
 ];
 const map1RunnerSound=new Audio('assets/audio/girlyscream_01.mp3');
+const map1BearSound1=new Audio('assets/audio/bearattack_1.mp3');
+const map1BearSound2=new Audio('assets/audio/bearattack_2.mp3');
+const map1BearSound3=new Audio('assets/audio/bearattack_3.mp3');
+const map1BearSong=new Audio('assets/audio/The Hold Steady - The Bear and the Maiden Fair.mp3');
+[map1BearSound1,map1BearSound2,map1BearSound3,map1BearSong].forEach(a=>{a.preload='auto';a.volume=1;});
+let map1BearAudioStarted=false;
+let map1SongTimer=null;
+let map1SongFadeTimer=null;
+let map1BgResumeTime=0;
 map1RunnerSound.preload='auto';
 map1RunnerSound.volume=1;
 
@@ -392,6 +401,15 @@ function startMap1Runner(){
   map1RunnerSound.pause();
   map1RunnerSound.currentTime=0;
   map1RunnerSound.play().catch(()=>{});
+  // Eine Sekunde nach Beginn des Frauenschreis: Musik abrupt auf Song bei 29 s wechseln.
+  clearTimeout(map1SongTimer); clearInterval(map1SongFadeTimer);
+  map1SongTimer=setTimeout(()=>{
+    if(currentMap!==1 || !map1RunnerActive)return;
+    map1BgResumeTime=bgMusic?.currentTime||0;
+    if(bgMusic)bgMusic.pause();
+    map1BearSong.pause(); map1BearSong.currentTime=29; map1BearSong.volume=1;
+    map1BearSong.play().catch(()=>{});
+  },1000);
 }
 
 function updateMap1Runner(now){
@@ -448,7 +466,7 @@ function ensureMap1Bear(){
 
   const syncBearSize=()=>{
     const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
-    map1Bear.style.width=`${w*2}px`;
+    map1Bear.style.width=`${w*1.6}px`; // 20 % kleiner als bisher
   };
   syncBearSize();
   requestAnimationFrame(syncBearSize);
@@ -468,6 +486,7 @@ function startMap1Bear(startTime=performance.now()){
   const el=ensureMap1Bear();
   map1BearActive=true;
   map1BearStart=startTime+MAP1_BEAR_DELAY;
+  map1BearAudioStarted=false;
 
   // Bereits am Startpunkt positionieren, aber bis zum Delay unsichtbar.
   const [x,y]=map1RunnerPointAt(0);
@@ -499,6 +518,22 @@ function updateMap1Bear(now){
   el.style.display='block';
   el.style.visibility='visible';
   el.style.opacity='1';
+
+  if(!map1BearAudioStarted){
+    map1BearAudioStarted=true;
+    map1BearSound1.pause(); map1BearSound1.currentTime=0;
+    map1BearSound1.play().catch(()=>{});
+    map1BearSound1.onended=()=>{
+      setTimeout(()=>{
+        map1BearSound2.pause(); map1BearSound2.currentTime=0;
+        map1BearSound2.play().catch(()=>{});
+        map1BearSound2.onended=()=>setTimeout(()=>{
+          map1BearSound3.pause(); map1BearSound3.currentTime=0;
+          map1BearSound3.play().catch(()=>{});
+        },1000);
+      },500);
+    };
+  }
 
   const t=Math.min(1,(now-map1BearStart)/MAP1_BEAR_DURATION);
   const [x,y]=map1RunnerPointAt(t);
@@ -607,6 +642,17 @@ if(bgMusic){
   window.addEventListener('keydown',playMusic);
   window.addEventListener('wheel',playMusic,{passive:true});
 }
+
+
+map1BearSong.addEventListener('timeupdate',()=>{
+  if(map1BearSong.currentTime>=42 && map1BearSong.currentTime<43){
+    map1BearSong.volume=Math.max(0,43-map1BearSong.currentTime);
+  }
+  if(map1BearSong.currentTime>=43){
+    map1BearSong.pause(); map1BearSong.currentTime=29; map1BearSong.volume=1;
+    if(bgMusic){bgMusic.currentTime=map1BgResumeTime; bgMusic.volume=.48; bgMusic.play().catch(()=>{});}
+  }
+});
 
 /* SPIELBARER GASTWIRT */
 const PLAYER={
