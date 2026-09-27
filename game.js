@@ -36,8 +36,8 @@ const MAP2_BAR={
   left:682,
   top:408,
   width:172,
-  height:80,
-  bottom:488
+  height:97,
+  bottom:505
 };
 let map2Bar=null;
 
@@ -47,7 +47,7 @@ function ensureMap2Bar(){
   if(!map2Bar){
     map2Bar=document.createElement('img');
     map2Bar.id='map2Bar';
-    map2Bar.src='assets/props/theke.png?v=01';
+    map2Bar.src='assets/props/theke.png?v=02';
     map2Bar.alt='';
     map2Bar.draggable=false;
     Object.assign(map2Bar.style,{
@@ -56,7 +56,7 @@ function ensureMap2Bar(){
       top:`${MAP2_BAR.top}px`,
       width:`${MAP2_BAR.width}px`,
       height:`${MAP2_BAR.height}px`,
-      objectFit:'contain',
+      objectFit:'fill',
       pointerEvents:'none',
       userSelect:'none',
       display:'none',
@@ -96,15 +96,16 @@ function updateMap2BarDepth(){
   bar.style.display='block';
 
   const insideBarWidth=
-    PLAYER.x>=MAP2_BAR.left-PLAYER.radius &&
-    PLAYER.x<=MAP2_BAR.left+MAP2_BAR.width+PLAYER.radius;
+    PLAYER.x>=MAP2_BAR.left &&
+    PLAYER.x<=MAP2_BAR.left+MAP2_BAR.width;
 
-  // Oberhalb der Unterkante = Spieler hinter der Theke.
-  // Unterhalb = Spieler vor der Theke.
+  // EXAKTE REGEL:
+  // Fußpunkt OBERHALB der bereits vorhandenen Theken-Unterkante -> Figur hinter der Theke.
+  // Fußpunkt UNTERHALB/auf der Kante -> Figur vor der Theke.
   const playerBehindBar=insideBarWidth && PLAYER.y<MAP2_BAR.bottom;
   if(playerBehindBar){
-    bar.style.zIndex='900';
-    player.style.zIndex='800';
+    bar.style.zIndex='10000';
+    player.style.zIndex='9999';
   }else{
     bar.style.zIndex='600';
     player.style.zIndex=String(100+Math.round(PLAYER.y));
