@@ -30,11 +30,12 @@ const map1BearSound1=new Audio('assets/audio/bearattack_1.mp3');
 const map1BearSound2=new Audio('assets/audio/bearattack_2.mp3');
 const map1BearSound3=new Audio('assets/audio/bearattack_3.mp3');
 const map1BearSong=new Audio('assets/audio/The Hold Steady - The Bear and the Maiden Fair.mp3');
-[map1BearSound1,map1BearSound2,map1BearSound3,map1BearSong].forEach(a=>{a.preload='auto';a.volume=1;});
+[map1BearSound1,map1BearSound2,map1BearSound3].forEach(a=>{a.preload='auto';a.volume=1;});
+map1BearSong.preload='auto';
+map1BearSong.volume=.82;
 let map1BearAudioStarted=false;
-let map1SongTimer=null;
-let map1SongFadeTimer=null;
-let map1BgResumeTime=0;
+let map1BearLoopTimer=null;
+let map1RunnerTimer=null;
 map1RunnerSound.preload='auto';
 map1RunnerSound.volume=1;
 
@@ -390,28 +391,76 @@ function map1RunnerPointAt(progress){
   return pts[pts.length-1];
 }
 
+function stopMap1BearAudioLoop(){
+  clearTimeout(map1BearLoopTimer);
+  map1BearLoopTimer=null;
+  [map1BearSound1,map1BearSound2,map1BearSound3].forEach(a=>{
+    a.onended=null;
+    a.pause();
+    a.currentTime=0;
+  });
+  map1BearAudioStarted=false;
+}
+
+function startMap1BearAudioLoop(){
+  stopMap1BearAudioLoop();
+  map1BearAudioStarted=true;
+
+  const play1=()=>{
+    if(currentMap!==1 || !map1BearAudioStarted)return;
+    map1BearSound1.currentTime=0;
+    map1BearSound1.play().catch(()=>{});
+    map1BearSound1.onended=()=>{
+      // Hintergrundmusik startet EXAKT nach dem ersten Bärensound wieder.
+      if(bgMusic){ bgMusic.volume=.40; bgMusic.play().catch(()=>{}); }
+      map1BearLoopTimer=setTimeout(play2,500);
+    };
+  };
+  const play2=()=>{
+    if(currentMap!==1 || !map1BearAudioStarted)return;
+    map1BearSound2.currentTime=0;
+    map1BearSound2.play().catch(()=>{});
+    map1BearSound2.onended=()=>{ map1BearLoopTimer=setTimeout(play3,1000); };
+  };
+  const play3=()=>{
+    if(currentMap!==1 || !map1BearAudioStarted)return;
+    map1BearSound3.currentTime=0;
+    map1BearSound3.play().catch(()=>{});
+    // Gesamten Bären-Soundablauf 0,5 s nach seinem Ende erneut starten.
+    map1BearSound3.onended=()=>{ map1BearLoopTimer=setTimeout(play1,500); };
+  };
+
+  play1();
+}
+
 function startMap1Runner(){
   if(currentMap!==1 || mapTransitioning || map1RunnerActive)return;
   const el=ensureMap1Runner();
-  map1RunnerActive=true;
-  map1RunnerStart=performance.now();
-  startMap1Bear(map1RunnerStart);
-  el.style.display='block';
-  el.style.opacity='1';
+
+  // Taste 1: sofort Schrei. Musik pausiert während Schrei + erstem Bärensound.
+  clearTimeout(map1RunnerTimer);
+  stopMap1BearAudioLoop();
   map1RunnerSound.pause();
   map1RunnerSound.currentTime=0;
+  if(bgMusic)bgMusic.pause();
   map1RunnerSound.play().catch(()=>{});
-  // Eine Sekunde nach Beginn des Frauenschreis: Musik abrupt auf Song bei 29 s wechseln.
-  clearTimeout(map1SongTimer); clearInterval(map1SongFadeTimer);
-  map1SongTimer=setTimeout(()=>{
-    if(currentMap!==1 || !map1RunnerActive)return;
-    map1BgResumeTime=bgMusic?.currentTime||0;
-    if(bgMusic)bgMusic.pause();
-    map1BearSong.pause(); map1BearSong.currentTime=29; map1BearSong.volume=1;
-    map1BearSong.play().catch(()=>{});
-  },1000);
-}
 
+  // Frau rennt erst 0,5 s NACH Beginn des Schreis los.
+  map1RunnerTimer=setTimeout(()=>{
+    if(currentMap!==1 || mapTransitioning)return;
+    map1RunnerActive=true;
+    map1RunnerStart=performance.now();
+    el.style.display='block';
+    el.style.opacity='1';
+  },500);
+
+  // Erst wenn der Frauenschrei KOMPLETT vorbei ist: erster Bärensound + Bärenablauf.
+  map1RunnerSound.onended=()=>{
+    if(currentMap!==1 || mapTransitioning)return;
+    startMap1Bear(performance.now()-MAP1_BEAR_DELAY); // Bär erscheint jetzt sofort.
+    startMap1BearAudioLoop();
+  };
+}
 function updateMap1Runner(now){
   const el=ensureMap1Runner();
   if(!map1RunnerActive){ el.style.display='none'; return; }
@@ -486,8 +535,6 @@ function startMap1Bear(startTime=performance.now()){
   const el=ensureMap1Bear();
   map1BearActive=true;
   map1BearStart=startTime+MAP1_BEAR_DELAY;
-  map1BearAudioStarted=false;
-
   // Bereits am Startpunkt positionieren, aber bis zum Delay unsichtbar.
   const [x,y]=map1RunnerPointAt(0);
   el.style.left=`${x}px`;
@@ -518,22 +565,6 @@ function updateMap1Bear(now){
   el.style.display='block';
   el.style.visibility='visible';
   el.style.opacity='1';
-
-  if(!map1BearAudioStarted){
-    map1BearAudioStarted=true;
-    map1BearSound1.pause(); map1BearSound1.currentTime=0;
-    map1BearSound1.play().catch(()=>{});
-    map1BearSound1.onended=()=>{
-      setTimeout(()=>{
-        map1BearSound2.pause(); map1BearSound2.currentTime=0;
-        map1BearSound2.play().catch(()=>{});
-        map1BearSound2.onended=()=>setTimeout(()=>{
-          map1BearSound3.pause(); map1BearSound3.currentTime=0;
-          map1BearSound3.play().catch(()=>{});
-        },1000);
-      },500);
-    };
-  }
 
   const t=Math.min(1,(now-map1BearStart)/MAP1_BEAR_DURATION);
   const [x,y]=map1RunnerPointAt(t);
@@ -629,7 +660,7 @@ window.addEventListener('resize',()=>{
 });
 
 if(bgMusic){
-  bgMusic.volume=.48;
+  bgMusic.volume=.40;
   const playMusic=()=>{
     bgMusic.play().then(()=>{
       window.removeEventListener('pointerdown',playMusic);
@@ -643,16 +674,6 @@ if(bgMusic){
   window.addEventListener('wheel',playMusic,{passive:true});
 }
 
-
-map1BearSong.addEventListener('timeupdate',()=>{
-  if(map1BearSong.currentTime>=42 && map1BearSong.currentTime<43){
-    map1BearSong.volume=Math.max(0,43-map1BearSong.currentTime);
-  }
-  if(map1BearSong.currentTime>=43){
-    map1BearSong.pause(); map1BearSong.currentTime=29; map1BearSong.volume=1;
-    if(bgMusic){bgMusic.currentTime=map1BgResumeTime; bgMusic.volume=.48; bgMusic.play().catch(()=>{});}
-  }
-});
 
 /* SPIELBARER GASTWIRT */
 const PLAYER={
