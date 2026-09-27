@@ -32,7 +32,7 @@ const map1BearSound3=new Audio('assets/audio/bearattack_3.mp3');
 const map1BearSong=new Audio('assets/audio/The Hold Steady - The Bear and the Maiden Fair.mp3');
 [map1BearSound1,map1BearSound2,map1BearSound3].forEach(a=>{a.preload='auto';a.volume=1;});
 map1BearSong.preload='auto';
-map1BearSong.volume=.82;
+map1BearSong.volume=.46;
 let map1BearAudioStarted=false;
 let map1BearLoopTimer=null;
 let map1RunnerTimer=null;
@@ -402,32 +402,52 @@ function stopMap1BearAudioLoop(){
   map1BearAudioStarted=false;
 }
 
+function stopMap1BearEventAudio(){
+  stopMap1BearAudioLoop();
+  map1BearSong.pause();
+  map1BearSong.currentTime=0;
+  // Nach Ende der Bärenjagd wieder normale Burgschenken-Musik.
+  if(bgMusic){
+    bgMusic.volume=.40;
+    bgMusic.play().catch(()=>{});
+  }
+}
+
 function startMap1BearAudioLoop(){
   stopMap1BearAudioLoop();
   map1BearAudioStarted=true;
 
+  const stillRunning=()=>currentMap===1 && map1BearActive && map1BearAudioStarted;
+
   const play1=()=>{
-    if(currentMap!==1 || !map1BearAudioStarted)return;
+    if(!stillRunning())return;
     map1BearSound1.currentTime=0;
     map1BearSound1.play().catch(()=>{});
     map1BearSound1.onended=()=>{
-      // Hintergrundmusik startet EXAKT nach dem ersten Bärensound wieder.
-      if(bgMusic){ bgMusic.volume=.40; bgMusic.play().catch(()=>{}); }
+      if(!stillRunning())return;
+      // Nach dem ERSTEN Bärensound startet der gewohnte Song.
+      // Normale Hintergrundmusik bleibt während des Songs aus.
+      if(bgMusic)bgMusic.pause();
+      map1BearSong.currentTime=0;
+      map1BearSong.play().catch(()=>{});
       map1BearLoopTimer=setTimeout(play2,500);
     };
   };
   const play2=()=>{
-    if(currentMap!==1 || !map1BearAudioStarted)return;
+    if(!stillRunning())return;
     map1BearSound2.currentTime=0;
     map1BearSound2.play().catch(()=>{});
-    map1BearSound2.onended=()=>{ map1BearLoopTimer=setTimeout(play3,1000); };
+    map1BearSound2.onended=()=>{
+      if(stillRunning())map1BearLoopTimer=setTimeout(play3,1000);
+    };
   };
   const play3=()=>{
-    if(currentMap!==1 || !map1BearAudioStarted)return;
+    if(!stillRunning())return;
     map1BearSound3.currentTime=0;
     map1BearSound3.play().catch(()=>{});
-    // Gesamten Bären-Soundablauf 0,5 s nach seinem Ende erneut starten.
-    map1BearSound3.onended=()=>{ map1BearLoopTimer=setTimeout(play1,500); };
+    map1BearSound3.onended=()=>{
+      if(stillRunning())map1BearLoopTimer=setTimeout(play1,500);
+    };
   };
 
   play1();
@@ -553,6 +573,7 @@ function updateMap1Bear(now){
   if(currentMap!==1 || mapTransitioning){
     map1BearActive=false;
     el.style.display='none';
+    stopMap1BearEventAudio();
     return;
   }
 
@@ -594,6 +615,8 @@ function updateMap1Bear(now){
   if(t>=1){
     map1BearActive=false;
     el.style.display='none';
+    // Bär ist von der Karte: Bärensounds UND Song sofort beenden.
+    stopMap1BearEventAudio();
   }
 }
 
