@@ -421,54 +421,110 @@ function updateMap1Runner(now){
 
 function ensureMap1Bear(){
   if(map1Bear)return map1Bear;
+
   map1Bear=document.createElement('img');
   map1Bear.id='map1Bear';
-  map1Bear.src='assets/npc/baer-run-1.png?v=01';
   map1Bear.alt='';
   map1Bear.draggable=false;
+
   Object.assign(map1Bear.style,{
-    position:'absolute',left:'0px',top:'0px',height:'auto',
-    transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',
-    zIndex:'11999',willChange:'left,top,transform'
+    position:'absolute',
+    left:'0px',
+    top:'0px',
+    width:'192px',
+    height:'auto',
+    transformOrigin:'50% 100%',
+    pointerEvents:'none',
+    userSelect:'none',
+    display:'none',
+    visibility:'visible',
+    opacity:'1',
+    zIndex:'20000',
+    willChange:'left,top,transform'
   });
+
   world.appendChild(map1Bear);
-  // Bär exakt doppelte Basisbreite der Spielfigur.
+
   const syncBearSize=()=>{
     const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
     map1Bear.style.width=`${w*2}px`;
   };
   syncBearSize();
   requestAnimationFrame(syncBearSize);
+
+  // Sprite sofort laden; bei Fehler zweites Asset probieren.
+  map1Bear.src='assets/npc/baer-run-1.png?v=20';
+  map1Bear.onerror=()=>{
+    console.error('BÄR-ASSET NICHT GEFUNDEN:',map1Bear.src);
+  };
+
   return map1Bear;
 }
 
-function startMap1Bear(startTime){
+function startMap1Bear(startTime=performance.now()){
+  if(currentMap!==1 || mapTransitioning)return;
+
   const el=ensureMap1Bear();
   map1BearActive=true;
   map1BearStart=startTime+MAP1_BEAR_DELAY;
-  el.style.display='none';
+
+  // Bereits am Startpunkt positionieren, aber bis zum Delay unsichtbar.
+  const [x,y]=map1RunnerPointAt(0);
+  el.style.left=`${x}px`;
+  el.style.top=`${y}px`;
+  el.style.display='block';
+  el.style.visibility='hidden';
+  el.style.opacity='1';
+  el.style.zIndex=String(20000+Math.round(y));
 }
 
 function updateMap1Bear(now){
+  if(!map1BearActive)return;
+
   const el=ensureMap1Bear();
-  if(!map1BearActive){el.style.display='none';return;}
-  if(currentMap!==1 || mapTransitioning){map1BearActive=false;el.style.display='none';return;}
-  if(now<map1BearStart){el.style.display='none';return;}
+
+  if(currentMap!==1 || mapTransitioning){
+    map1BearActive=false;
+    el.style.display='none';
+    return;
+  }
+
+  if(now<map1BearStart){
+    el.style.display='block';
+    el.style.visibility='hidden';
+    return;
+  }
+
   el.style.display='block';
+  el.style.visibility='visible';
+  el.style.opacity='1';
+
   const t=Math.min(1,(now-map1BearStart)/MAP1_BEAR_DURATION);
   const [x,y]=map1RunnerPointAt(t);
+
   const phase=Math.floor((now-map1BearStart)/MAP1_BEAR_FRAME_MS)%4;
-  // Folge: Bär 1 -> Bär 2 -> Bär 1 gespiegelt -> Bär 2 gespiegelt -> repeat.
   const useSecond=(phase===1||phase===3);
   const mirrored=phase>=2;
-  const wanted=useSecond?'assets/npc/baer-run-2.png?v=01':'assets/npc/baer-run-1.png?v=01';
-  if(el.getAttribute('src')!==wanted)el.setAttribute('src',wanted);
+  const wanted=useSecond
+    ? 'assets/npc/baer-run-2.png?v=20'
+    : 'assets/npc/baer-run-1.png?v=20';
+
+  // pathname comparison avoids needless reloads caused by absolute-vs-relative src.
+  if(!el.src.endsWith(wanted.replace('?v=20','')) &&
+     !el.getAttribute('src')?.includes(wanted.split('?')[0])){
+    el.src=wanted;
+  }
+
   const perspective=.82+t*.34;
   el.style.left=`${x}px`;
   el.style.top=`${y}px`;
   el.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
-  el.style.zIndex=String(11999+Math.round(y));
-  if(t>=1){map1BearActive=false;el.style.display='none';}
+  el.style.zIndex=String(20000+Math.round(y));
+
+  if(t>=1){
+    map1BearActive=false;
+    el.style.display='none';
+  }
 }
 
 function viewport(){ return {w:game.clientWidth,h:game.clientHeight}; }
@@ -506,8 +562,8 @@ function draw(now){
 
   updatePlayer(now);
   updateMap1Runner(now);
-  updateMap1Bear(now);
-  rafId=requestAnimationFrame(draw);
+    updateMap1Bear(now);
+rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
   zoomIndex=Math.max(0,Math.min(ZOOM_LEVELS.length-1,i));
@@ -969,6 +1025,22 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/side-1.png?v=12','assets/player/side-2.png?v=12',
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12'
 ];
+async function preloadMap1BearFrames(){
+  const paths=[
+    'assets/npc/baer-run-1.png?v=20',
+    'assets/npc/baer-run-2.png?v=20'
+  ];
+  await Promise.all(paths.map(src=>new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
+    img.onerror=()=>{
+      console.error('BÄR-PRELOAD FEHLER:',src);
+      resolve();
+    };
+    img.src=src;
+  })));
+}
+
 async function preloadPlayerFrames(){
   await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
     const img=new Image();
@@ -985,6 +1057,7 @@ async function start(){
   currentX=currentY=targetX=targetY=0;
 
   await preloadPlayerFrames();
+  await preloadMap1BearFrames();
   ensureMap1Runner();
   ensureMap1Bear();
   ensureMap2Bar();
