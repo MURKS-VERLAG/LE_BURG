@@ -454,7 +454,7 @@ function ensureMap1Bear(){
   requestAnimationFrame(syncBearSize);
 
   // Sprite sofort laden; bei Fehler zweites Asset probieren.
-  map1Bear.src='assets/npc/baer-run-1.png?v=21';
+  map1Bear.src='assets/npc/baer-run-1.png?v=22';
   map1Bear.onerror=()=>{
     console.error('BÄR-ASSET NICHT GEFUNDEN:',map1Bear.src);
   };
@@ -503,12 +503,16 @@ function updateMap1Bear(now){
   const t=Math.min(1,(now-map1BearStart)/MAP1_BEAR_DURATION);
   const [x,y]=map1RunnerPointAt(t);
 
-  const phase=Math.floor((now-map1BearStart)/MAP1_BEAR_FRAME_MS)%4;
-  const useSecond=(phase===1||phase===3);
-  const mirrored=phase>=2;
-  const wanted=useSecond
-    ? 'assets/npc/baer-run-2.png?v=21'
-    : 'assets/npc/baer-run-1.png?v=21';
+  const phase=Math.floor((now-map1BearStart)/MAP1_BEAR_FRAME_MS)%5;
+  // Exakte 5er-Folge: 1 -> 2 -> 2 gespiegelt -> 1 gespiegelt -> 3 -> repeat.
+  const bearFrames=[
+    ['assets/npc/baer-run-1.png?v=22',false],
+    ['assets/npc/baer-run-2.png?v=22',false],
+    ['assets/npc/baer-run-2.png?v=22',true],
+    ['assets/npc/baer-run-1.png?v=22',true],
+    ['assets/npc/baer-run-3.png?v=22',false]
+  ];
+  const [wanted,mirrored]=bearFrames[phase];
 
   // Robust: nur wechseln, wenn tatsächlich das andere Bären-Frame gebraucht wird.
   const currentBearSrc=(el.getAttribute('src')||'').split('?')[0];
@@ -1027,8 +1031,9 @@ const PLAYER_FRAME_PATHS = [
 ];
 async function preloadMap1BearFrames(){
   const paths=[
-    'assets/npc/baer-run-1.png?v=21',
-    'assets/npc/baer-run-2.png?v=21'
+    'assets/npc/baer-run-1.png?v=22',
+    'assets/npc/baer-run-2.png?v=22',
+    'assets/npc/baer-run-3.png?v=22'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
