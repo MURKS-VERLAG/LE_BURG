@@ -33,11 +33,11 @@ const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
    UNTERKANTE ist eine Hitbox. Befinden sich die Füße oberhalb dieser Kante innerhalb
    der Thekenbreite, wird der Spieler hinter der Theke gezeichnet. */
 const MAP2_BAR={
-  left:644,
-  top:425,
-  width:249,
-  height:141,
-  bottom:566
+  left:662,
+  top:413,
+  width:212,
+  height:120,
+  bottom:533
 };
 let map2Bar=null;
 
