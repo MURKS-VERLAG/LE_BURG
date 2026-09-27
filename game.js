@@ -11,16 +11,17 @@ const irisTransition = document.getElementById('irisTransition');
 let map1Runner=null;
 let map1RunnerActive=false;
 let map1RunnerStart=0;
-const MAP1_RUNNER_DURATION=4500;
+const MAP1_RUNNER_DURATION=5625;
 const MAP1_RUNNER_FRAME_MS=115;
 const MAP1_BEAR_DELAY=1500;
-const MAP1_BEAR_DURATION=7500; // 40 % geringere Geschwindigkeit als die Frau
+const MAP1_BEAR_DURATION=9375; // 40 % geringere Geschwindigkeit als die Frau
 const MAP1_BEAR_FRAME_MS=170;
 let map1Bear=null;
 let map1BearActive=false;
 let map1BearStart=0;
 const MAP1_RUNNER_PATH=[
-  [1297,18],[1293,72],[1252,166],[1172,255],[1082,333],[1018,382],
+  // Spawn nach rechts auf den Fußweg versetzt; danach weich in die bisherige Ideallinie.
+  [1365,18],[1358,72],[1305,166],[1200,255],[1082,333],[1018,382],
   [932,486],[912,585],[925,650],[973,711],[1078,782],[1205,849],
   [1345,930],[1460,995],[1575,1065]
 ];
@@ -453,7 +454,7 @@ function ensureMap1Bear(){
   requestAnimationFrame(syncBearSize);
 
   // Sprite sofort laden; bei Fehler zweites Asset probieren.
-  map1Bear.src='assets/npc/baer-run-1.png?v=20';
+  map1Bear.src='assets/npc/baer-run-1.png?v=21';
   map1Bear.onerror=()=>{
     console.error('BÄR-ASSET NICHT GEFUNDEN:',map1Bear.src);
   };
@@ -506,14 +507,13 @@ function updateMap1Bear(now){
   const useSecond=(phase===1||phase===3);
   const mirrored=phase>=2;
   const wanted=useSecond
-    ? 'assets/npc/baer-run-2.png?v=20'
-    : 'assets/npc/baer-run-1.png?v=20';
+    ? 'assets/npc/baer-run-2.png?v=21'
+    : 'assets/npc/baer-run-1.png?v=21';
 
-  // pathname comparison avoids needless reloads caused by absolute-vs-relative src.
-  if(!el.src.endsWith(wanted.replace('?v=20','')) &&
-     !el.getAttribute('src')?.includes(wanted.split('?')[0])){
-    el.src=wanted;
-  }
+  // Robust: nur wechseln, wenn tatsächlich das andere Bären-Frame gebraucht wird.
+  const currentBearSrc=(el.getAttribute('src')||'').split('?')[0];
+  const wantedBearSrc=wanted.split('?')[0];
+  if(currentBearSrc!==wantedBearSrc) el.setAttribute('src',wanted);
 
   const perspective=.82+t*.34;
   el.style.left=`${x}px`;
@@ -1027,8 +1027,8 @@ const PLAYER_FRAME_PATHS = [
 ];
 async function preloadMap1BearFrames(){
   const paths=[
-    'assets/npc/baer-run-1.png?v=20',
-    'assets/npc/baer-run-2.png?v=20'
+    'assets/npc/baer-run-1.png?v=21',
+    'assets/npc/baer-run-2.png?v=21'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
