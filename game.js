@@ -65,8 +65,10 @@ const MAP1_BOCK_RIDE_DURATION=9000; // deutlich langsamer
 const MAP1_BOCK_PATH_START=[1365,18];
 const MAP1_BOCK_PATH_END=[768,560];
 const MAP1_BOCK_PATH=[
+  /* Weg der Lady; ab Pflaster eine gerade, knickfreie Endanfahrt.
+     Haltepunkt bleibt EXAKT [768,560]. */
   [1365,18],[1358,72],[1305,166],[1200,255],[1082,333],[1018,382],
-  [932,486],[912,585],[768,560]
+  [932,486],[850,523],[768,560]
 ];
 
 function ensureMap1BockFX(){
@@ -133,7 +135,7 @@ function ensureMap1BockRider(){
   map1BockRider.alt='';
   map1BockRider.draggable=false;
   Object.assign(map1BockRider.style,{
-    position:'absolute',left:'0',top:'0',width:'108.5px',height:'auto',
+    position:'absolute',left:'0',top:'0',width:'103.075px',height:'auto',
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',opacity:'1',zIndex:'19000',
     willChange:'left,top,transform,opacity,filter'
@@ -229,7 +231,7 @@ function ensureMap1BockFinal(){
   if(map1BockFinal)return map1BockFinal;
   map1BockFinal=document.createElement('img');
   map1BockFinal.id='map1BockFinal';
-  map1BockFinal.src='assets/npc/bock-final.png?v=28';
+  map1BockFinal.src='assets/npc/bock-final.png?v=29';
   map1BockFinal.alt=''; map1BockFinal.draggable=false;
   Object.assign(map1BockFinal.style,{position:'absolute',left:'0',top:'0',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',opacity:'1',zIndex:'19600'});
   world.appendChild(map1BockFinal);
@@ -287,7 +289,7 @@ function updateMap1Bock(now){
     map1BockStage='arrived';
 
     // ANKUNFT: Anhang 1 LINKS = Stehenbleiben, exakt 1,5 s.
-    rider.src='assets/npc/bock-stop.png?v=28';
+    rider.src='assets/npc/bock-stop.png?v=29';
     rider.style.transform='translate(-50%,-100%) scale(.798)';
     rider.style.opacity='1';rider.style.filter='none';
 
@@ -295,14 +297,14 @@ function updateMap1Bock(now){
       if(!map1BockActive)return;
 
       // Danach Anhang 1 MITTE = Absteigen, exakt 0,5 s. Rechtes Bild wird NICHT benutzt.
-      rider.src='assets/npc/bock-dismount.png?v=28';
+      rider.src='assets/npc/bock-dismount.png?v=29';
 
       map1BockArrivalTimer=setTimeout(()=>{
         if(!map1BockActive)return;
         showBockPuff(MAP1_BOCK_PATH_END[0],MAP1_BOCK_PATH_END[1]);
         rider.style.transition='opacity 520ms ease,filter 520ms ease,transform 520ms ease';
         rider.style.opacity='0';rider.style.filter='blur(8px) brightness(2.1)';
-        rider.style.transform='translate(-50%,-100%) scale(.854)';
+        rider.style.transform='translate(-50%,-100%) scale(1.14)';
         map1BockStage='puff';
 
         setTimeout(()=>{
@@ -1485,9 +1487,9 @@ async function preloadMap1BearFrames(){
     'assets/npc/bock-reiter-1.png?v=27',
     'assets/npc/bock-reiter-2.png?v=27',
     'assets/npc/bock-reiter-3.png?v=27',
-    'assets/npc/bock-stop.png?v=28',
-    'assets/npc/bock-dismount.png?v=28',
-    'assets/npc/bock-final.png?v=28'
+    'assets/npc/bock-stop.png?v=29',
+    'assets/npc/bock-dismount.png?v=29',
+    'assets/npc/bock-final.png?v=29'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
