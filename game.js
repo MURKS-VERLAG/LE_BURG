@@ -1369,7 +1369,7 @@ function setPlayerDirection(direction){
    Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const TABLE_PASSAGE_EXTRA_WORLD=16;
+const TABLE_PASSAGE_EXTRA_WORLD=24; // v47: Stehtisch-Effekt +0,5 cm (=8 Weltpixel) weiter nach unten
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
@@ -1490,8 +1490,8 @@ const map1TableMugs=new Map();
 const MAP1_TABLE_ACTION_MS=1000;
 const MAP1_TABLE_TOUCH=8;
 const MAP1_TABLE_ACTION_SPRITES={
-  back:'assets/player/tisch-w.png?v=46',
-  front:'assets/player/tisch-s.png?v=46',
+  back:'assets/player/tisch-w.png?v=47', // W = Anhang 1
+  front:'assets/player/tisch-s.png?v=47', // S = Anhang 2
   right:'assets/player/tisch-d.png?v=46',
   left:'assets/player/tisch-a.png?v=46'
 };
@@ -1510,24 +1510,26 @@ function tableTouchesInFacingDirection(s,dir){
   if(!w||!h)return false;
   const right=left+w,bottom=top+h;
   const r=PLAYER.radius;
-  // Direkter Kontakt zur echten Tischbox. Dadurch sind A/D zuverlässig erreichbar und
-  // der Trigger bleibt trotzdem nur aktiv, wenn der Wirt wirklich GANZ am Tisch steht.
   const gap=10;
-  if(dir==='front'){ // oberhalb, Blick nach unten / S
+  const downExtra=8;       // v47: +0,5 cm nach unten
+  const sideTopCut=64;     // v47: A/D oben um 4 cm kürzer
+  const sideOuterExtra=32; // v47: A links weiter nach links / D rechts weiter nach rechts
+
+  if(dir==='front'){ // OBERHALB des Tischs + S: an obere Kante andocken -> auslösbar
     return PLAYER.x>=left-r && PLAYER.x<=right+r &&
-           PLAYER.y<=top && top-PLAYER.y<=r+gap;
+           PLAYER.y<=top+downExtra && top-PLAYER.y<=r+gap;
   }
-  if(dir==='back'){ // unterhalb, Blick nach oben / W
+  if(dir==='back'){ // UNTERHALB + W
     return PLAYER.x>=left-r && PLAYER.x<=right+r &&
-           PLAYER.y>=bottom && PLAYER.y-bottom<=r+gap;
+           PLAYER.y>=bottom && PLAYER.y-bottom<=r+gap+downExtra;
   }
-  if(dir==='right'){ // links vom Tisch, Blick nach rechts / D
-    return PLAYER.y>=top-r && PLAYER.y<=bottom+r &&
-           PLAYER.x<=left && left-PLAYER.x<=r+gap;
+  if(dir==='right'){ // LINKS vom Tisch + D; bis Tischmitte/etwas darüber erreichbar
+    return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
+           PLAYER.x<=left+sideOuterExtra && left-PLAYER.x<=r+gap+sideOuterExtra;
   }
-  if(dir==='left'){ // rechts vom Tisch, Blick nach links / A
-    return PLAYER.y>=top-r && PLAYER.y<=bottom+r &&
-           PLAYER.x>=right && PLAYER.x-right<=r+gap;
+  if(dir==='left'){ // RECHTS vom Tisch + A; bis Tischmitte/etwas darüber erreichbar
+    return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
+           PLAYER.x>=right-sideOuterExtra && PLAYER.x-right<=r+gap+sideOuterExtra;
   }
   return false;
 }
@@ -1574,6 +1576,7 @@ function startMap1TableServe(){
   const dir=PLAYER.direction;
   const src=MAP1_TABLE_ACTION_SPRITES[dir];
   player.setAttribute('src',src);
+  player.style.zIndex='1300'; // v47: Ausschankfigur IMMER vor dem Bierkrug (Krug=1200)
   const scale=playerVisualScale();
   // A ist als eigenes, physisch gespiegeltes D-Asset enthalten; deshalb hier keine zweite Spiegelung.
   player.style.transform=`translate(-50%,-100%) scale(${scale})`;
@@ -1583,6 +1586,7 @@ function startMap1TableServe(){
     map1TableServing=false;
     PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES[PLAYER.direction][0];
     showPlayerFrame(true);
+    updateStandingTableDepth();
     updateMap1TableInteractionCue();
   },MAP1_TABLE_ACTION_MS);
   return true;
@@ -2012,7 +2016,7 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/back-3.png','assets/player/back-4.png',
   'assets/player/side-1.png?v=12','assets/player/side-2.png?v=12',
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
-  'assets/player/tisch-w.png?v=46','assets/player/tisch-s.png?v=46',
+  'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
   'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46'
 ];
 async function preloadMap1BearFrames(){
