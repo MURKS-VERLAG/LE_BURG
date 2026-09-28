@@ -474,29 +474,30 @@ function startMap2BarServe(){
   map2BarServing=true;
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
   bar.style.filter='none';
+  // Exakter Motivtausch im selben Paint-Zyklus: niemals alte + neue Theke gleichzeitig.
+  // visibility statt display erhält Position/Depth der normalen Theke vollständig.
+  action.style.transition='none';
   action.style.display='block';
+  action.style.opacity='1';
+  bar.style.visibility='hidden';
   progress.style.display='block';
-  // gleicher Paint-Zyklus: Spieler blendet aus, Ausschankbild blendet ein.
-  requestAnimationFrame(()=>{
-    action.style.opacity='1';
-    player.style.transition='opacity 220ms ease';
-    player.style.opacity='0';
-  });
+  player.style.transition='opacity 220ms ease';
+  player.style.opacity='0';
   const start=performance.now();
   const tick=now=>{
     if(!map2BarServing)return;
     const t=Math.min(1,(now-start)/MAP2_BAR_INTERACT.duration);
     progress.style.background=`conic-gradient(#ffd42a ${t*360}deg, rgba(255,212,42,.18) ${t*360}deg)`;
     if(t<1){ map2BarServeTimer=requestAnimationFrame(tick); return; }
+    // Exakt gleichzeitig zurücktauschen: Ausschankbild weg, normale Theke wieder da.
     action.style.opacity='0';
+    action.style.display='none';
+    bar.style.visibility='visible';
     player.style.opacity='1';
     progress.style.display='none';
-    setTimeout(()=>{
-      action.style.display='none';
-      player.style.transition='';
-      map2BarServing=false;
-      updateMap2BarInteractionCue();
-    },230);
+    player.style.transition='';
+    map2BarServing=false;
+    updateMap2BarInteractionCue();
   };
   map2BarServeTimer=requestAnimationFrame(tick);
 }
@@ -508,6 +509,7 @@ function updateMap2BarVisibility(){
   if(currentMap!==2){
     map2BarAction.style.display='none';
     map2BarProgress.style.display='none';
+    bar.style.visibility='visible';
     map2BarServing=false;
     player.style.opacity='1';
   }
@@ -1218,8 +1220,25 @@ function playerBehindSprite(sprite){
   );
 }
 
+/* MAP 1: Props behalten IMMER ihre gegenseitige Reihenfolge.
+   Für den Tiefeneffekt gibt es nur zwei Charakterebenen: hinter ALLEN Props / vor ALLEN Props.
+   Die Props selbst werden dabei niemals umsortiert oder während eines Effekts verändert. */
+const MAP1_PROP_DEPTH_Z=500;
+const MAP1_PLAYER_BEHIND_Z=499;
+const MAP1_PLAYER_FRONT_Z=1000;
+let map1PropDepthInitialized=false;
+function ensureMap1PropDepthOrder(){
+  if(map1PropDepthInitialized)return;
+  const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
+  for(const id of ids){
+    const el=document.getElementById(id);
+    if(el)el.style.zIndex=String(MAP1_PROP_DEPTH_Z);
+  }
+  map1PropDepthInitialized=true;
+}
 function updateStandingTableDepth(){
   if(currentMap!==1)return;
+  ensureMap1PropDepthOrder();
   const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
   let behindAny=false;
   for(const id of ids){
@@ -1227,8 +1246,8 @@ function updateStandingTableDepth(){
     const sprite=collisionSprites.find(s=>s.el===el);
     if(sprite && playerBehindSprite(sprite)){behindAny=true;break;}
   }
-  // NUR der Charakter wechselt die Ebene. Kein Prop-zIndex wird hier jemals angefasst.
-  player.style.zIndex=behindAny?'90':String(100+Math.round(PLAYER.y));
+  // Ausschließlich der CHARAKTER wechselt: Effektzone = Hintergrund, sonst Vordergrund.
+  player.style.zIndex=behindAny?String(MAP1_PLAYER_BEHIND_Z):String(MAP1_PLAYER_FRONT_Z);
 }
 
 function playerCanStand(x,y){
