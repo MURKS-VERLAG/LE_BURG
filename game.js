@@ -355,7 +355,7 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:675};
+const MAP2_SPAWN={x:768,y:900};
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
 /* MAP 2 – THEKE.
@@ -1153,9 +1153,11 @@ function updateStandingTableDepth(){
   if(currentMap!==1)return;
   for(const id of STANDING_TABLE_IDS){
     const el=document.getElementById(id); if(!el)continue;
-    const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
-    const overPlate=PLAYER.x>=left&&PLAYER.x<=left+w&&PLAYER.y>=top&&PLAYER.y<=top+h*.34;
-    el.style.zIndex=overPlate?'10050':'';
+    const sprite=collisionSprites.find(s=>s.el===el);
+    // Exakt dieselbe Zone wie bei der Hitbox-Freigabe:
+    // NUR obere 2/3 der echten sichtbaren Tischplatte -> Spieler hinter dem Tisch.
+    const behind=sprite ? standingTablePlatePassage(sprite,PLAYER.x,PLAYER.y) : false;
+    el.style.zIndex=behind?'10050':'';
   }
 }
 
@@ -1383,13 +1385,18 @@ function updateMap2RoomAndTransitions(){
   if(map2Room==='kitchen' &&
      PLAYER.x>=MAP2_MIDDLE_WALL.left && PLAYER.x<=MAP2_MIDDLE_WALL.right &&
      PLAYER.y>MAP2_MIDDLE_WALL.top){
-    if(map2MiddleDoorPassArmed && PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2){playDoorPassSound();map2MiddleDoorPassArmed=false;}
+    // Wand-/Tür-Occlusion setzt sofort beim Eintauchen in die Wandtiefe ein.
+    // Der Türsound kommt aber nur beim tatsächlichen Passieren der echten Türöffnung.
     map2Room='guestroom';
     map2InMiddleWall=true;
   }
 
   // Mittelwand -> Gaststube: erst nach vollständigem Überschreiten der unteren Wandkante.
   if(map2InMiddleWall && PLAYER.y>=MAP2_MIDDLE_WALL.bottom){
+    if(map2MiddleDoorPassArmed &&
+       PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2){
+      playDoorPassSound();
+    }
     map2InMiddleWall=false;
     map2Room='guestroom';
     PLAYER.y=MAP2_MIDDLE_WALL.bottom;
