@@ -1093,6 +1093,12 @@ const PLAYER_SEQUENCES={
 const keys=new Set();
 let playerLastTime=performance.now();
 
+/* Richtungswechsel: alle Player-Sprites bleiben als bereits decodierte Image-Objekte im RAM.
+   Beim Wechsel wird das neue Richtungsbild im selben Tick gesetzt; zusätzlich sperrt ein
+   Richtungs-Token verspätete Decode-/Load-Ergebnisse der alten Richtung aus. */
+const PLAYER_IMAGE_CACHE=new Map();
+let playerDirectionToken=0;
+
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
   const version=source==='back' ? '' : '?v=12';
@@ -1110,7 +1116,11 @@ function showPlayerFrame(force=false){
   if(!player)return;
   const next=playerSpritePath(PLAYER.direction,PLAYER.frame);
   const current=player.getAttribute('src')||'';
-  if(force || current!==next) player.setAttribute('src',next);
+  if(force || current!==next){
+    const cached=PLAYER_IMAGE_CACHE.get(next);
+    // Der Cache ist vor Spielstart vollständig decodiert. src deshalb ohne Wartebild wechseln.
+    player.setAttribute('src',cached?.src||next);
+  }
 
   const s=playerVisualScale();
   if(PLAYER.direction==='right'){
@@ -1123,24 +1133,31 @@ function showPlayerFrame(force=false){
 
 function setPlayerDirection(direction){
   if(direction===PLAYER.direction)return;
+  ++playerDirectionToken;
   PLAYER.direction=direction;
   PLAYER.sequenceIndex=0;
   PLAYER.frameClock=0;
   PLAYER.frame=PLAYER_SEQUENCES[direction][0];
+  // Wichtig: Richtungsframe SOFORT setzen, bevor im selben Tick Bewegung/Depth berechnet wird.
   showPlayerFrame(true);
 }
 
 
 /* MAP 1 – Tiefen-/Kollisionszonen der Props.
-   Maßstab bleibt exakt wie im letzten Patch: 0,5 cm = 8 Weltpixel, 1 cm = 16 Weltpixel.
-   Stehtische: gegenüber v34 nochmals +8 px nach unten (insgesamt +16 px gegenüber der alten Basis).
-   Stuhl + lange Tafel: gegenüber v34 +16 px nach unten (insgesamt +24 px gegenüber der alten Basis).
-   Wirtschaft: obere 1/2 = Durchgang + Spieler dahinter; untere 1/2 = Alpha-Kollision + Spieler davor.
-   Baum: obere 2/3 = Durchgang + Spieler dahinter; unteres 1/3 = Alpha-Kollision + Spieler davor. */
+   Maßstab unverändert: 0,5 cm = 8 Weltpixel, 1 cm = 16 Weltpixel.
+   WICHTIG: Tiefenregeln verändern AUSSCHLIESSLICH die Charakterebene. Props wechseln
+   niemals wegen des Spielers ihre Ebene gegeneinander; Stuhl/Tafel usw. behalten ihre Ordnung.
+   Stehtische bleiben unverändert aus v35.
+   Tafel: Effekt gegenüber v35 weitere +1 cm (= +16 px) nach unten.
+   Stuhl: Effekt gegenüber v35 weitere +2 cm (= +32 px) nach unten.
+   Baum: Effekt gegenüber v35 weitere +3 cm (= +48 px) nach unten.
+   Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
 const TABLE_PASSAGE_EXTRA_WORLD=16;
-const CHAIR_TAFEL_PASSAGE_EXTRA_WORLD=24;
+const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
+const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
+const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
 
 function spriteLocalPoint(s,x,y){
   const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
@@ -1159,7 +1176,9 @@ function furnitureTopPassage(s,x,y){
   let first=-1;
   for(let yy=0;yy<s.sourceH;yy++){if(s.alpha[yy*s.sourceW+sx]>=24){first=yy;break;}}
   if(first<0)return false;
-  const extraWorld=STANDING_TABLE_IDS.has(id)?TABLE_PASSAGE_EXTRA_WORLD:CHAIR_TAFEL_PASSAGE_EXTRA_WORLD;
+  let extraWorld=TABLE_PASSAGE_EXTRA_WORLD;
+  if(id==='tafel')extraWorld=TAFEL_PASSAGE_EXTRA_WORLD;
+  else if(id==='stuhl')extraWorld=CHAIR_PASSAGE_EXTRA_WORLD;
   const extraSource=extraWorld/dh*s.sourceH;
   if(STANDING_TABLE_IDS.has(id)){
     let last=-1;
@@ -1177,24 +1196,39 @@ function propRatioPassage(s,x,y){
   const id=s.el.id;
   if(id!=='wirtschaft' && id!=='baum')return false;
   const p=spriteLocalPoint(s,x,y); if(!p || p.alpha<24)return false;
-  const ratio=p.sy/Math.max(1,s.sourceH-1);
-  return id==='wirtschaft' ? ratio<0.50 : ratio<(2/3);
+  if(id==='wirtschaft')return p.sy/Math.max(1,s.sourceH-1)<0.50;
+  // Baum: bisher 2/3, jetzt dieselbe Effektgrenze zusätzlich 3 cm nach unten.
+  const extraSource=TREE_PASSAGE_EXTRA_WORLD/p.dh*s.sourceH;
+  const end=(s.sourceH-1)*(2/3)+extraSource;
+  return p.sy<=Math.min(s.sourceH-1,end);
 }
 
 function standingTablePlatePassage(s,x,y){
   return furnitureTopPassage(s,x,y) || propRatioPassage(s,x,y);
 }
 
+/* Breitere Fußprobe statt nur eines einzigen Pixels. Dadurch bleibt die Figur beim
+   Richtungswechsel stabil auf derselben Vorder-/Hinterebene und "clippt" am Baum nicht. */
+function playerBehindSprite(sprite){
+  const r=Math.max(5,PLAYER.radius*.72);
+  const probes=[[0,0],[-r,0],[r,0],[-r*.55,-2],[r*.55,-2]];
+  return probes.some(([ox,oy])=>
+    furnitureTopPassage(sprite,PLAYER.x+ox,PLAYER.y+oy) ||
+    propRatioPassage(sprite,PLAYER.x+ox,PLAYER.y+oy)
+  );
+}
+
 function updateStandingTableDepth(){
   if(currentMap!==1)return;
   const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
+  let behindAny=false;
   for(const id of ids){
     const el=document.getElementById(id); if(!el)continue;
     const sprite=collisionSprites.find(s=>s.el===el);
-    const behind=sprite ? (furnitureTopPassage(sprite,PLAYER.x,PLAYER.y)||propRatioPassage(sprite,PLAYER.x,PLAYER.y)) : false;
-    // Hinter-Zone: Prop vor dem Spieler. Sonst normale Y-Tiefe/Kollision wie bisher.
-    el.style.zIndex=behind?'10050':'';
+    if(sprite && playerBehindSprite(sprite)){behindAny=true;break;}
   }
+  // NUR der Charakter wechselt die Ebene. Kein Prop-zIndex wird hier jemals angefasst.
+  player.style.zIndex=behindAny?'90':String(100+Math.round(PLAYER.y));
 }
 
 function playerCanStand(x,y){
@@ -1604,6 +1638,7 @@ async function preloadMap1BearFrames(){
 async function preloadPlayerFrames(){
   await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
     const img=new Image();
+    PLAYER_IMAGE_CACHE.set(src,img);
     img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
     img.onerror=resolve;
     img.src=src;
