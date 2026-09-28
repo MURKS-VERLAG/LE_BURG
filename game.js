@@ -1369,7 +1369,7 @@ function setPlayerDirection(direction){
    Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const TABLE_PASSAGE_EXTRA_WORLD=24; // v47: Stehtisch-Effekt +0,5 cm (=8 Weltpixel) weiter nach unten
+const TABLE_PASSAGE_EXTRA_WORLD=40; // v48: gegenüber v47 nochmals +1 cm (=16 Weltpixel) weiter nach unten
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
@@ -1504,6 +1504,20 @@ function rawSpriteOpaqueAt(s,x,y){
   const p=spriteLocalPoint(s,x,y);
   return !!p && p.alpha>=24;
 }
+function tableOpaqueVerticalBoundsAtX(s,worldX){
+  const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
+  if(!dw||!dh||worldX<left||worldX>left+dw)return null;
+  const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((worldX-left)/dw*s.sourceW)));
+  let first=-1,last=-1;
+  for(let sy=0;sy<s.sourceH;sy++){
+    if(s.alpha[sy*s.sourceW+sx]>=24){if(first<0)first=sy;last=sy;}
+  }
+  if(first<0)return null;
+  return {
+    top:top+(first/s.sourceH)*dh,
+    bottom:top+((last+1)/s.sourceH)*dh
+  };
+}
 function tableTouchesInFacingDirection(s,dir){
   if(!s)return false;
   const el=s.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
@@ -1511,25 +1525,28 @@ function tableTouchesInFacingDirection(s,dir){
   const right=left+w,bottom=top+h;
   const r=PLAYER.radius;
   const gap=10;
-  const downExtra=8;       // v47: +0,5 cm nach unten
-  const sideTopCut=64;     // v47: A/D oben um 4 cm kürzer
-  const sideOuterExtra=32; // v47: A links weiter nach links / D rechts weiter nach rechts
+  const downExtra=24;       // v48: gegenüber v47 nochmals +1 cm nach unten
+  const sideTopCut=80;      // v48: A/D von oben nochmals je 1 cm kürzer (gesamt 5 cm)
+  const sideInnerExtra=32;  // Tischmitte bleibt für A/D erreichbar
+  const sideOuterExtra=0;   // v48: A von rechts / D von links jeweils 2 cm kürzer als v47
+  const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
-  if(dir==='front'){ // OBERHALB des Tischs + S: an obere Kante andocken -> auslösbar
+  if(dir==='front'){ // OBERHALB + S: sichtbare obere Tischkante, nicht PNG-Rand
+    if(!vb)return false;
+    return PLAYER.y<=vb.top && vb.top-PLAYER.y<=r+gap+8;
+  }
+  if(dir==='back'){ // UNTERHALB + W: 0,5 cm näher an den Tisch als v47
+    const edge=vb?vb.bottom:bottom;
     return PLAYER.x>=left-r && PLAYER.x<=right+r &&
-           PLAYER.y<=top+downExtra && top-PLAYER.y<=r+gap;
+           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8);
   }
-  if(dir==='back'){ // UNTERHALB + W
-    return PLAYER.x>=left-r && PLAYER.x<=right+r &&
-           PLAYER.y>=bottom && PLAYER.y-bottom<=r+gap+downExtra;
-  }
-  if(dir==='right'){ // LINKS vom Tisch + D; bis Tischmitte/etwas darüber erreichbar
+  if(dir==='right'){ // LINKS + D
     return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
-           PLAYER.x<=left+sideOuterExtra && left-PLAYER.x<=r+gap+sideOuterExtra;
+           PLAYER.x<=left+sideInnerExtra && left-PLAYER.x<=r+gap+sideOuterExtra;
   }
-  if(dir==='left'){ // RECHTS vom Tisch + A; bis Tischmitte/etwas darüber erreichbar
+  if(dir==='left'){ // RECHTS + A
     return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
-           PLAYER.x>=right-sideOuterExtra && PLAYER.x-right<=r+gap+sideOuterExtra;
+           PLAYER.x>=right-sideInnerExtra && PLAYER.x-right<=r+gap+sideOuterExtra;
   }
   return false;
 }
