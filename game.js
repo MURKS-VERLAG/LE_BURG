@@ -1370,7 +1370,7 @@ function setPlayerDirection(direction){
    Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const TABLE_PASSAGE_EXTRA_WORLD=64; // v52: Effekt bleibt tief; bei Stehtischen bleiben unten exakt 0,5 cm (=8 Weltpixel) Tischplatten-Kollision erhalten
+const TABLE_PASSAGE_EXTRA_WORLD=64; // historischer Wert; Stehtische nutzen unten separat exakt 0,5 cm (=8 Weltpixel) Restkollision an der STÜTZE
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
@@ -1413,18 +1413,18 @@ function furnitureTopPassage(s,x,y){
   else if(id==='stuhl')extraWorld=CHAIR_PASSAGE_EXTRA_WORLD;
   const extraSource=extraWorld/dh*s.sourceH;
   if(STANDING_TABLE_IDS.has(id)){
+    // v54 FIX: Die TischPLATTE ist von oben vollständig passierbar.
+    // Kollision bleibt ausschließlich UNTEN an der sichtbaren STÜTZE / am Fuß bestehen.
+    // Maßstab wie vereinbart: exakt 0,5 cm = 8 Weltpixel Restkollision von unten nach oben.
+    // Die horizontale Breite dieser Stützen-/Fuß-Hitbox bleibt alpha-genau unverändert.
     let last=-1;
-    const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
-    for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
-    if(last<first)return false;
-    const oldPassEnd=first+(last-first)*0.80;
-    // v52: Von der UNTERKANTE der Tischplatte aus bleiben exakt 0,5 cm (=8 Weltpixel)
-    // nach oben als Kollision erhalten. Die breite Stützen-Hitbox darunter bleibt unverändert.
+    for(let yy=s.sourceH-1;yy>=0;yy--){
+      if(s.alpha[yy*s.sourceW+sx]>=24){last=yy;break;}
+    }
+    if(last<0)return false;
     const collisionStripSource=(8/dh)*s.sourceH;
-    const maxPassEnd=Math.max(first,last-collisionStripSource);
-    // v53: Effekt von oben exakt bis auf den letzten 0,5-cm-Kollisionsstreifen erweitern.
-    // Die bisherige oldPassEnd-Grenze darf den Effekt nicht mehr vorzeitig stoppen.
-    return sy<=Math.min(s.sourceH-1,maxPassEnd);
+    const collisionStart=last-collisionStripSource;
+    return sy<collisionStart;
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
@@ -1540,11 +1540,10 @@ function tableTouchesInFacingDirection(s,dir){
   const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
   if(dir==='front'){ // OBERHALB + S: direkt an die TISCH-HITBOX andocken
-    /* v49: Nicht mehr die oberste sichtbare Alpha-Zeile der Tischplatte verwenden.
-       Die Stehtisch-Kollision lässt die obere Platte absichtlich passieren; deshalb liegt der
-       tatsächliche Andockpunkt tiefer. Wir suchen entlang der Spieler-X-Spalte die ERSTE
-       alpha-opake Stelle, die nach standingTablePlatePassage() wirklich blockiert. Genau das
-       ist die obere Kante der echten Tisch-Hitbox, an der der Spieler beim S-Laufen stoppt. */
+    /* v54: S dockt an die echte Restkollision UNTEN an der Stütze an.
+       Tischplatte und obere Stütze sind passierbar. Entlang der Spieler-X-Spalte suchen wir
+       deshalb die ERSTE alpha-opake Stelle, die nach standingTablePlatePassage() noch blockiert.
+       Das ist exakt die Oberkante des verbleibenden 0,5-cm-Stützenstreifens. */
     const probeHalf=Math.max(3,r*.55);
     const xs=[PLAYER.x,PLAYER.x-probeHalf,PLAYER.x+probeHalf];
     let hitboxTop=Infinity;
