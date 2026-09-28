@@ -1490,10 +1490,10 @@ const map1TableMugs=new Map();
 const MAP1_TABLE_ACTION_MS=1000;
 const MAP1_TABLE_TOUCH=8;
 const MAP1_TABLE_ACTION_SPRITES={
-  back:'assets/player/tisch-w.png?v=45',
-  front:'assets/player/tisch-s.png?v=45',
-  right:'assets/player/tisch-d.png?v=45',
-  left:'assets/player/tisch-a.png?v=45'
+  back:'assets/player/tisch-w.png?v=46',
+  front:'assets/player/tisch-s.png?v=46',
+  right:'assets/player/tisch-d.png?v=46',
+  left:'assets/player/tisch-a.png?v=46'
 };
 
 function tableSpriteById(id){
@@ -1506,20 +1506,28 @@ function rawSpriteOpaqueAt(s,x,y){
 }
 function tableTouchesInFacingDirection(s,dir){
   if(!s)return false;
+  const el=s.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  if(!w||!h)return false;
+  const right=left+w,bottom=top+h;
   const r=PLAYER.radius;
-  let vx=0,vy=0;
-  if(dir==='front')vy=1;
-  else if(dir==='back')vy=-1;
-  else if(dir==='right')vx=1;
-  else if(dir==='left')vx=-1;
-  else return false;
-  // Schmale Kontaktkante vor den Füßen/Körpermittelpunkt; kein Fern-Trigger.
-  for(let d=r;d<=r+MAP1_TABLE_TOUCH;d+=2){
-    for(const side of [-7,-3,0,3,7]){
-      const x=PLAYER.x+vx*d+(vy?side:0);
-      const y=PLAYER.y+vy*d+(vx?side:0);
-      if(rawSpriteOpaqueAt(s,x,y))return true;
-    }
+  // Direkter Kontakt zur echten Tischbox. Dadurch sind A/D zuverlässig erreichbar und
+  // der Trigger bleibt trotzdem nur aktiv, wenn der Wirt wirklich GANZ am Tisch steht.
+  const gap=10;
+  if(dir==='front'){ // oberhalb, Blick nach unten / S
+    return PLAYER.x>=left-r && PLAYER.x<=right+r &&
+           PLAYER.y<=top && top-PLAYER.y<=r+gap;
+  }
+  if(dir==='back'){ // unterhalb, Blick nach oben / W
+    return PLAYER.x>=left-r && PLAYER.x<=right+r &&
+           PLAYER.y>=bottom && PLAYER.y-bottom<=r+gap;
+  }
+  if(dir==='right'){ // links vom Tisch, Blick nach rechts / D
+    return PLAYER.y>=top-r && PLAYER.y<=bottom+r &&
+           PLAYER.x<=left && left-PLAYER.x<=r+gap;
+  }
+  if(dir==='left'){ // rechts vom Tisch, Blick nach links / A
+    return PLAYER.y>=top-r && PLAYER.y<=bottom+r &&
+           PLAYER.x>=right && PLAYER.x-right<=r+gap;
   }
   return false;
 }
@@ -1527,16 +1535,8 @@ function map1InteractiveTable(){
   if(currentMap!==1||mapTransitioning||map1TableServing)return null;
   for(const id of STANDING_TABLE_IDS){
     const s=tableSpriteById(id); if(!s)continue;
-    const el=s.el, left=px(el,'left'), top=px(el,'top'), w=el.offsetWidth, h=el.offsetHeight;
-    if(!w||!h)continue;
-    const cx=left+w/2, cy=top+h/2;
-    let required=null;
-    // Blickrichtung muss zur Seite passen, auf der der Spieler tatsächlich steht.
-    if(PLAYER.y<cy && Math.abs(PLAYER.x-cx)<=w*.72)required='front';      // oberhalb -> S
-    else if(PLAYER.y>cy && Math.abs(PLAYER.x-cx)<=w*.72)required='back'; // unterhalb -> W
-    else if(PLAYER.x>cx && Math.abs(PLAYER.y-cy)<=h*.72)required='left'; // rechts -> A
-    else if(PLAYER.x<cx && Math.abs(PLAYER.y-cy)<=h*.72)required='right';// links -> D
-    if(required===PLAYER.direction && tableTouchesInFacingDirection(s,required))return s;
+    // Die Blickrichtung definiert eindeutig die erlaubte Tischseite. Keine Diagonal-/Fernaktivierung.
+    if(tableTouchesInFacingDirection(s,PLAYER.direction))return s;
   }
   return null;
 }
@@ -2011,7 +2011,9 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/back-1.png','assets/player/back-2.png',
   'assets/player/back-3.png','assets/player/back-4.png',
   'assets/player/side-1.png?v=12','assets/player/side-2.png?v=12',
-  'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12'
+  'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
+  'assets/player/tisch-w.png?v=46','assets/player/tisch-s.png?v=46',
+  'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46'
 ];
 async function preloadMap1BearFrames(){
   const paths=[
