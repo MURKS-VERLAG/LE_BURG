@@ -1370,7 +1370,7 @@ function setPlayerDirection(direction){
    Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const TABLE_PASSAGE_EXTRA_WORLD=64; // v51: Stehtisch-Effekt weitere +1,5 cm (=24 Weltpixel) nach unten
+const TABLE_PASSAGE_EXTRA_WORLD=64; // v52: Effekt bleibt tief; bei Stehtischen bleiben unten exakt 0,5 cm (=8 Weltpixel) Tischplatten-Kollision erhalten
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
@@ -1418,7 +1418,11 @@ function furnitureTopPassage(s,x,y){
     for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
     if(last<first)return false;
     const oldPassEnd=first+(last-first)*0.80;
-    return sy<=Math.min(s.sourceH-1,oldPassEnd+extraSource);
+    // v52: Von der UNTERKANTE der Tischplatte aus bleiben exakt 0,5 cm (=8 Weltpixel)
+    // nach oben als Kollision erhalten. Die breite Stützen-Hitbox darunter bleibt unverändert.
+    const collisionStripSource=(8/dh)*s.sourceH;
+    const maxPassEnd=Math.max(first,last-collisionStripSource);
+    return sy<=Math.min(s.sourceH-1,maxPassEnd,oldPassEnd+extraSource);
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
@@ -1530,6 +1534,7 @@ function tableTouchesInFacingDirection(s,dir){
   const sideTopCut=80;      // v48: A/D von oben nochmals je 1 cm kürzer (gesamt 5 cm)
   const sideInnerExtra=24;  // v51: A/D je 0,5 cm (=8 Weltpixel) von der Mitte weg; exakt 1 cm Mitte frei
   const sideOuterExtra=0;   // v48: A von rechts / D von links jeweils 2 cm kürzer als v47
+  const wLeftToleranceExtra=16; // v52: W-Haltung exakt +1 cm Toleranz nach LINKS
   const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
   if(dir==='front'){ // OBERHALB + S: direkt an die TISCH-HITBOX andocken
@@ -1559,8 +1564,8 @@ function tableTouchesInFacingDirection(s,dir){
   }
   if(dir==='back'){ // UNTERHALB + W: 0,5 cm näher an den Tisch als v47
     const edge=vb?vb.bottom:bottom;
-    return PLAYER.x>=left-r-16 && PLAYER.x<=right+r &&
-           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8); // v51: W-Toleranz links +1 cm
+    return PLAYER.x>=left-r-wLeftToleranceExtra && PLAYER.x<=right+r &&
+           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8); // v52: W-Toleranz links ausdrücklich +1 cm
   }
   if(dir==='right'){ // LINKS + D
     return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
