@@ -238,6 +238,30 @@ function startMap1BockEvent(){
 let map1BockFinal=null;
 let map1BockFinalTimer=0;
 
+/* TASTE 2 – Friedrich Bock bleibt nach dem Auftritt stehen und verlangt 5 Bier. */
+let map1BockThought=null;
+let map1BockServing=false;
+let map1BockBeerCount=0;
+let map1BockServeTimer=0;
+const MAP1_BOCK_BEERS_REQUIRED=5;
+const MAP1_BOCK_INTERACT_DISTANCE=82;
+
+function ensureMap1BockThought(){
+  if(map1BockThought)return map1BockThought;
+  map1BockThought=document.createElement('div'); map1BockThought.id='map1BockThought';
+  Object.assign(map1BockThought.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]+66}px`,top:`${MAP1_BOCK_PATH_END[1]-188}px`,width:'154px',height:'126px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
+  const cloud=document.createElement('div'); Object.assign(cloud.style,{position:'absolute',left:'20px',top:'0',width:'134px',height:'102px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
+  const beer=document.createElement('img'); beer.src='assets/npc/bock-wunsch.png?v=38'; beer.alt=''; beer.draggable=false; Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'76px',height:'76px',objectFit:'contain',transform:'translate(-50%,-50%)'}); cloud.appendChild(beer);
+  const c1=document.createElement('div'),c2=document.createElement('div'); [c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'})); Object.assign(c1.style,{left:'3px',top:'103px',width:'15px',height:'15px'}); Object.assign(c2.style,{left:'10px',top:'82px',width:'25px',height:'25px'});
+  map1BockThought.append(c1,c2,cloud); world.appendChild(map1BockThought); return map1BockThought;
+}
+function showMap1BockThought(){ if(map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return; const b=ensureMap1BockThought(); b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{b.style.opacity='1';b.style.transform='scale(1)';})); }
+function hideMap1BockThought(){if(map1BockThought){map1BockThought.style.opacity='0';map1BockThought.style.transform='scale(.84)';setTimeout(()=>{if(map1BockThought&&map1BockThought.style.opacity==='0')map1BockThought.style.display='none';},280);}}
+function map1BockCanInteract(){ if(currentMap!==1||mapTransitioning||map1BockStage!=='waitingBeer'||map1BockServing||map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return false; return Math.hypot(PLAYER.x-MAP1_BOCK_PATH_END[0],PLAYER.y-MAP1_BOCK_PATH_END[1])<=MAP1_BOCK_INTERACT_DISTANCE; }
+function updateMap1BockInteractionCue(){if(!map1BockFinal)return;map1BockFinal.style.filter=map1BockCanInteract()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';}
+function dropMap1BockMug(index){ const mug=document.createElement('img');mug.src='assets/npc/bock-krug-leer.png?v=38';mug.alt='';mug.draggable=false;const side=index%2===0?1:-1,endX=MAP1_BOCK_PATH_END[0]+side*(58+index*7),endY=MAP1_BOCK_PATH_END[1]+10+Math.min(index,2)*6;Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]+side*18}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'31px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 80%',pointerEvents:'none',zIndex:String(19700+Math.round(endY)),transition:'left 620ms cubic-bezier(.2,.7,.3,1), top 620ms cubic-bezier(.25,.75,.3,1), transform 620ms ease-in'});world.appendChild(mug);requestAnimationFrame(()=>requestAnimationFrame(()=>{mug.style.left=`${endX}px`;mug.style.top=`${endY}px`;mug.style.transform=`translate(-50%,-100%) rotate(${side*310}deg)`;}));}
+function startMap1BockBeerServe(){ if(!map1BockCanInteract())return false;map1BockServing=true;keys.clear();PLAYER.moving=false;hideMap1BockThought();updateMap1BockInteractionCue();const final=ensureMap1BockFinal();final.src='assets/npc/bock-bier.png?v=38';clearTimeout(map1BockServeTimer);map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-trinkt.png?v=38';map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-final.png?v=30';dropMap1BockMug(map1BockBeerCount);map1BockBeerCount++;map1BockServing=false;if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}else{map1BockStage='fiveBeersDone';hideMap1BockThought();}updateMap1BockInteractionCue();},3000);},1000);return true;}
+
 function ensureMap1BockFinal(){
   if(map1BockFinal)return map1BockFinal;
   map1BockFinal=document.createElement('img');
@@ -256,17 +280,10 @@ function bockFadeAudio(audio,target,duration,done){
 }
 function finishMap1BockEvent(){
   if(!map1BockActive)return;
-  const final=ensureMap1BockFinal();
-  final.style.transition='opacity 1100ms ease';final.style.opacity='0';
+  const final=ensureMap1BockFinal(); final.style.transition='none';final.style.opacity='1';final.style.display='block';final.src='assets/npc/bock-final.png?v=30';
   bockFadeAudio(map1BockSong,0,1800,()=>{map1BockSong.pause();map1BockSong.currentTime=0;map1BockSong.volume=.72;});
-  const {dark,fog}=ensureMap1BockFX();
-  dark.style.transition='opacity 1800ms ease';dark.style.opacity='0';
-  fog.style.transition='opacity 1600ms ease';fog.style.opacity='0';
-  setTimeout(()=>{
-    final.style.display='none';fog.style.display='none';dark.style.display='none';
-    map1BockActive=false;map1BockStage='idle';
-    if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}
-  },1900);
+  const {dark,fog}=ensureMap1BockFX();dark.style.transition='opacity 1800ms ease';dark.style.opacity='0';fog.style.transition='opacity 1600ms ease';fog.style.opacity='0';map1BockStage='waitingBeer';
+  setTimeout(()=>{fog.style.display='none';dark.style.display='none';if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}},1900);
 }
 
 function updateMap1Bock(now){
@@ -331,6 +348,7 @@ function updateMap1Bock(now){
           map1BockStage='final';
 
           // 5 Sekunden stehen, dann Song/Nebel/Dunkelheit weich raus + normale Musik weich rein.
+          setTimeout(()=>{if(map1BockActive&&currentMap===1)showMap1BockThought();},4500);
           map1BockFinalTimer=setTimeout(finishMap1BockEvent,5000);
         },540);
       },500);
@@ -1030,6 +1048,7 @@ function draw(now){
   updateMap1Runner(now);
     updateMap1Bear(now);
   updateMap1Bock(now);
+  updateMap1BockInteractionCue();
 rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
@@ -1572,7 +1591,7 @@ window.addEventListener('keydown',e=>{
 window.addEventListener('keydown',e=>{
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat)startMap2BarServe();
+    if(!e.repeat){ if(!startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
@@ -1641,7 +1660,11 @@ async function preloadMap1BearFrames(){
     'assets/npc/bock-reiter-3.png?v=27',
     'assets/npc/bock-stop.png?v=30',
     'assets/npc/bock-dismount.png?v=29',
-    'assets/npc/bock-final.png?v=30'
+    'assets/npc/bock-final.png?v=30',
+    'assets/npc/bock-wunsch.png?v=38',
+    'assets/npc/bock-bier.png?v=38',
+    'assets/npc/bock-trinkt.png?v=38',
+    'assets/npc/bock-krug-leer.png?v=38'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
