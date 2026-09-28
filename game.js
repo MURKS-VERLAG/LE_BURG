@@ -290,7 +290,7 @@ function updateMap1Bock(now){
   if((rider.getAttribute('src')||'')!==wanted)rider.src=wanted;
 
   // Reiter hat bereits beim Spawn exakt die Endgröße der Lauf-/Reitbewegung. Kein Mini->Normal-Wachstum.
-  const perspective=1.14;
+  const perspective=1.026; // nur Reit-/Laufbilder: 10 % kleiner als 1.14
   rider.style.left=`${x}px`;
   rider.style.top=`${y}px`;
   rider.style.transform=`translate(-50%,-100%) scale(${perspective})`;
@@ -356,7 +356,7 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:658}; // Gaststube: 8 Weltpixel tiefer als v32 (~0,5 cm am üblichen Desktop-Maßstab)
+const MAP2_SPAWN={x:768,y:666}; // nochmals ca. 0,5 cm / 8 Weltpixel tiefer
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
 /* MAP 2 – THEKE.
@@ -1131,34 +1131,42 @@ function setPlayerDirection(direction){
 }
 
 
-/* MAP 1 – Stehtische: Hitbox der Tischplatte etwas weiter nach unten entfernt.
-   EXAKT dieselbe erweiterte Zone dient als Vordergrund-Occluder: dort läuft der Spieler hinter dem Tisch.
-   Stütze/Fuß behalten ihre Alpha-Hitbox. */
+/* MAP 1 – Möbel-Oberkante: Freigabe + Tiefeneffekt nur von OBEN nach UNTEN.
+   Stehtische werden gegenüber v33 nochmals um ca. 0,5 cm (8 Weltpixel) erweitert.
+   Für Stuhl und lange Tafel gilt derselbe 8-Pixel-Streifen ab ihrer sichtbaren Oberkante.
+   Exakt der hitboxfreie Bereich ist zugleich der Bereich, in dem die Figur HINTER dem Möbel läuft. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
-function standingTablePlatePassage(s,x,y){
-  if(currentMap!==1 || !STANDING_TABLE_IDS.has(s.el.id))return false;
+const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
+const FURNITURE_PASSAGE_EXTRA_WORLD=8;
+function furnitureTopPassage(s,x,y){
+  if(currentMap!==1)return false;
+  const id=s.el.id;
+  if(!STANDING_TABLE_IDS.has(id) && !TOP_PASSAGE_IDS.has(id))return false;
   const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
   if(!dw||!dh||x<left||x>=left+dw||y<top||y>=top+dh)return false;
   const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((x-left)/dw*s.sourceW)));
   const sy=Math.min(s.sourceH-1,Math.max(0,Math.floor((y-top)/dh*s.sourceH)));
-  // Tischplatte aus Alpha-Silhouette: pro Spalte erster sichtbarer Pixel; Passage/Occlusion leicht nach unten erweitert.
-  let first=-1,last=-1;
+  let first=-1;
   for(let yy=0;yy<s.sourceH;yy++){if(s.alpha[yy*s.sourceW+sx]>=24){first=yy;break;}}
   if(first<0)return false;
-  const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
-  for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
-  if(last<first)return false;
-  const passEnd=first+(last-first)*0.80; // v32: 2/3; jetzt nur ein Stück weiter nach unten
-  return sy<=passEnd;
+  const extraSource=FURNITURE_PASSAGE_EXTRA_WORLD/dh*s.sourceH;
+  if(STANDING_TABLE_IDS.has(id)){
+    let last=-1;
+    const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
+    for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
+    if(last<first)return false;
+    const oldPassEnd=first+(last-first)*0.80;
+    return sy<=Math.min(s.sourceH-1,oldPassEnd+extraSource);
+  }
+  return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
+function standingTablePlatePassage(s,x,y){return furnitureTopPassage(s,x,y);}
 function updateStandingTableDepth(){
   if(currentMap!==1)return;
-  for(const id of STANDING_TABLE_IDS){
+  for(const id of [...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS]){
     const el=document.getElementById(id); if(!el)continue;
     const sprite=collisionSprites.find(s=>s.el===el);
-    // Exakt dieselbe, leicht nach unten erweiterte Zone wie bei der Hitbox-Freigabe:
-    // Wo die Hitbox entfernt ist, läuft der Spieler eine Ebene HINTER dem Tisch.
-    const behind=sprite ? standingTablePlatePassage(sprite,PLAYER.x,PLAYER.y) : false;
+    const behind=sprite ? furnitureTopPassage(sprite,PLAYER.x,PLAYER.y) : false;
     el.style.zIndex=behind?'10050':'';
   }
 }
