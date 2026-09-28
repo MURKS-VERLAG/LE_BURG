@@ -1209,6 +1209,7 @@ function syncMap1EventVisibility(){
   if(map1BockFinal && map1BockFinal.style.display!=='none') map1BockFinal.style.visibility=onMap1?'visible':'hidden';
   if(map1BockThought && map1BockThought.style.display!=='none') map1BockThought.style.visibility=onMap1?'visible':'hidden';
   for(const mug of map1BockMugs){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
+  for(const mug of map1TableMugs.values()){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
   if(map1BockPuff)map1BockPuff.style.visibility=onMap1?'visible':'hidden';
   const fx=ensureMap1BockFX();
   if(!onMap1){fx.dark.style.visibility='hidden';fx.fog.style.visibility='hidden';}
@@ -1369,7 +1370,7 @@ function setPlayerDirection(direction){
    Wirtschaft bleibt obere 1/2 Effektzone. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const TABLE_PASSAGE_EXTRA_WORLD=40; // v48: gegenüber v47 nochmals +1 cm (=16 Weltpixel) weiter nach unten
+const TABLE_PASSAGE_EXTRA_WORLD=64; // v51: Stehtisch-Effekt weitere +1,5 cm (=24 Weltpixel) nach unten
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
@@ -1527,7 +1528,7 @@ function tableTouchesInFacingDirection(s,dir){
   const gap=10;
   const downExtra=24;       // v48: gegenüber v47 nochmals +1 cm nach unten
   const sideTopCut=80;      // v48: A/D von oben nochmals je 1 cm kürzer (gesamt 5 cm)
-  const sideInnerExtra=32;  // Tischmitte bleibt für A/D erreichbar
+  const sideInnerExtra=24;  // v51: A/D je 0,5 cm (=8 Weltpixel) von der Mitte weg; exakt 1 cm Mitte frei
   const sideOuterExtra=0;   // v48: A von rechts / D von links jeweils 2 cm kürzer als v47
   const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
@@ -1558,8 +1559,8 @@ function tableTouchesInFacingDirection(s,dir){
   }
   if(dir==='back'){ // UNTERHALB + W: 0,5 cm näher an den Tisch als v47
     const edge=vb?vb.bottom:bottom;
-    return PLAYER.x>=left-r && PLAYER.x<=right+r &&
-           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8);
+    return PLAYER.x>=left-r-16 && PLAYER.x<=right+r &&
+           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8); // v51: W-Toleranz links +1 cm
   }
   if(dir==='right'){ // LINKS + D
     return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
