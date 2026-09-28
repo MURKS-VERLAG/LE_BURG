@@ -245,21 +245,52 @@ let map1BockBeerCount=0;
 let map1BockServeTimer=0;
 const MAP1_BOCK_BEERS_REQUIRED=5;
 const MAP1_BOCK_INTERACT_DISTANCE=82;
+const MAP1_BOCK_FOOT_Y=MAP1_BOCK_PATH_END[1];
+const MAP1_BOCK_INTERACT_X=86;
+const MAP1_BOCK_INTERACT_Y_MAX=72;
 
 function ensureMap1BockThought(){
   if(map1BockThought)return map1BockThought;
   map1BockThought=document.createElement('div'); map1BockThought.id='map1BockThought';
-  Object.assign(map1BockThought.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]+66}px`,top:`${MAP1_BOCK_PATH_END[1]-188}px`,width:'154px',height:'126px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
-  const cloud=document.createElement('div'); Object.assign(cloud.style,{position:'absolute',left:'20px',top:'0',width:'134px',height:'102px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
-  const beer=document.createElement('img'); beer.src='assets/npc/bock-wunsch.png?v=38'; beer.alt=''; beer.draggable=false; Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'76px',height:'76px',objectFit:'contain',transform:'translate(-50%,-50%)'}); cloud.appendChild(beer);
-  const c1=document.createElement('div'),c2=document.createElement('div'); [c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'})); Object.assign(c1.style,{left:'3px',top:'103px',width:'15px',height:'15px'}); Object.assign(c2.style,{left:'10px',top:'82px',width:'25px',height:'25px'});
+  Object.assign(map1BockThought.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]+18}px`,top:`${MAP1_BOCK_PATH_END[1]-204}px`,width:'92.4px',height:'75.6px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
+  const cloud=document.createElement('div'); Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
+  const beer=document.createElement('img'); beer.src='assets/npc/bock-wunsch.png?v=38'; beer.alt=''; beer.draggable=false; Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'}); cloud.appendChild(beer);
+  const c1=document.createElement('div'),c2=document.createElement('div'); [c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'})); Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'}); Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
   map1BockThought.append(c1,c2,cloud); world.appendChild(map1BockThought); return map1BockThought;
 }
 function showMap1BockThought(){ if(map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return; const b=ensureMap1BockThought(); b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{b.style.opacity='1';b.style.transform='scale(1)';})); }
 function hideMap1BockThought(){if(map1BockThought){map1BockThought.style.opacity='0';map1BockThought.style.transform='scale(.84)';setTimeout(()=>{if(map1BockThought&&map1BockThought.style.opacity==='0')map1BockThought.style.display='none';},280);}}
-function map1BockCanInteract(){ if(currentMap!==1||mapTransitioning||map1BockStage!=='waitingBeer'||map1BockServing||map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return false; return Math.hypot(PLAYER.x-MAP1_BOCK_PATH_END[0],PLAYER.y-MAP1_BOCK_PATH_END[1])<=MAP1_BOCK_INTERACT_DISTANCE; }
+function map1BockCanInteract(){
+  if(currentMap!==1||mapTransitioning||map1BockStage!=='waitingBeer'||map1BockServing||map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return false;
+  const dx=Math.abs(PLAYER.x-MAP1_BOCK_PATH_END[0]);
+  const dy=PLAYER.y-MAP1_BOCK_FOOT_Y;
+  // Bier nur VOR Friedrich: Fußpunkt niemals oberhalb seiner Fußlinie.
+  // Erlaubt: mittig direkt davor sowie leicht links/rechts, jeweils auf/unter der Fußlinie.
+  return dx<=MAP1_BOCK_INTERACT_X && dy>=0 && dy<=MAP1_BOCK_INTERACT_Y_MAX;
+}
 function updateMap1BockInteractionCue(){if(!map1BockFinal)return;map1BockFinal.style.filter=map1BockCanInteract()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';}
-function dropMap1BockMug(index){ const mug=document.createElement('img');mug.src='assets/npc/bock-krug-leer.png?v=38';mug.alt='';mug.draggable=false;const side=index%2===0?1:-1,endX=MAP1_BOCK_PATH_END[0]+side*(58+index*7),endY=MAP1_BOCK_PATH_END[1]+10+Math.min(index,2)*6;Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]+side*18}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'31px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 80%',pointerEvents:'none',zIndex:String(19700+Math.round(endY)),transition:'left 620ms cubic-bezier(.2,.7,.3,1), top 620ms cubic-bezier(.25,.75,.3,1), transform 620ms ease-in'});world.appendChild(mug);requestAnimationFrame(()=>requestAnimationFrame(()=>{mug.style.left=`${endX}px`;mug.style.top=`${endY}px`;mug.style.transform=`translate(-50%,-100%) rotate(${side*310}deg)`;}));}
+function dropMap1BockMug(index){
+  const mug=document.createElement('img');
+  mug.src='assets/npc/bock-krug-leer.png?v=38';mug.alt='';mug.draggable=false;
+  // Fünf feste, getrennte Landeplätze: kein Krug landet auf einem anderen.
+  const landings=[[-62,15],[61,18],[-82,38],[82,42],[0,55]];
+  const [ox,oy]=landings[Math.max(0,Math.min(landings.length-1,index))];
+  const endX=MAP1_BOCK_PATH_END[0]+ox,endY=MAP1_BOCK_PATH_END[1]+oy;
+  Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',pointerEvents:'none',zIndex:String(700+Math.round(endY)),transition:'left 600ms cubic-bezier(.2,.7,.3,1), top 600ms cubic-bezier(.25,.75,.3,1)'});
+  world.appendChild(mug);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{mug.style.left=`${endX}px`;mug.style.top=`${endY}px`;}));
+  setTimeout(()=>{
+    mug.style.transition='none';
+    mug.animate([
+      {transform:'translate(-50%,-100%) translateY(0)'},
+      {transform:'translate(-50%,-100%) translateY(-7px)',offset:.28},
+      {transform:'translate(-50%,-100%) translateY(0)',offset:.52},
+      {transform:'translate(-50%,-100%) translateX(-2px)',offset:.68},
+      {transform:'translate(-50%,-100%) translateX(2px)',offset:.82},
+      {transform:'translate(-50%,-100%) translateX(0)'}
+    ],{duration:430,easing:'ease-out'});
+  },600);
+}
 function startMap1BockBeerServe(){ if(!map1BockCanInteract())return false;map1BockServing=true;keys.clear();PLAYER.moving=false;hideMap1BockThought();updateMap1BockInteractionCue();const final=ensureMap1BockFinal();final.src='assets/npc/bock-bier.png?v=38';clearTimeout(map1BockServeTimer);map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-trinkt.png?v=38';map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-final.png?v=30';dropMap1BockMug(map1BockBeerCount);map1BockBeerCount++;map1BockServing=false;if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}else{map1BockStage='fiveBeersDone';hideMap1BockThought();}updateMap1BockInteractionCue();},3000);},1000);return true;}
 
 function ensureMap1BockFinal(){
@@ -268,7 +299,7 @@ function ensureMap1BockFinal(){
   map1BockFinal.id='map1BockFinal';
   map1BockFinal.src='assets/npc/bock-final.png?v=30';
   map1BockFinal.alt=''; map1BockFinal.draggable=false;
-  Object.assign(map1BockFinal.style,{position:'absolute',left:'0',top:'0',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',opacity:'1',zIndex:'19600'});
+  Object.assign(map1BockFinal.style,{position:'absolute',left:'0',top:'0',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',opacity:'1',zIndex:'750'});
   world.appendChild(map1BockFinal);
   const sync=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||96;map1BockFinal.style.width=`${w}px`;};
   sync();requestAnimationFrame(sync);return map1BockFinal;
@@ -1580,6 +1611,11 @@ function updatePlayer(now){
   updateMap2BarDepth();
   updateMap2BarInteractionCue();
   updateStandingTableDepth();
+  // Friedrich Bock: unterhalb seiner Fußlinie = Spieler davor; auf/oberhalb = Spieler dahinter.
+  if(currentMap===1 && map1BockFinal && map1BockFinal.style.display!=='none'){
+    map1BockFinal.style.zIndex='750';
+    player.style.zIndex=PLAYER.y>MAP1_BOCK_FOOT_Y?'1000':'749';
+  }
 }
 
 window.addEventListener('keydown',e=>{
