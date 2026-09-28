@@ -289,8 +289,8 @@ function updateMap1Bock(now){
   const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;
   if((rider.getAttribute('src')||'')!==wanted)rider.src=wanted;
 
-  // Perspektivisch klein am oberen Einstieg, passend zur Frau/Spielergröße in der Mitte.
-  const perspective=.62+t*.52;
+  // Reiter hat bereits beim Spawn exakt die Endgröße der Lauf-/Reitbewegung. Kein Mini->Normal-Wachstum.
+  const perspective=1.14;
   rider.style.left=`${x}px`;
   rider.style.top=`${y}px`;
   rider.style.transform=`translate(-50%,-100%) scale(${perspective})`;
@@ -356,7 +356,7 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:650}; // Gaststube: oberhalb der Eingangstür, aber noch unterhalb der Theke
+const MAP2_SPAWN={x:768,y:658}; // Gaststube: 8 Weltpixel tiefer als v32 (~0,5 cm am üblichen Desktop-Maßstab)
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
 /* MAP 2 – THEKE.
@@ -1131,8 +1131,9 @@ function setPlayerDirection(direction){
 }
 
 
-/* MAP 1 – Stehtische: obere 2/3 der sichtbaren Tischplatte sind Durchgang + Vordergrund-Occluder.
-   Unteres Drittel der Platte und komplette Stütze behalten die bestehende Alpha-Hitbox. */
+/* MAP 1 – Stehtische: Hitbox der Tischplatte etwas weiter nach unten entfernt.
+   EXAKT dieselbe erweiterte Zone dient als Vordergrund-Occluder: dort läuft der Spieler hinter dem Tisch.
+   Stütze/Fuß behalten ihre Alpha-Hitbox. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 function standingTablePlatePassage(s,x,y){
   if(currentMap!==1 || !STANDING_TABLE_IDS.has(s.el.id))return false;
@@ -1140,14 +1141,14 @@ function standingTablePlatePassage(s,x,y){
   if(!dw||!dh||x<left||x>=left+dw||y<top||y>=top+dh)return false;
   const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((x-left)/dw*s.sourceW)));
   const sy=Math.min(s.sourceH-1,Math.max(0,Math.floor((y-top)/dh*s.sourceH)));
-  // Tischplatte aus Alpha-Silhouette: pro Spalte erster sichtbarer Pixel; obere 2/3 der Plattentiefe frei.
+  // Tischplatte aus Alpha-Silhouette: pro Spalte erster sichtbarer Pixel; Passage/Occlusion leicht nach unten erweitert.
   let first=-1,last=-1;
   for(let yy=0;yy<s.sourceH;yy++){if(s.alpha[yy*s.sourceW+sx]>=24){first=yy;break;}}
   if(first<0)return false;
   const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
   for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
   if(last<first)return false;
-  const passEnd=first+(last-first)*2/3;
+  const passEnd=first+(last-first)*0.80; // v32: 2/3; jetzt nur ein Stück weiter nach unten
   return sy<=passEnd;
 }
 function updateStandingTableDepth(){
@@ -1155,8 +1156,8 @@ function updateStandingTableDepth(){
   for(const id of STANDING_TABLE_IDS){
     const el=document.getElementById(id); if(!el)continue;
     const sprite=collisionSprites.find(s=>s.el===el);
-    // Exakt dieselbe Zone wie bei der Hitbox-Freigabe:
-    // NUR obere 2/3 der echten sichtbaren Tischplatte -> Spieler hinter dem Tisch.
+    // Exakt dieselbe, leicht nach unten erweiterte Zone wie bei der Hitbox-Freigabe:
+    // Wo die Hitbox entfernt ist, läuft der Spieler eine Ebene HINTER dem Tisch.
     const behind=sprite ? standingTablePlatePassage(sprite,PLAYER.x,PLAYER.y) : false;
     el.style.zIndex=behind?'10050':'';
   }
