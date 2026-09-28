@@ -96,13 +96,13 @@ function ensureMap1BockFX(){
     map1BockFog.id='map1BockFog';
     Object.assign(map1BockFog.style,{
       position:'fixed',inset:'0',overflow:'hidden',pointerEvents:'none',
-      zIndex:'11000',opacity:'0',transition:'opacity 850ms ease'
+      zIndex:'11000',opacity:'0',transition:'none'
     });
     for(let i=0;i<7;i++){
       const f=document.createElement('div');
       Object.assign(f.style,{
         position:'absolute',
-        left:`${-65-i*16}%`,
+        left:`${-18-i*8}%`,
         top:`${8+i*12}%`,
         width:`${70+i*5}%`,
         height:`${20+(i%3)*8}%`,
@@ -110,7 +110,7 @@ function ensureMap1BockFX(){
         background:'radial-gradient(ellipse at center, rgba(245,248,250,.58) 0%, rgba(220,228,232,.35) 36%, rgba(190,200,205,.10) 68%, rgba(255,255,255,0) 78%)',
         filter:`blur(${18+i*4}px)`,
         opacity:String(.52+(i%2)*.12),
-        animation:`bockFogDrift ${12.5+i*.45}s ease-in-out ${i*.16}s 1 forwards`
+        animation:`bockFogDrift ${12.5+i*.45}s ease-in-out 0s 1 forwards`
       });
       map1BockFog.appendChild(f);
     }
@@ -120,7 +120,7 @@ function ensureMap1BockFX(){
       st.id='bockFogStyle';
       st.textContent=`
         @keyframes bockFogDrift{
-          0%{transform:translate3d(-135%,0,0) scale(1.12);opacity:0}
+          0%{transform:translate3d(-12%,0,0) scale(1.12);opacity:.9}
           10%{opacity:.9}
           72%{opacity:.76}
           100%{transform:translate3d(245%,0,0) scale(1.24);opacity:0}
@@ -219,7 +219,8 @@ function startMap1BockEvent(){
 
   // Bildschirm sofort atmosphärisch abdunkeln + dichte Nebelschleier von links nach rechts.
   dark.style.display='block'; fog.style.display='block';
-  requestAnimationFrame(()=>{dark.style.opacity='1';fog.style.opacity='1';});
+  fog.style.opacity='1'; // Taste 2: Nebel im selben Tick sichtbar, keine Anlaufverzögerung.
+  requestAnimationFrame(()=>{dark.style.opacity='1';});
 
   // Exakt 3 Sekunden nach Tastendruck: Reiter kommt auf derselben Grundlinie ins Bild.
   map1BockSpawnTimer=setTimeout(()=>{
@@ -355,7 +356,7 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:900};
+const MAP2_SPAWN={x:768,y:650}; // Gaststube: oberhalb der Eingangstür, aber noch unterhalb der Theke
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
 /* MAP 2 – THEKE.
@@ -1276,9 +1277,15 @@ function updateMap2Occlusion(){
   // FRONTWAND: ebenfalls nur EIN Occluder. Beginn exakt an der sichtbaren Oberkante.
   // Beim Rückweg erscheint zuerst die Haarspitze, exakt wenn sie diese Kante erreicht.
   if(map2Room==='guestroom' &&
-     PLAYER.x>=MAP2_FRONT_WALL.left && PLAYER.x<=MAP2_FRONT_WALL.right &&
-     PLAYER.y>=MAP2_FRONT_WALL.top && PLAYER.y<=MAP2_FRONT_WALL.bottom){
-    setPlayerVisibleFraction(visibleAboveWallTop(PLAYER.y,MAP2_FRONT_WALL.top));
+     PLAYER.x>=MAP2_FRONT_WALL.left && PLAYER.x<=MAP2_FRONT_WALL.right){
+    const h=playerWorldHeight();
+    const spriteTop=PLAYER.y-h;
+    const overlapsFrontWall=PLAYER.y>=MAP2_FRONT_WALL.top && spriteTop<=MAP2_FRONT_WALL.bottom;
+    if(overlapsFrontWall){
+      // Untere Wand verdeckt die Figur auch dann zuverlässig, wenn sie bereits HINTER
+      // der Wand steht: maßgeblich ist die Sprite-Überlappung, nicht nur der Fußpunkt.
+      setPlayerVisibleFraction(visibleAboveWallTop(PLAYER.y,MAP2_FRONT_WALL.top));
+    }
   }
 }
 
