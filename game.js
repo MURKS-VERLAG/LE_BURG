@@ -1388,7 +1388,7 @@ function applyMap1LayoutFixes(){
 
 /* Baum-Hitbox: ausschließlich der schmale Stamm. Krone und sichtbare Wurzelausläufer
    links/rechts/unten sind bewusst KEINE Kollision. Werte beziehen sich auf das Baum-PNG. */
-const TREE_TRUNK_HITBOX={x1:.455,x2:.545,y1:.690,y2:.865}; // v44: obere Hälfte der bisherigen Stamm-Hitbox entfernt
+const TREE_TRUNK_HITBOX={x1:.455,x2:.545,y2:.865}; // v45: y1 ist dynamisch exakt die Baum-Ebenenwechselgrenze
 
 function spriteLocalPoint(s,x,y){
   const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
@@ -1477,6 +1477,115 @@ function updateStandingTableDepth(){
   }
   // Ausschließlich der CHARAKTER wechselt: Effektzone = Hintergrund, sonst Vordergrund.
   player.style.zIndex=behindAny?String(MAP1_PLAYER_BEHIND_Z):String(MAP1_PLAYER_FRONT_Z);
+}
+
+
+/* MAP 1 – STEHTISCH-AUSSCHANK v45.
+   Aktiv NUR bei direktem Kontakt UND korrekter Blickrichtung:
+   oben + S/front, unten + W/back, rechts + A/left, links + D/right.
+   Leertaste: 1 s Ausschankpose; danach normale Haltung + voller Krug mittig auf der Tischplatte. */
+let map1TableServing=false;
+let map1TableServeTimer=0;
+const map1TableMugs=new Map();
+const MAP1_TABLE_ACTION_MS=1000;
+const MAP1_TABLE_TOUCH=8;
+const MAP1_TABLE_ACTION_SPRITES={
+  back:'assets/player/tisch-w.png?v=45',
+  front:'assets/player/tisch-s.png?v=45',
+  right:'assets/player/tisch-d.png?v=45',
+  left:'assets/player/tisch-a.png?v=45'
+};
+
+function tableSpriteById(id){
+  const el=document.getElementById(id);
+  return el ? collisionSprites.find(s=>s.el===el) : null;
+}
+function rawSpriteOpaqueAt(s,x,y){
+  const p=spriteLocalPoint(s,x,y);
+  return !!p && p.alpha>=24;
+}
+function tableTouchesInFacingDirection(s,dir){
+  if(!s)return false;
+  const r=PLAYER.radius;
+  let vx=0,vy=0;
+  if(dir==='front')vy=1;
+  else if(dir==='back')vy=-1;
+  else if(dir==='right')vx=1;
+  else if(dir==='left')vx=-1;
+  else return false;
+  // Schmale Kontaktkante vor den Füßen/Körpermittelpunkt; kein Fern-Trigger.
+  for(let d=r;d<=r+MAP1_TABLE_TOUCH;d+=2){
+    for(const side of [-7,-3,0,3,7]){
+      const x=PLAYER.x+vx*d+(vy?side:0);
+      const y=PLAYER.y+vy*d+(vx?side:0);
+      if(rawSpriteOpaqueAt(s,x,y))return true;
+    }
+  }
+  return false;
+}
+function map1InteractiveTable(){
+  if(currentMap!==1||mapTransitioning||map1TableServing)return null;
+  for(const id of STANDING_TABLE_IDS){
+    const s=tableSpriteById(id); if(!s)continue;
+    const el=s.el, left=px(el,'left'), top=px(el,'top'), w=el.offsetWidth, h=el.offsetHeight;
+    if(!w||!h)continue;
+    const cx=left+w/2, cy=top+h/2;
+    let required=null;
+    // Blickrichtung muss zur Seite passen, auf der der Spieler tatsächlich steht.
+    if(PLAYER.y<cy && Math.abs(PLAYER.x-cx)<=w*.72)required='front';      // oberhalb -> S
+    else if(PLAYER.y>cy && Math.abs(PLAYER.x-cx)<=w*.72)required='back'; // unterhalb -> W
+    else if(PLAYER.x>cx && Math.abs(PLAYER.y-cy)<=h*.72)required='left'; // rechts -> A
+    else if(PLAYER.x<cx && Math.abs(PLAYER.y-cy)<=h*.72)required='right';// links -> D
+    if(required===PLAYER.direction && tableTouchesInFacingDirection(s,required))return s;
+  }
+  return null;
+}
+function updateMap1TableInteractionCue(){
+  const active=map1InteractiveTable();
+  for(const id of STANDING_TABLE_IDS){
+    const el=document.getElementById(id); if(!el)continue;
+    el.style.filter=(active&&active.el===el)
+      ?'brightness(1.24) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.72))'
+      :'none';
+  }
+}
+function ensureTableMug(tableSprite){
+  const id=tableSprite.el.id;
+  let mug=map1TableMugs.get(id);
+  if(!mug){
+    mug=document.createElement('img');
+    mug.alt=''; mug.draggable=false;
+    mug.src='assets/npc/bock-wunsch.png?v=38';
+    Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'1200',transform:'translate(-50%,-100%)'});
+    world.appendChild(mug); map1TableMugs.set(id,mug);
+  }
+  const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  // Zentral auf der sichtbaren Tischplatte, klar im Vordergrund.
+  mug.style.left=`${left+w/2}px`;
+  mug.style.top=`${top+h*.23}px`;
+  mug.style.display='block';
+  return mug;
+}
+function startMap1TableServe(){
+  const table=map1InteractiveTable();
+  if(!table)return false;
+  map1TableServing=true; keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
+  updateMap1TableInteractionCue();
+  const dir=PLAYER.direction;
+  const src=MAP1_TABLE_ACTION_SPRITES[dir];
+  player.setAttribute('src',src);
+  const scale=playerVisualScale();
+  // A ist als eigenes, physisch gespiegeltes D-Asset enthalten; deshalb hier keine zweite Spiegelung.
+  player.style.transform=`translate(-50%,-100%) scale(${scale})`;
+  clearTimeout(map1TableServeTimer);
+  map1TableServeTimer=setTimeout(()=>{
+    ensureTableMug(table);
+    map1TableServing=false;
+    PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES[PLAYER.direction][0];
+    showPlayerFrame(true);
+    updateMap1TableInteractionCue();
+  },MAP1_TABLE_ACTION_MS);
+  return true;
 }
 
 function playerCanStand(x,y){
@@ -1763,7 +1872,7 @@ function checkMapTransition(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(mapTransitioning || map2BarServing){ playerLastTime=now; updateMap2BarInteractionCue(); return; }
+  if(mapTransitioning || map2BarServing || map1TableServing){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -1807,6 +1916,7 @@ function updatePlayer(now){
   updateMap2BarDepth();
   updateMap2BarInteractionCue();
   updateStandingTableDepth();
+  updateMap1TableInteractionCue();
   // Bock-Charaktertiefe, OHNE die bereits berechnete MAP-1-Prop-Ebene zu überschreiben.
   if(currentMap===1 && map1BockFinal && map1BockFinal.style.display!=='none'){
     const playerIsBehindProp = Number(player.style.zIndex)===MAP1_PLAYER_BEHIND_Z;
@@ -1832,7 +1942,7 @@ window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){ if(!startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
@@ -1864,8 +1974,12 @@ function pointHitsSprite(s,x,y){
     const p=spriteLocalPoint(s,x,y);
     if(!p || p.alpha<24)return false;
     const nx=p.sx/Math.max(1,s.sourceW-1), ny=p.sy/Math.max(1,s.sourceH-1);
+    // EXAKT dieselbe Grenze wie der Ebenenwechsel: oberhalb/inkl. Hinter-Baum-Zone keine Stammkollision.
+    const extraSource=TREE_PASSAGE_EXTRA_WORLD/p.dh*s.sourceH;
+    const depthEndSource=Math.min(s.sourceH-1,(s.sourceH-1)*(2/3)+extraSource);
+    const collisionStart=depthEndSource/Math.max(1,s.sourceH-1);
     return nx>=TREE_TRUNK_HITBOX.x1 && nx<=TREE_TRUNK_HITBOX.x2 &&
-           ny>=TREE_TRUNK_HITBOX.y1 && ny<=TREE_TRUNK_HITBOX.y2;
+           ny>collisionStart && ny<=TREE_TRUNK_HITBOX.y2;
   }
   if(standingTablePlatePassage(s,x,y))return false;
   if(currentMap===1 && s.el.id==='wirtschaft' &&
