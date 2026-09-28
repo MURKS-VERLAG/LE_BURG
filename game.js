@@ -1422,7 +1422,9 @@ function furnitureTopPassage(s,x,y){
     // nach oben als Kollision erhalten. Die breite Stützen-Hitbox darunter bleibt unverändert.
     const collisionStripSource=(8/dh)*s.sourceH;
     const maxPassEnd=Math.max(first,last-collisionStripSource);
-    return sy<=Math.min(s.sourceH-1,maxPassEnd,oldPassEnd+extraSource);
+    // v53: Effekt von oben exakt bis auf den letzten 0,5-cm-Kollisionsstreifen erweitern.
+    // Die bisherige oldPassEnd-Grenze darf den Effekt nicht mehr vorzeitig stoppen.
+    return sy<=Math.min(s.sourceH-1,maxPassEnd);
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
@@ -1534,7 +1536,7 @@ function tableTouchesInFacingDirection(s,dir){
   const sideTopCut=80;      // v48: A/D von oben nochmals je 1 cm kürzer (gesamt 5 cm)
   const sideInnerExtra=24;  // v51: A/D je 0,5 cm (=8 Weltpixel) von der Mitte weg; exakt 1 cm Mitte frei
   const sideOuterExtra=0;   // v48: A von rechts / D von links jeweils 2 cm kürzer als v47
-  const wLeftToleranceExtra=16; // v52: W-Haltung exakt +1 cm Toleranz nach LINKS
+  const wLeftToleranceExtra=24; // v53: W-Haltung auf gleicher Linie weitere 0,5 cm (=8 Weltpixel) nach LINKS erweitert
   const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
   if(dir==='front'){ // OBERHALB + S: direkt an die TISCH-HITBOX andocken
