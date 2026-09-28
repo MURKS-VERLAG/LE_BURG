@@ -60,6 +60,10 @@ map1RunnerSound.volume=1;
 const map1BockSong=new Audio('assets/audio/Der Bock geht um.mp3');
 map1BockSong.preload='auto';
 map1BockSong.volume=.72;
+const map1BockDepartureSound=new Audio('assets/audio/bock-departure.mp3');
+const map1BockDrinkSound=new Audio('assets/audio/bock-drink.mp3');
+const map1BockBurpSound=new Audio('assets/audio/bock-burp.mp3');
+[map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>{a.preload='auto';a.volume=1;});
 
 let map1BockActive=false;
 let map1BockStart=0;
@@ -110,7 +114,7 @@ function ensureMap1BockFX(){
         background:'radial-gradient(ellipse at center, rgba(245,248,250,.58) 0%, rgba(220,228,232,.35) 36%, rgba(190,200,205,.10) 68%, rgba(255,255,255,0) 78%)',
         filter:`blur(${18+i*4}px)`,
         opacity:String(.52+(i%2)*.12),
-        animation:`bockFogDrift ${12.5+i*.45}s ease-in-out 0s 1 forwards`
+        animation:`bockFogDrift ${12.5+i*.45}s linear ${-i*1.35}s infinite`
       });
       map1BockFog.appendChild(f);
     }
@@ -201,6 +205,7 @@ function startMap1BockEvent(){
   map1RunnerSound.currentTime=0;
   map1BockSong.pause();
   map1BockSong.currentTime=0;
+  [map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>{a.pause();a.currentTime=0;});
   if(bgMusic)bgMusic.pause();
 
   // Schrei UND "Der Bock geht um" starten exakt gleichzeitig.
@@ -276,16 +281,29 @@ function dropMap1BockMug(index){
   const mug=document.createElement('img');
   mug.src='assets/npc/bock-krug-leer.png?v=38';mug.alt='';mug.draggable=false;
   const landings=[[-62,15],[61,18],[-82,38],[82,42],[0,55]];
+  const rests=[-76,72,-68,79,-73]; // bewusst liegend/schief; niemals kerzengerade
+  const drifts=[[-7,3],[8,2],[-9,4],[10,3],[6,4]];
   const [ox,oy]=landings[Math.max(0,Math.min(landings.length-1,index))];
+  const restRot=rests[index%rests.length], [slideX,slideY]=drifts[index%drifts.length];
   const endX=MAP1_BOCK_PATH_END[0]+ox,endY=MAP1_BOCK_PATH_END[1]+oy;
-  Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',pointerEvents:'none',zIndex:'720',transition:'left 600ms cubic-bezier(.2,.7,.3,1), top 600ms cubic-bezier(.25,.75,.3,1), filter 160ms ease'});
-  mug.dataset.x=String(endX); mug.dataset.y=String(endY); mug.dataset.landed='0'; mug.dataset.picked='0';
+  const finalX=endX+slideX,finalY=endY+slideY;
+  Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 72%',pointerEvents:'none',zIndex:'720',filter:'none'});
+  mug.dataset.x=String(finalX); mug.dataset.y=String(finalY); mug.dataset.landed='0'; mug.dataset.picked='0';
   map1BockMugs.push(mug); world.appendChild(mug);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{mug.style.left=`${endX}px`;mug.style.top=`${endY}px`;}));
-  setTimeout(()=>{
-    mug.dataset.landed='1'; mug.style.transition='filter 160ms ease';
-    mug.animate([{transform:'translate(-50%,-100%) translateY(0)'},{transform:'translate(-50%,-100%) translateY(-7px)',offset:.28},{transform:'translate(-50%,-100%) translateY(0)',offset:.52},{transform:'translate(-50%,-100%) translateX(-2px)',offset:.68},{transform:'translate(-50%,-100%) translateX(2px)',offset:.82},{transform:'translate(-50%,-100%) translateX(0)'}],{duration:430,easing:'ease-out'});
-  },600);
+  // Sanfter Wurf: nur leichte Drehung in der Luft, danach zwei kleine Bounces + kurzes Rutschen.
+  const anim=mug.animate([
+    {left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,transform:'translate(-50%,-100%) rotate(0deg)'},
+    {left:`${MAP1_BOCK_PATH_END[0]+ox*.48}px`,top:`${MAP1_BOCK_PATH_END[1]-150}px`,transform:`translate(-50%,-100%) rotate(${restRot*.28}deg)`,offset:.34},
+    {left:`${endX}px`,top:`${endY}px`,transform:`translate(-50%,-100%) rotate(${restRot}deg)`,offset:.64},
+    {left:`${endX+slideX*.38}px`,top:`${endY-7}px`,transform:`translate(-50%,-100%) rotate(${restRot+(restRot<0?4:-4)}deg)`,offset:.75},
+    {left:`${endX+slideX*.62}px`,top:`${endY+slideY*.35}px`,transform:`translate(-50%,-100%) rotate(${restRot}deg)`,offset:.82},
+    {left:`${endX+slideX*.82}px`,top:`${endY+slideY*.15-3}px`,transform:`translate(-50%,-100%) rotate(${restRot+(restRot<0?2:-2)}deg)`,offset:.90},
+    {left:`${finalX}px`,top:`${finalY}px`,transform:`translate(-50%,-100%) rotate(${restRot}deg)`}
+  ],{duration:900,easing:'cubic-bezier(.22,.72,.28,1)',fill:'forwards'});
+  anim.onfinish=()=>{
+    mug.style.left=`${finalX}px`;mug.style.top=`${finalY}px`;mug.style.transform=`translate(-50%,-100%) rotate(${restRot}deg)`;
+    mug.dataset.landed='1';
+  };
 }
 function map1BockNearbyMug(){
   if(currentMap!==1||mapTransitioning)return null;
@@ -317,6 +335,9 @@ function pickupMap1BockMug(){
 }
 
 const MAP1_BOCK_EXIT_PATH=[[768,525],[806,560],[850,610],[925,650],[973,711],[1078,782],[1205,849],[1345,930],[1460,995],[1575,1065]];
+function bockPathLength(pts){let total=0;for(let i=0;i<pts.length-1;i++)total+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);return total;}
+const MAP1_BOCK_RIDE_SPEED=bockPathLength(MAP1_BOCK_PATH)/MAP1_BOCK_RIDE_DURATION;
+const MAP1_BOCK_EXIT_DURATION=bockPathLength(MAP1_BOCK_EXIT_PATH)/MAP1_BOCK_RIDE_SPEED;
 function bockExitPointAt(t){
   const pts=MAP1_BOCK_EXIT_PATH,lens=[];let total=0;for(let i=0;i<pts.length-1;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);total+=l;}let d=Math.max(0,Math.min(1,t))*total;for(let i=0;i<lens.length;i++){if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}d-=lens[i];}return pts[pts.length-1];
 }
@@ -331,7 +352,7 @@ function beginMap1BockDeparture(){
     rider.src='assets/npc/bock-dismount.png?v=30';map1BockStage='departMount';
     map1BockExitTimer=setTimeout(()=>{
       rider.src='assets/npc/bock-stop.png?v=30';map1BockStage='departStand';
-      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=performance.now();},1500);
+      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=performance.now();map1BockDepartureSound.pause();map1BockDepartureSound.currentTime=0;map1BockDepartureSound.play().catch(()=>{});},1500);
     },500);
   },540);
 }
@@ -342,7 +363,29 @@ function finishMap1BockDeparture(){
   setTimeout(()=>{fog.style.display='none';dark.style.display='none';if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}},1900);
 }
 
-function startMap1BockBeerServe(){ if(!map1BockCanInteract())return false;map1BockServing=true;keys.clear();PLAYER.moving=false;hideMap1BockThought();updateMap1BockInteractionCue();const final=ensureMap1BockFinal();final.src='assets/npc/bock-bier.png?v=38';clearTimeout(map1BockServeTimer);map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-trinkt.png?v=38';map1BockServeTimer=setTimeout(()=>{if(currentMap!==1)return;final.src='assets/npc/bock-final.png?v=30';dropMap1BockMug(map1BockBeerCount);map1BockBeerCount++;map1BockServing=false;if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}else{map1BockStage='fiveBeersDone';hideMap1BockThought();clearTimeout(map1BockExitTimer);map1BockExitTimer=setTimeout(beginMap1BockDeparture,1000);}updateMap1BockInteractionCue();},3000);},1000);return true;}
+function startMap1BockBeerServe(){
+  if(!map1BockCanInteract())return false;
+  map1BockServing=true;keys.clear();PLAYER.moving=false;hideMap1BockThought();updateMap1BockInteractionCue();
+  const final=ensureMap1BockFinal();final.src='assets/npc/bock-bier.png?v=38';clearTimeout(map1BockServeTimer);
+  map1BockServeTimer=setTimeout(()=>{
+    if(currentMap!==1)return;
+    final.src='assets/npc/bock-trinkt.png?v=38';
+    map1BockDrinkSound.pause();
+    try{map1BockDrinkSound.currentTime=Math.min(1,Math.max(0,(map1BockDrinkSound.duration||1.01)-.01));}catch(_){map1BockDrinkSound.currentTime=1;}
+    map1BockDrinkSound.play().catch(()=>{});
+    map1BockServeTimer=setTimeout(()=>{
+      if(currentMap!==1)return;
+      final.src='assets/npc/bock-final.png?v=30';
+      map1BockBurpSound.pause();map1BockBurpSound.currentTime=0;map1BockBurpSound.play().catch(()=>{});
+      dropMap1BockMug(map1BockBeerCount);
+      map1BockBeerCount++;map1BockServing=false;
+      if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}
+      else{map1BockStage='fiveBeersDone';hideMap1BockThought();clearTimeout(map1BockExitTimer);map1BockExitTimer=setTimeout(beginMap1BockDeparture,1000);}
+      updateMap1BockInteractionCue();
+    },3000);
+  },1000);
+  return true;
+}
 
 function ensureMap1BockFinal(){
   if(map1BockFinal)return map1BockFinal;
@@ -378,7 +421,7 @@ function updateMap1Bock(now){
     return;
   }
   if(map1BockStage==='departRide'){
-    const t=Math.min(1,(now-map1BockExitStart)/5200);
+    const t=Math.min(1,(now-map1BockExitStart)/MAP1_BOCK_EXIT_DURATION);
     const [x,y]=bockExitPointAt(t);const seq=[1,2,3,2];const frame=seq[Math.floor((now-map1BockExitStart)/MAP1_BOCK_FRAME_MS)%seq.length];
     const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;if((rider.getAttribute('src')||'')!==wanted)rider.src=wanted;
     rider.style.left=`${x}px`;rider.style.top=`${y}px`;rider.style.transform='translate(-50%,-100%) scale(1.026)';rider.style.zIndex=String(19000+Math.round(y));
