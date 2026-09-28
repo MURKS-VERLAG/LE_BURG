@@ -1376,19 +1376,19 @@ const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
 
 /* FIX v43: linker Stehtisch exakt 5 cm (= 80 Weltpixel) tiefer.
    Da Kollision und Tiefeneffekt die echte Elementposition lesen, wandert der Effekt automatisch mit. */
-const LEFT_TABLE_DOWN_WORLD=80;
+const LEFT_TABLE_DOWN_WORLD=104; // v44: insgesamt 6,5 cm tiefer (v43 5 cm + weitere 1,5 cm)
 function applyMap1LayoutFixes(){
   const t=document.getElementById('stehtischLinks');
-  if(t && t.dataset.v43Moved!=='1'){
+  if(t && t.dataset.v44Moved!=='1'){
     const top=parseFloat(getComputedStyle(t).top)||0;
     t.style.top=`${top+LEFT_TABLE_DOWN_WORLD}px`;
-    t.dataset.v43Moved='1';
+    t.dataset.v44Moved='1';
   }
 }
 
 /* Baum-Hitbox: ausschließlich der schmale Stamm. Krone und sichtbare Wurzelausläufer
    links/rechts/unten sind bewusst KEINE Kollision. Werte beziehen sich auf das Baum-PNG. */
-const TREE_TRUNK_HITBOX={x1:.455,x2:.545,y1:.515,y2:.865};
+const TREE_TRUNK_HITBOX={x1:.455,x2:.545,y1:.690,y2:.865}; // v44: obere Hälfte der bisherigen Stamm-Hitbox entfernt
 
 function spriteLocalPoint(s,x,y){
   const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
