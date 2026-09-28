@@ -1596,7 +1596,7 @@ function ensureTableMug(tableSprite){
     mug=document.createElement('img');
     mug.alt=''; mug.draggable=false;
     mug.src='assets/npc/bock-wunsch.png?v=38';
-    Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'490',transform:'translate(-50%,-100%)'});
+    Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'750',transform:'translate(-50%,-100%)'});
     world.appendChild(mug); map1TableMugs.set(id,mug);
   }
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
@@ -1614,7 +1614,7 @@ function startMap1TableServe(){
   const dir=PLAYER.direction;
   const src=MAP1_TABLE_ACTION_SPRITES[dir];
   player.setAttribute('src',src);
-  player.style.zIndex='1300'; // v49: Ausschankfigur sicher vor dem Bierkrug (Krug=490)
+  player.style.zIndex=(dir==='front')?String(MAP1_PLAYER_BEHIND_Z):'1000'; // v50: S-Ausschank bleibt hinter dem Tisch; A/D/W unverändert
   const scale=playerVisualScale();
   // A ist als eigenes, physisch gespiegeltes D-Asset enthalten; deshalb hier keine zweite Spiegelung.
   player.style.transform=`translate(-50%,-100%) scale(${scale})`;
