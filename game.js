@@ -187,8 +187,40 @@ function startMap1BockEvent(){
   if(currentMap!==1 || mapTransitioning || map1BockActive)return;
   map1BockActive=true;
   map1BockStage='waiting';
+
+  // Kompletter Wiederholungs-Reset für Taste 2.
+  clearTimeout(map1BockServeTimer);
+  clearTimeout(map1BockBurpTimer);
+  clearTimeout(map1BockExitTimer);
+  clearTimeout(map1BockFinalTimer);
+  map1BockServing=false;
+  map1BockBeerCount=0;
+  if(map1BockThought){
+    map1BockThought.style.display='none';
+    map1BockThought.style.opacity='0';
+    map1BockThought.style.transform='scale(.72)';
+  }
+  for(const mug of map1BockMugs.splice(0)){
+    try{mug.getAnimations().forEach(a=>a.cancel());}catch(_){}
+    mug.remove();
+  }
+  if(map1BockFinal){
+    map1BockFinal.style.display='none';
+    map1BockFinal.style.opacity='1';
+    map1BockFinal.style.filter='none';
+    map1BockFinal.style.transition='none';
+    map1BockFinal.src='assets/npc/bock-final.png?v=30';
+  }
+
   const {dark,fog}=ensureMap1BockFX();
+  dark.style.transition='opacity 900ms ease';
+  fog.style.transition='none';
   const rider=ensureMap1BockRider();
+  try{rider.getAnimations().forEach(a=>a.cancel());}catch(_){}
+  rider.style.transition='none';
+  rider.style.opacity='1';
+  rider.style.filter='none';
+  rider.style.transform='translate(-50%,-100%) scale(1.026)';
 
   // Event 1 sauber stoppen, falls es noch läuft.
   stopMap1BearAudioLoop();
@@ -248,6 +280,7 @@ let map1BockThought=null;
 let map1BockServing=false;
 let map1BockBeerCount=0;
 let map1BockServeTimer=0;
+let map1BockBurpTimer=0;
 let map1BockExitTimer=0;
 let map1BockExitStart=0;
 const map1BockMugs=[];
@@ -287,7 +320,7 @@ function dropMap1BockMug(index){
   const restRot=rests[index%rests.length], [slideX,slideY]=drifts[index%drifts.length];
   const endX=MAP1_BOCK_PATH_END[0]+ox,endY=MAP1_BOCK_PATH_END[1]+oy;
   const finalX=endX+slideX,finalY=endY+slideY;
-  Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 72%',pointerEvents:'none',zIndex:'720',filter:'none'});
+  Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 72%',pointerEvents:'none',zIndex:'400',filter:'none'});
   mug.dataset.x=String(finalX); mug.dataset.y=String(finalY); mug.dataset.landed='0'; mug.dataset.picked='0';
   map1BockMugs.push(mug); world.appendChild(mug);
   // Sanfter Wurf: nur leichte Drehung in der Luft, danach zwei kleine Bounces + kurzes Rutschen.
@@ -373,10 +406,18 @@ function startMap1BockBeerServe(){
     map1BockDrinkSound.pause();
     try{map1BockDrinkSound.currentTime=Math.min(1,Math.max(0,(map1BockDrinkSound.duration||1.01)-.01));}catch(_){map1BockDrinkSound.currentTime=1;}
     map1BockDrinkSound.play().catch(()=>{});
+
+    // Rülpser 1 Sekunde VOR dem Krugwurf; Trink-Sound läuft unangetastet weiter.
+    clearTimeout(map1BockBurpTimer);
+    map1BockBurpTimer=setTimeout(()=>{
+      if(currentMap!==1||!map1BockActive)return;
+      map1BockBurpSound.currentTime=0;
+      map1BockBurpSound.play().catch(()=>{});
+    },2000);
+
     map1BockServeTimer=setTimeout(()=>{
       if(currentMap!==1)return;
       final.src='assets/npc/bock-final.png?v=30';
-      map1BockBurpSound.pause();map1BockBurpSound.currentTime=0;map1BockBurpSound.play().catch(()=>{});
       dropMap1BockMug(map1BockBeerCount);
       map1BockBeerCount++;map1BockServing=false;
       if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}
@@ -1527,21 +1568,37 @@ function updateMap2Occlusion(){
   }
 }
 
-async function swapMap(src){
-  const next=new Image();
-  next.src=src;
-  await new Promise((resolve,reject)=>{
-    next.onload=resolve;
-    next.onerror=reject;
-  }).catch(()=>{});
-  await next.decode().catch(()=>{});
+const MAP_IMAGE_SOURCES=['assets/maps/terrasse.jpg','assets/maps/wirtschaft-innen.jpg?v=18'];
+const MAP_IMAGE_CACHE=new Map();
+
+function preloadTransitionMaps(){
+  for(const src of MAP_IMAGE_SOURCES){
+    if(MAP_IMAGE_CACHE.has(src))continue;
+    const img=new Image();
+    img.decoding='async';
+    img.src=src;
+    const ready=img.decode ? img.decode().catch(()=>{}) :
+      new Promise(r=>{if(img.complete)r();else{img.onload=r;img.onerror=r;}});
+    img._ready=ready;
+    MAP_IMAGE_CACHE.set(src,img);
+  }
+}
+preloadTransitionMaps();
+
+async function ensureTransitionMapReady(src){
+  preloadTransitionMaps();
+  const img=MAP_IMAGE_CACHE.get(src);
+  if(img?._ready)await img._ready;
+}
+
+function swapMapInstant(src){
   map.src=src;
-  await map.decode().catch(()=>{});
 }
 
 async function enterWirtschaft(){
   if(mapTransitioning||currentMap!==1)return;
   playDoorPassSound();
+  await ensureTransitionMapReady('assets/maps/wirtschaft-innen.jpg?v=18');
   mapTransitioning=true;
   keys.clear();
   PLAYER.moving=false;
@@ -1559,7 +1616,7 @@ async function enterWirtschaft(){
   map2MiddleDoorPassArmed=true;
   document.body.classList.add('map2');
   updateMap2BarVisibility();
-  await swapMap('assets/maps/wirtschaft-innen.jpg?v=18');
+  swapMapInstant('assets/maps/wirtschaft-innen.jpg?v=18');
 
   PLAYER.x=MAP2_SPAWN.x;
   PLAYER.y=MAP2_SPAWN.y;
@@ -1585,6 +1642,7 @@ async function enterWirtschaft(){
 async function leaveWirtschaft(){
   if(mapTransitioning||currentMap!==2)return;
   playDoorPassSound();
+  await ensureTransitionMapReady('assets/maps/terrasse.jpg');
   mapTransitioning=true;
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
   if(player)player.classList.add('map-fading');
@@ -1594,7 +1652,7 @@ async function leaveWirtschaft(){
   currentMap=1; map2Room='guestroom'; map2InMiddleWall=false; map2MiddleDoorPassArmed=true;
   document.body.classList.remove('map2');
   updateMap2BarVisibility();
-  await swapMap('assets/maps/terrasse.jpg');
+  swapMapInstant('assets/maps/terrasse.jpg');
   PLAYER.x=778; PLAYER.y=356; PLAYER.direction='front';
   PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES.front[0];
   player.style.left=`${PLAYER.x}px`; player.style.top=`${PLAYER.y}px`;
@@ -1711,15 +1769,17 @@ function updatePlayer(now){
   updateMap2BarDepth();
   updateMap2BarInteractionCue();
   updateStandingTableDepth();
-  // Friedrich Bock: unterhalb seiner Fußlinie = Spieler davor; auf/oberhalb = Spieler dahinter.
-  if(currentMap===1){
-    // Spieler liegt IMMER vor allen leeren Krügen.
-    const mugFrontZ=900;
-    if(map1BockFinal && map1BockFinal.style.display!=='none'){
+  // Bock-Charaktertiefe, OHNE die bereits berechnete MAP-1-Prop-Ebene zu überschreiben.
+  if(currentMap===1 && map1BockFinal && map1BockFinal.style.display!=='none'){
+    const playerIsBehindProp = Number(player.style.zIndex)===MAP1_PLAYER_BEHIND_Z;
+    if(playerIsBehindProp){
+      map1BockFinal.style.zIndex='498';
+    }else if(PLAYER.y>MAP1_BOCK_FOOT_Y){
       map1BockFinal.style.zIndex='750';
-      player.style.zIndex=String(Math.max(mugFrontZ,PLAYER.y>MAP1_BOCK_FOOT_Y?1000:749));
+      player.style.zIndex=String(MAP1_PLAYER_FRONT_Z);
     }else{
-      player.style.zIndex=String(Math.max(mugFrontZ,100+Math.round(PLAYER.y)));
+      map1BockFinal.style.zIndex='750';
+      player.style.zIndex='749';
     }
   }
 }
