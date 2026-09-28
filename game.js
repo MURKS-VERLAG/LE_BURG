@@ -246,7 +246,7 @@ function startMap1BockEvent(){
   map1BockSong.volume=.72;
   map1BockSong.play().catch(()=>{});
   map1RunnerTimer=setTimeout(()=>{
-    if(!map1BockActive||currentMap!==1)return;
+    if(!map1BockActive)return;
     const woman=ensureMap1Runner();
     map1RunnerActive=true;
     map1RunnerStart=performance.now();
@@ -261,7 +261,7 @@ function startMap1BockEvent(){
 
   // Exakt 3 Sekunden nach Tastendruck: Reiter kommt auf derselben Grundlinie ins Bild.
   map1BockSpawnTimer=setTimeout(()=>{
-    if(!map1BockActive||currentMap!==1)return;
+    if(!map1BockActive)return;
     map1BockStage='riding';
     map1BockStart=performance.now();
     rider.style.display='block';
@@ -375,7 +375,7 @@ function bockExitPointAt(t){
   const pts=MAP1_BOCK_EXIT_PATH,lens=[];let total=0;for(let i=0;i<pts.length-1;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);total+=l;}let d=Math.max(0,Math.min(1,t))*total;for(let i=0;i<lens.length;i++){if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}d-=lens[i];}return pts[pts.length-1];
 }
 function beginMap1BockDeparture(){
-  if(!map1BockActive||currentMap!==1)return;
+  if(!map1BockActive)return;
   const final=ensureMap1BockFinal(),rider=ensureMap1BockRider();
   map1BockStage='departPuff'; showBockPuff(MAP1_BOCK_PATH_END[0],MAP1_BOCK_PATH_END[1]);
   final.style.transition='opacity 420ms ease,filter 420ms ease';final.style.opacity='0';final.style.filter='blur(8px) brightness(2.1)';
@@ -385,7 +385,7 @@ function beginMap1BockDeparture(){
     rider.src='assets/npc/bock-dismount.png?v=30';map1BockStage='departMount';
     map1BockExitTimer=setTimeout(()=>{
       rider.src='assets/npc/bock-stop.png?v=30';map1BockStage='departStand';
-      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=performance.now();map1BockDepartureSound.pause();map1BockDepartureSound.currentTime=0;map1BockDepartureSound.play().catch(()=>{});},1500);
+      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=performance.now();map1BockDepartureSound.pause();map1BockDepartureSound.currentTime=0;if(currentMap===1&&!mapTransitioning)map1BockDepartureSound.play().catch(()=>{});},1500);
     },500);
   },540);
 }
@@ -401,18 +401,18 @@ function startMap1BockBeerServe(){
   map1BockServing=true;keys.clear();PLAYER.moving=false;hideMap1BockThought();updateMap1BockInteractionCue();
   const final=ensureMap1BockFinal();final.src='assets/npc/bock-bier.png?v=38';clearTimeout(map1BockServeTimer);
   map1BockServeTimer=setTimeout(()=>{
-    if(currentMap!==1)return;
+    if(!map1BockActive)return;
     final.src='assets/npc/bock-trinkt.png?v=38';
     map1BockDrinkSound.pause();
     try{map1BockDrinkSound.currentTime=Math.min(1,Math.max(0,(map1BockDrinkSound.duration||1.01)-.01));}catch(_){map1BockDrinkSound.currentTime=1;}
-    map1BockDrinkSound.play().catch(()=>{});
+    if(currentMap===1&&!mapTransitioning)map1BockDrinkSound.play().catch(()=>{});
 
     // Rülpser 1 Sekunde VOR dem Krugwurf; Trink-Sound läuft unangetastet weiter.
     clearTimeout(map1BockBurpTimer);
     map1BockBurpTimer=setTimeout(()=>{
-      if(currentMap!==1||!map1BockActive)return;
+      if(!map1BockActive)return;
       map1BockBurpSound.currentTime=0;
-      map1BockBurpSound.play().catch(()=>{});
+      if(currentMap===1&&!mapTransitioning)map1BockBurpSound.play().catch(()=>{});
     },2000);
 
     map1BockServeTimer=setTimeout(()=>{
@@ -454,12 +454,10 @@ function updateMap1Bock(now){
   if(!map1BockActive)return;
   const rider=ensureMap1BockRider();
   if(currentMap!==1||mapTransitioning){
-    map1BockActive=false;
-    rider.style.display='none';
-    map1BockSong.pause();
-    ensureMap1BockFX().dark.style.opacity='0';
-    ensureMap1BockFX().fog.style.opacity='0';
-    return;
+    // v43: Bock-Sequenz wird NICHT beendet. Nur Map-1-Visuals/SFX werden innen verborgen.
+    rider.style.visibility='hidden';
+  }else{
+    rider.style.visibility='visible';
   }
   if(map1BockStage==='departRide'){
     const t=Math.min(1,(now-map1BockExitStart)/MAP1_BOCK_EXIT_DURATION);
@@ -519,7 +517,7 @@ function updateMap1Bock(now){
           map1BockStage='final';
 
           // 5 Sekunden stehen, dann Song/Nebel/Dunkelheit weich raus + normale Musik weich rein.
-          setTimeout(()=>{if(map1BockActive&&currentMap===1)showMap1BockThought();},4500);
+          setTimeout(()=>{if(map1BockActive)showMap1BockThought();},4500);
           map1BockFinalTimer=setTimeout(finishMap1BockEvent,5000);
         },540);
       },500);
@@ -1022,13 +1020,11 @@ function startMap1Runner(){
 
   // Exakt 0,3 s nach Beginn des Schreis startet Bear and the Maiden Fair parallel zum Schrei.
   map1BearSongStartTimer=setTimeout(()=>{
-    if(currentMap!==1)return;
     startMap1BearSong();
   },300);
 
   // Frau rennt weiterhin erst 0,5 s nach Beginn des Schreis los.
   map1RunnerTimer=setTimeout(()=>{
-    if(currentMap!==1 || mapTransitioning)return;
     map1RunnerActive=true;
     map1RunnerStart=performance.now();
     el.style.display='block';
@@ -1037,7 +1033,6 @@ function startMap1Runner(){
 
   // Bär + Bärensounds weiterhin erst nach komplettem Frauenschrei.
   map1RunnerSound.onended=()=>{
-    if(currentMap!==1 || mapTransitioning)return;
     startMap1Bear(performance.now()-MAP1_BEAR_DELAY);
     startMap1BearAudioLoop();
   };
@@ -1046,7 +1041,8 @@ function updateMap1Runner(now){
   const el=ensureMap1Runner();
   if(!map1RunnerActive){ el.style.display='none'; return; }
   if(currentMap!==1 || mapTransitioning){
-    map1RunnerActive=false; el.style.display='none'; map1RunnerSound.pause(); return;
+    // v43: Event-Zeitachse läuft im Hintergrund weiter; nur Map-1-Bild/SFX sind innen unsichtbar/stumm.
+    el.style.visibility='hidden';
   }
   const t=Math.min(1,(now-map1RunnerStart)/MAP1_RUNNER_DURATION);
   // Gleichmäßiger Lauf entlang der exakt nachgezeichneten roten Route.
@@ -1132,10 +1128,9 @@ function updateMap1Bear(now){
   const el=ensureMap1Bear();
 
   if(currentMap!==1 || mapTransitioning){
-    map1BearActive=false;
-    el.style.display='none';
+    // v43: Bär läuft zeitlich weiter. Innen nur unsichtbar; Bärensounds sind stumm, Song läuft weiter.
+    el.style.visibility='hidden';
     stopMap1BearEventAudio();
-    return;
   }
 
   if(now<map1BearStart){
@@ -1205,6 +1200,31 @@ function clampPosition(){
   targetX=Math.max(-maxX,Math.min(maxX,targetX));
   targetY=Math.max(-maxY,Math.min(maxY,targetY));
 }
+function syncMap1EventVisibility(){
+  const onMap1=currentMap===1 && !mapTransitioning;
+  // Nur die VISUALS von Map-1-Events verstecken. Zustände/Zeitachsen laufen weiter.
+  if(map1Runner) map1Runner.style.visibility=onMap1 ? (map1RunnerActive?'visible':'hidden') : 'hidden';
+  if(map1Bear) map1Bear.style.visibility=onMap1 ? (map1BearActive?'visible':'hidden') : 'hidden';
+  if(map1BockRider && map1BockRider.style.display!=='none') map1BockRider.style.visibility=onMap1?'visible':'hidden';
+  if(map1BockFinal && map1BockFinal.style.display!=='none') map1BockFinal.style.visibility=onMap1?'visible':'hidden';
+  if(map1BockThought && map1BockThought.style.display!=='none') map1BockThought.style.visibility=onMap1?'visible':'hidden';
+  for(const mug of map1BockMugs){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
+  if(map1BockPuff)map1BockPuff.style.visibility=onMap1?'visible':'hidden';
+  const fx=ensureMap1BockFX();
+  if(!onMap1){fx.dark.style.visibility='hidden';fx.fog.style.visibility='hidden';}
+  else {fx.dark.style.visibility='visible';fx.fog.style.visibility='visible';}
+}
+
+/* In Map 2 laufen die Event-Zeitachsen weiter. Mitgenommen werden aber ausschließlich
+   die Event-SONGS; Schreie/Bärensounds/Bock-SFX bleiben innen stumm. */
+function syncEventAudioForCurrentMap(){
+  if(currentMap===2){
+    map1RunnerSound.pause();
+    stopMap1BearAudioLoop();
+    [map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>a.pause());
+  }
+}
+
 function draw(now){
   const z=ZOOM_LEVELS[zoomIndex];
   currentX+=(targetX-currentX)*.055;
@@ -1221,6 +1241,8 @@ function draw(now){
   updateMap1Bock(now);
   updateMap1BockInteractionCue();
   updateMap1BockMugCue();
+  syncMap1EventVisibility();
+  syncEventAudioForCurrentMap();
 rafId=requestAnimationFrame(draw);
 }
 function setZoom(i){
@@ -1351,6 +1373,22 @@ const TABLE_PASSAGE_EXTRA_WORLD=16;
 const TAFEL_PASSAGE_EXTRA_WORLD=40; // v35 24 + 16
 const CHAIR_PASSAGE_EXTRA_WORLD=56; // v35 24 + 32
 const TREE_PASSAGE_EXTRA_WORLD=48;  // +3 cm gegenüber v35
+
+/* FIX v43: linker Stehtisch exakt 5 cm (= 80 Weltpixel) tiefer.
+   Da Kollision und Tiefeneffekt die echte Elementposition lesen, wandert der Effekt automatisch mit. */
+const LEFT_TABLE_DOWN_WORLD=80;
+function applyMap1LayoutFixes(){
+  const t=document.getElementById('stehtischLinks');
+  if(t && t.dataset.v43Moved!=='1'){
+    const top=parseFloat(getComputedStyle(t).top)||0;
+    t.style.top=`${top+LEFT_TABLE_DOWN_WORLD}px`;
+    t.dataset.v43Moved='1';
+  }
+}
+
+/* Baum-Hitbox: ausschließlich der schmale Stamm. Krone und sichtbare Wurzelausläufer
+   links/rechts/unten sind bewusst KEINE Kollision. Werte beziehen sich auf das Baum-PNG. */
+const TREE_TRUNK_HITBOX={x1:.455,x2:.545,y1:.515,y2:.865};
 
 function spriteLocalPoint(s,x,y){
   const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
@@ -1821,6 +1859,14 @@ async function buildAlphaCollision(el){
 }
 function px(el,prop){return parseFloat(getComputedStyle(el)[prop])||0;}
 function pointHitsSprite(s,x,y){
+  /* v43: Baum kollidiert NUR am Stamm. Die Effekt-/Tiefenzone bleibt davon unabhängig. */
+  if(currentMap===1 && s.el.id==='baum'){
+    const p=spriteLocalPoint(s,x,y);
+    if(!p || p.alpha<24)return false;
+    const nx=p.sx/Math.max(1,s.sourceW-1), ny=p.sy/Math.max(1,s.sourceH-1);
+    return nx>=TREE_TRUNK_HITBOX.x1 && nx<=TREE_TRUNK_HITBOX.x2 &&
+           ny>=TREE_TRUNK_HITBOX.y1 && ny<=TREE_TRUNK_HITBOX.y2;
+  }
   if(standingTablePlatePassage(s,x,y))return false;
   if(currentMap===1 && s.el.id==='wirtschaft' &&
      x>=WIRTSCHAFT_DOOR_PASSAGE.x1 && x<=WIRTSCHAFT_DOOR_PASSAGE.x2 &&
@@ -1898,6 +1944,7 @@ async function start(){
 
   await preloadPlayerFrames();
   await preloadMap1BearFrames();
+  applyMap1LayoutFixes();
   ensureMap1Runner();
   ensureMap1Bear();
   ensureMap2Bar();
