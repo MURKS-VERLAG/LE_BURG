@@ -7,6 +7,16 @@ const bgMusic = document.getElementById('bgMusic');
 const player = document.getElementById('player');
 const irisTransition = document.getElementById('irisTransition');
 
+/* Türsound – einmal pro tatsächlichem Durchgang. */
+const doorPassSound=new Audio('assets/audio/Door Open Sound.mp3');
+doorPassSound.preload='auto';
+doorPassSound.volume=1;
+function playDoorPassSound(){
+  doorPassSound.pause();
+  doorPassSound.currentTime=0;
+  doorPassSound.play().catch(()=>{});
+}
+
 /* MAP 1 – panisch davonrennende Magd (Taste 1). */
 let map1Runner=null;
 let map1RunnerActive=false;
@@ -345,7 +355,7 @@ const WIRTSCHAFT_DOOR_PASSAGE={x1:748,x2:808,y1:318,y2:392};
 const WIRTSCHAFT_DOOR_TRIGGER={x1:754,x2:802,y:334};
 
 /* MAP 2 – neue Innenkarte. Alte Map-2-Hitboxen/Occluder vollständig entfernt. */
-const MAP2_SPAWN={x:768,y:640};
+const MAP2_SPAWN={x:768,y:675};
 const MAP2_EXIT_TRIGGER={x1:700,x2:836,y1:705,y2:770};
 
 /* MAP 2 – THEKE.
@@ -571,6 +581,7 @@ const MAP2_KITCHEN_POLY=[[92,0],[1444,0],[1444,239],[92,239]];
    laufen und bleibt verdeckt. Das verhindert gleichzeitig, dass man die Wand
    von der Gaststube aus irgendwo anders betreten kann. */
 let map2InMiddleWall=false;
+let map2MiddleDoorPassArmed=true;
 
 function pointInPoly(x,y,poly){
   let inside=false;
@@ -1119,6 +1130,35 @@ function setPlayerDirection(direction){
 }
 
 
+/* MAP 1 – Stehtische: obere 2/3 der sichtbaren Tischplatte sind Durchgang + Vordergrund-Occluder.
+   Unteres Drittel der Platte und komplette Stütze behalten die bestehende Alpha-Hitbox. */
+const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
+function standingTablePlatePassage(s,x,y){
+  if(currentMap!==1 || !STANDING_TABLE_IDS.has(s.el.id))return false;
+  const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
+  if(!dw||!dh||x<left||x>=left+dw||y<top||y>=top+dh)return false;
+  const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((x-left)/dw*s.sourceW)));
+  const sy=Math.min(s.sourceH-1,Math.max(0,Math.floor((y-top)/dh*s.sourceH)));
+  // Tischplatte aus Alpha-Silhouette: pro Spalte erster sichtbarer Pixel; obere 2/3 der Plattentiefe frei.
+  let first=-1,last=-1;
+  for(let yy=0;yy<s.sourceH;yy++){if(s.alpha[yy*s.sourceW+sx]>=24){first=yy;break;}}
+  if(first<0)return false;
+  const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
+  for(let yy=first;yy<=maxPlate;yy++){if(s.alpha[yy*s.sourceW+sx]>=24)last=yy;}
+  if(last<first)return false;
+  const passEnd=first+(last-first)*2/3;
+  return sy<=passEnd;
+}
+function updateStandingTableDepth(){
+  if(currentMap!==1)return;
+  for(const id of STANDING_TABLE_IDS){
+    const el=document.getElementById(id); if(!el)continue;
+    const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+    const overPlate=PLAYER.x>=left&&PLAYER.x<=left+w&&PLAYER.y>=top&&PLAYER.y<=top+h*.34;
+    el.style.zIndex=overPlate?'10050':'';
+  }
+}
+
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
@@ -1254,6 +1294,7 @@ async function swapMap(src){
 
 async function enterWirtschaft(){
   if(mapTransitioning||currentMap!==1)return;
+  playDoorPassSound();
   mapTransitioning=true;
   keys.clear();
   PLAYER.moving=false;
@@ -1268,6 +1309,7 @@ async function enterWirtschaft(){
   currentMap=2;
   map2Room='guestroom';
   map2InMiddleWall=false;
+  map2MiddleDoorPassArmed=true;
   document.body.classList.add('map2');
   updateMap2BarVisibility();
   await swapMap('assets/maps/wirtschaft-innen.jpg?v=18');
@@ -1295,13 +1337,14 @@ async function enterWirtschaft(){
 
 async function leaveWirtschaft(){
   if(mapTransitioning||currentMap!==2)return;
+  playDoorPassSound();
   mapTransitioning=true;
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
   if(player)player.classList.add('map-fading');
   await new Promise(r=>setTimeout(r,220));
   await animateIris(150,0,650);
   setIrisRadius(0);
-  currentMap=1; map2Room='guestroom'; map2InMiddleWall=false;
+  currentMap=1; map2Room='guestroom'; map2InMiddleWall=false; map2MiddleDoorPassArmed=true;
   document.body.classList.remove('map2');
   updateMap2BarVisibility();
   await swapMap('assets/maps/terrasse.jpg');
@@ -1322,6 +1365,7 @@ function updateMap2RoomAndTransitions(){
   if(map2Room==='guestroom' && !map2InMiddleWall &&
      PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2 &&
      PLAYER.y<MAP2_MIDDLE_WALL.bottom){
+    if(map2MiddleDoorPassArmed){playDoorPassSound();map2MiddleDoorPassArmed=false;}
     map2InMiddleWall=true;
   }
 
@@ -1330,6 +1374,7 @@ function updateMap2RoomAndTransitions(){
   if(map2InMiddleWall && PLAYER.y<=MAP2_MIDDLE_WALL.top){
     map2InMiddleWall=false;
     map2Room='kitchen';
+    map2MiddleDoorPassArmed=true;
   }
 
   // Küche -> Mittelwand: Oberkante ist KEINE Hitbox.
@@ -1338,6 +1383,7 @@ function updateMap2RoomAndTransitions(){
   if(map2Room==='kitchen' &&
      PLAYER.x>=MAP2_MIDDLE_WALL.left && PLAYER.x<=MAP2_MIDDLE_WALL.right &&
      PLAYER.y>MAP2_MIDDLE_WALL.top){
+    if(map2MiddleDoorPassArmed && PLAYER.x>=MAP2_KITCHEN_DOOR.x1 && PLAYER.x<=MAP2_KITCHEN_DOOR.x2){playDoorPassSound();map2MiddleDoorPassArmed=false;}
     map2Room='guestroom';
     map2InMiddleWall=true;
   }
@@ -1347,6 +1393,7 @@ function updateMap2RoomAndTransitions(){
     map2InMiddleWall=false;
     map2Room='guestroom';
     PLAYER.y=MAP2_MIDDLE_WALL.bottom;
+    map2MiddleDoorPassArmed=true;
   }
 
   // Ausgang Map 2 -> Map 1 ausschließlich an der Haupttür der Front-Unterkante.
@@ -1411,6 +1458,7 @@ function updatePlayer(now){
   updateMap2Occlusion();
   updateMap2BarDepth();
   updateMap2BarInteractionCue();
+  updateStandingTableDepth();
 }
 
 window.addEventListener('keydown',e=>{
@@ -1449,6 +1497,7 @@ async function buildAlphaCollision(el){
 }
 function px(el,prop){return parseFloat(getComputedStyle(el)[prop])||0;}
 function pointHitsSprite(s,x,y){
+  if(standingTablePlatePassage(s,x,y))return false;
   if(currentMap===1 && s.el.id==='wirtschaft' &&
      x>=WIRTSCHAFT_DOOR_PASSAGE.x1 && x<=WIRTSCHAFT_DOOR_PASSAGE.x2 &&
      y>=WIRTSCHAFT_DOOR_PASSAGE.y1 && y<=WIRTSCHAFT_DOOR_PASSAGE.y2)return false;
