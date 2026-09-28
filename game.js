@@ -1131,25 +1131,36 @@ function setPlayerDirection(direction){
 }
 
 
-/* MAP 1 – Möbel-Oberkante: Freigabe + Tiefeneffekt nur von OBEN nach UNTEN.
-   Stehtische werden gegenüber v33 nochmals um ca. 0,5 cm (8 Weltpixel) erweitert.
-   Für Stuhl und lange Tafel gilt derselbe 8-Pixel-Streifen ab ihrer sichtbaren Oberkante.
-   Exakt der hitboxfreie Bereich ist zugleich der Bereich, in dem die Figur HINTER dem Möbel läuft. */
+/* MAP 1 – Tiefen-/Kollisionszonen der Props.
+   Maßstab bleibt exakt wie im letzten Patch: 0,5 cm = 8 Weltpixel, 1 cm = 16 Weltpixel.
+   Stehtische: gegenüber v34 nochmals +8 px nach unten (insgesamt +16 px gegenüber der alten Basis).
+   Stuhl + lange Tafel: gegenüber v34 +16 px nach unten (insgesamt +24 px gegenüber der alten Basis).
+   Wirtschaft: obere 1/2 = Durchgang + Spieler dahinter; untere 1/2 = Alpha-Kollision + Spieler davor.
+   Baum: obere 2/3 = Durchgang + Spieler dahinter; unteres 1/3 = Alpha-Kollision + Spieler davor. */
 const STANDING_TABLE_IDS=new Set(['stehtischLinks','stehtischMitte','stehtischRechts']);
 const TOP_PASSAGE_IDS=new Set(['stuhl','tafel']);
-const FURNITURE_PASSAGE_EXTRA_WORLD=8;
+const TABLE_PASSAGE_EXTRA_WORLD=16;
+const CHAIR_TAFEL_PASSAGE_EXTRA_WORLD=24;
+
+function spriteLocalPoint(s,x,y){
+  const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
+  if(!dw||!dh||x<left||x>=left+dw||y<top||y>=top+dh)return null;
+  const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((x-left)/dw*s.sourceW)));
+  const sy=Math.min(s.sourceH-1,Math.max(0,Math.floor((y-top)/dh*s.sourceH)));
+  return {el,left,top,dw,dh,sx,sy,alpha:s.alpha[sy*s.sourceW+sx]};
+}
+
 function furnitureTopPassage(s,x,y){
   if(currentMap!==1)return false;
   const id=s.el.id;
   if(!STANDING_TABLE_IDS.has(id) && !TOP_PASSAGE_IDS.has(id))return false;
-  const el=s.el,left=px(el,'left'),top=px(el,'top'),dw=el.offsetWidth,dh=el.offsetHeight;
-  if(!dw||!dh||x<left||x>=left+dw||y<top||y>=top+dh)return false;
-  const sx=Math.min(s.sourceW-1,Math.max(0,Math.floor((x-left)/dw*s.sourceW)));
-  const sy=Math.min(s.sourceH-1,Math.max(0,Math.floor((y-top)/dh*s.sourceH)));
+  const p=spriteLocalPoint(s,x,y); if(!p)return false;
+  const {dh,sx,sy}=p;
   let first=-1;
   for(let yy=0;yy<s.sourceH;yy++){if(s.alpha[yy*s.sourceW+sx]>=24){first=yy;break;}}
   if(first<0)return false;
-  const extraSource=FURNITURE_PASSAGE_EXTRA_WORLD/dh*s.sourceH;
+  const extraWorld=STANDING_TABLE_IDS.has(id)?TABLE_PASSAGE_EXTRA_WORLD:CHAIR_TAFEL_PASSAGE_EXTRA_WORLD;
+  const extraSource=extraWorld/dh*s.sourceH;
   if(STANDING_TABLE_IDS.has(id)){
     let last=-1;
     const maxPlate=Math.min(s.sourceH-1,Math.floor(s.sourceH*.34));
@@ -1160,13 +1171,28 @@ function furnitureTopPassage(s,x,y){
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
-function standingTablePlatePassage(s,x,y){return furnitureTopPassage(s,x,y);}
+
+function propRatioPassage(s,x,y){
+  if(currentMap!==1)return false;
+  const id=s.el.id;
+  if(id!=='wirtschaft' && id!=='baum')return false;
+  const p=spriteLocalPoint(s,x,y); if(!p || p.alpha<24)return false;
+  const ratio=p.sy/Math.max(1,s.sourceH-1);
+  return id==='wirtschaft' ? ratio<0.50 : ratio<(2/3);
+}
+
+function standingTablePlatePassage(s,x,y){
+  return furnitureTopPassage(s,x,y) || propRatioPassage(s,x,y);
+}
+
 function updateStandingTableDepth(){
   if(currentMap!==1)return;
-  for(const id of [...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS]){
+  const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
+  for(const id of ids){
     const el=document.getElementById(id); if(!el)continue;
     const sprite=collisionSprites.find(s=>s.el===el);
-    const behind=sprite ? furnitureTopPassage(sprite,PLAYER.x,PLAYER.y) : false;
+    const behind=sprite ? (furnitureTopPassage(sprite,PLAYER.x,PLAYER.y)||propRatioPassage(sprite,PLAYER.x,PLAYER.y)) : false;
+    // Hinter-Zone: Prop vor dem Spieler. Sonst normale Y-Tiefe/Kollision wie bisher.
     el.style.zIndex=behind?'10050':'';
   }
 }
@@ -1609,6 +1635,8 @@ async function start(){
   rafId=requestAnimationFrame(draw);
 
   const collidables=[...document.querySelectorAll('.collidable[data-collision="alpha"]')];
+  const baumCollision=document.getElementById('baum');
+  if(baumCollision && !collidables.includes(baumCollision))collidables.push(baumCollision);
   Promise.all(collidables.map(buildAlphaCollision)).catch(console.error);
 }
 
