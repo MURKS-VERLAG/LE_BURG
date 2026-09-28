@@ -1531,9 +1531,30 @@ function tableTouchesInFacingDirection(s,dir){
   const sideOuterExtra=0;   // v48: A von rechts / D von links jeweils 2 cm kürzer als v47
   const vb=tableOpaqueVerticalBoundsAtX(s,PLAYER.x);
 
-  if(dir==='front'){ // OBERHALB + S: sichtbare obere Tischkante, nicht PNG-Rand
-    if(!vb)return false;
-    return PLAYER.y<=vb.top && vb.top-PLAYER.y<=r+gap+8;
+  if(dir==='front'){ // OBERHALB + S: direkt an die TISCH-HITBOX andocken
+    /* v49: Nicht mehr die oberste sichtbare Alpha-Zeile der Tischplatte verwenden.
+       Die Stehtisch-Kollision lässt die obere Platte absichtlich passieren; deshalb liegt der
+       tatsächliche Andockpunkt tiefer. Wir suchen entlang der Spieler-X-Spalte die ERSTE
+       alpha-opake Stelle, die nach standingTablePlatePassage() wirklich blockiert. Genau das
+       ist die obere Kante der echten Tisch-Hitbox, an der der Spieler beim S-Laufen stoppt. */
+    const probeHalf=Math.max(3,r*.55);
+    const xs=[PLAYER.x,PLAYER.x-probeHalf,PLAYER.x+probeHalf];
+    let hitboxTop=Infinity;
+    const scanStep=1;
+    for(const x of xs){
+      for(let y=top;y<=bottom;y+=scanStep){
+        if(rawSpriteOpaqueAt(s,x,y) && !standingTablePlatePassage(s,x,y)){
+          hitboxTop=Math.min(hitboxTop,y);
+          break;
+        }
+      }
+    }
+    if(!Number.isFinite(hitboxTop))return false;
+    // Mini-Toleranz NACH OBEN: sobald der Fußkreis direkt an der echten Hitbox anliegt.
+    const playerBottom=PLAYER.y+r;
+    const topTolerance=10;
+    return PLAYER.x>=left-r && PLAYER.x<=right+r &&
+           playerBottom<=hitboxTop+2 && hitboxTop-playerBottom<=topTolerance;
   }
   if(dir==='back'){ // UNTERHALB + W: 0,5 cm näher an den Tisch als v47
     const edge=vb?vb.bottom:bottom;
@@ -1575,7 +1596,7 @@ function ensureTableMug(tableSprite){
     mug=document.createElement('img');
     mug.alt=''; mug.draggable=false;
     mug.src='assets/npc/bock-wunsch.png?v=38';
-    Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'1200',transform:'translate(-50%,-100%)'});
+    Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'490',transform:'translate(-50%,-100%)'});
     world.appendChild(mug); map1TableMugs.set(id,mug);
   }
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
@@ -1593,7 +1614,7 @@ function startMap1TableServe(){
   const dir=PLAYER.direction;
   const src=MAP1_TABLE_ACTION_SPRITES[dir];
   player.setAttribute('src',src);
-  player.style.zIndex='1300'; // v47: Ausschankfigur IMMER vor dem Bierkrug (Krug=1200)
+  player.style.zIndex='1300'; // v49: Ausschankfigur sicher vor dem Bierkrug (Krug=490)
   const scale=playerVisualScale();
   // A ist als eigenes, physisch gespiegeltes D-Asset enthalten; deshalb hier keine zweite Spiegelung.
   player.style.transform=`translate(-50%,-100%) scale(${scale})`;
