@@ -1427,12 +1427,26 @@ function propRatioPassage(s,x,y){
   if(currentMap!==1)return false;
   const id=s.el.id;
   if(id!=='wirtschaft' && id!=='baum')return false;
-  const p=spriteLocalPoint(s,x,y); if(!p || p.alpha<24)return false;
-  if(id==='wirtschaft')return p.sy/Math.max(1,s.sourceH-1)<0.50;
-  // Baum: bisher 2/3, jetzt dieselbe Effektgrenze zusätzlich 3 cm nach unten.
-  const extraSource=TREE_PASSAGE_EXTRA_WORLD/p.dh*s.sourceH;
-  const end=(s.sourceH-1)*(2/3)+extraSource;
-  return p.sy<=Math.min(s.sourceH-1,end);
+
+  const p=spriteLocalPoint(s,x,y);
+  if(!p)return false;
+
+  if(id==='baum'){
+    /* v58 FINALER BAUM-FIX:
+       Die Ebenengrenze ist eine durchgehende horizontale Linie über die KOMPLETTE
+       Breite des Baum-PNGs. Transparente Lücken in der Krone dürfen den Spieler
+       NIEMALS wieder auf die Vorderebene holen.
+       Oberhalb/auf der Linie = Hintergrund, unterhalb = Vordergrund.
+       Die Linie bleibt exakt an derselben Höhe wie bisher und ist zugleich die
+       Oberkante der separaten Stamm-Hitbox. */
+    const extraSource=TREE_PASSAGE_EXTRA_WORLD/p.dh*s.sourceH;
+    const end=(s.sourceH-1)*(2/3)+extraSource;
+    return p.sy<=Math.min(s.sourceH-1,end);
+  }
+
+  /* Wirtschaft bleibt wie bisher alpha-/motivgebunden. */
+  if(p.alpha<24)return false;
+  return p.sy/Math.max(1,s.sourceH-1)<0.50;
 }
 
 function standingTablePlatePassage(s,x,y){
