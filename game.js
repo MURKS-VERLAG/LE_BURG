@@ -1597,8 +1597,41 @@ function tableTouchesInFacingDirection(s,dir){
   }
   return false;
 }
+/* v59 – LANGE TAFEL:
+   Ausschließlich zentral von UNTEN andocken, Blickrichtung W/back.
+   Kleine Toleranz nach unten sowie links/rechts. Keine Seiten-/Oberseiten-Interaktion.
+   Stehtische bleiben vollständig in ihrer bisherigen Logik. */
+const MAP1_TAFEL_DOCK_X_TOLERANCE=72;
+const MAP1_TAFEL_DOCK_Y_TOLERANCE=14;
+
+function map1InteractiveTafel(){
+  if(currentMap!==1||mapTransitioning||map1TableServing||PLAYER.direction!=='back')return null;
+  const s=tableSpriteById('tafel');
+  if(!s)return null;
+
+  const el=s.el;
+  const left=px(el,'left'), top=px(el,'top'), w=el.offsetWidth, h=el.offsetHeight;
+  if(!w||!h)return null;
+
+  const cx=left+w/2;
+  const vb=tableOpaqueVerticalBoundsAtX(s,cx);
+  const edge=vb?vb.bottom:(top+h);
+  const dockY=edge+PLAYER.radius;
+
+  return Math.abs(PLAYER.x-cx)<=MAP1_TAFEL_DOCK_X_TOLERANCE &&
+         PLAYER.y>=dockY-MAP1_TAFEL_DOCK_Y_TOLERANCE &&
+         PLAYER.y<=dockY+MAP1_TAFEL_DOCK_Y_TOLERANCE
+    ? s : null;
+}
+
 function map1InteractiveTable(){
   if(currentMap!==1||mapTransitioning||map1TableServing)return null;
+
+  // Lange Tafel hat eine eigene, strikt W-only Zone von unten.
+  const tafel=map1InteractiveTafel();
+  if(tafel)return tafel;
+
+  // Bestehende Stehtischlogik unverändert.
   for(const id of STANDING_TABLE_IDS){
     const s=tableSpriteById(id); if(!s)continue;
     // Die Blickrichtung definiert eindeutig die erlaubte Tischseite. Keine Diagonal-/Fernaktivierung.
@@ -1608,9 +1641,19 @@ function map1InteractiveTable(){
 }
 function updateMap1TableInteractionCue(){
   const active=map1InteractiveTable();
+
+  // Stehtische: exakt bisheriges Verhalten.
   for(const id of STANDING_TABLE_IDS){
     const el=document.getElementById(id); if(!el)continue;
     el.style.filter=(active&&active.el===el)
+      ?'brightness(1.24) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.72))'
+      :'none';
+  }
+
+  // v59: Lange Tafel leuchtet NUR in ihrer zentralen W-Andockzone von unten.
+  const tafel=document.getElementById('tafel');
+  if(tafel){
+    tafel.style.filter=(active&&active.el===tafel)
       ?'brightness(1.24) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.72))'
       :'none';
   }
@@ -1626,9 +1669,11 @@ function ensureTableMug(tableSprite){
     world.appendChild(mug); map1TableMugs.set(id,mug);
   }
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
-  // Zentral auf der sichtbaren Tischplatte, klar im Vordergrund.
+  // v59: Krug der LANGEN TAFEL exakt mittig auf der Tafel.
+  // z=750 liegt vor Tafel/Stuhl/Props (500), aber hinter dem Charakter (1000).
   mug.style.left=`${left+w/2}px`;
-  mug.style.top=`${top+h*.23}px`;
+  mug.style.top=el.id==='tafel' ? `${top+h*.32}px` : `${top+h*.23}px`;
+  mug.style.zIndex='750';
   mug.style.display='block';
   return mug;
 }
@@ -1896,18 +1941,19 @@ function swapMapInstant(src){
 
 async function enterWirtschaft(){
   if(mapTransitioning||currentMap!==1)return;
-  playDoorPassSound();
-  await ensureTransitionMapReady('assets/maps/wirtschaft-innen.jpg?v=18');
+
+  // v59: Triggerkontakt startet Sound UND Iris im selben Tick.
+  // Der Sound läuft während des kompletten Übergangs unabhängig weiter.
   mapTransitioning=true;
+  playDoorPassSound();
   keys.clear();
   PLAYER.moving=false;
   PLAYER.frameClock=0;
 
-  if(player)player.classList.add('map-fading');
-  await new Promise(r=>setTimeout(r,260));
-
+  const mapReady=ensureTransitionMapReady('assets/maps/wirtschaft-innen.jpg?v=18');
   await animateIris(150,0,650);
   setIrisRadius(0); // während des Map-Tauschs garantiert geschlossen
+  await mapReady;
 
   currentMap=2;
   map2Room='guestroom';
@@ -1927,8 +1973,6 @@ async function enterWirtschaft(){
   player.style.top=`${PLAYER.y}px`;
   showPlayerFrame(true);
 
-  if(player)player.classList.remove('map-fading');
-
   // Einen echten Paint der neuen Karte unter der geschlossenen Iris erzwingen.
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   await animateIris(0,150,700);
@@ -1940,14 +1984,16 @@ async function enterWirtschaft(){
 
 async function leaveWirtschaft(){
   if(mapTransitioning||currentMap!==2)return;
-  playDoorPassSound();
-  await ensureTransitionMapReady('assets/maps/terrasse.jpg');
+
+  // v59: Auch beim Rückweg Iris SOFORT bei Zonenberührung; Türsound läuft weiter.
   mapTransitioning=true;
+  playDoorPassSound();
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
-  if(player)player.classList.add('map-fading');
-  await new Promise(r=>setTimeout(r,220));
+
+  const mapReady=ensureTransitionMapReady('assets/maps/terrasse.jpg');
   await animateIris(150,0,650);
   setIrisRadius(0);
+  await mapReady;
   currentMap=1; map2Room='guestroom'; map2InMiddleWall=false; map2MiddleDoorPassArmed=true;
   document.body.classList.remove('map2');
   updateMap2BarVisibility();
@@ -1956,7 +2002,6 @@ async function leaveWirtschaft(){
   PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES.front[0];
   player.style.left=`${PLAYER.x}px`; player.style.top=`${PLAYER.y}px`;
   showPlayerFrame(true);
-  if(player)player.classList.remove('map-fading');
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   await animateIris(0,150,700); finishIrisOpen();
   mapTransitioning=false; playerLastTime=performance.now();
