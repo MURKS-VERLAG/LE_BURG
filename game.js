@@ -1669,13 +1669,63 @@ function map1CanWEnterTableSupport(x,y){
   return false;
 }
 
+/* v56: Erlaubtes Andocken darf den Spieler niemals in der Stehtisch-Stütze festhalten.
+   Ist der Spielerkreis bereits mit einer Stehtisch-Stütze überlappt, darf er sich von
+   genau diesem Tisch wieder wegbewegen. Andere Props/Wände bleiben voll kollidierend. */
+function circleHitsSpecificSprite(s,x,y,r=PLAYER.radius){
+  if(pointHitsSprite(s,x,y))return true;
+  for(let i=0;i<16;i++){
+    const a=i/16*Math.PI*2;
+    if(pointHitsSprite(s,x+Math.cos(a)*r,y+Math.sin(a)*r))return true;
+  }
+  return false;
+}
+function circleBlockedByNonTable(x,y,r=PLAYER.radius){
+  for(const s of collisionSprites){
+    if(STANDING_TABLE_IDS.has(s.el.id))continue;
+    if(circleHitsSpecificSprite(s,x,y,r))return true;
+  }
+  return false;
+}
+function map1CanEscapeStandingTable(fromX,fromY,toX,toY){
+  if(currentMap!==1)return false;
+
+  let touchedTable=null;
+  for(const id of STANDING_TABLE_IDS){
+    const s=tableSpriteById(id);
+    if(s && circleHitsSpecificSprite(s,fromX,fromY)){
+      touchedTable=s;
+      break;
+    }
+  }
+  if(!touchedTable)return false;
+  if(circleBlockedByNonTable(toX,toY))return false;
+
+  const el=touchedTable.el;
+  const cx=px(el,'left')+el.offsetWidth/2;
+  const cy=px(el,'top')+el.offsetHeight*.82;
+  const moveX=toX-fromX, moveY=toY-fromY;
+  const awayX=fromX-cx, awayY=fromY-cy;
+
+  // Nur VOM Tisch weg freigeben; niemals weiter hinein oder hindurch.
+  return moveX*awayX + moveY*awayY > 0;
+}
+
 function movePlayerAxis(dx,dy){
   const nx=PLAYER.x+dx,ny=PLAYER.y+dy;
-  if(dx&&playerCanStand(nx,PLAYER.y))PLAYER.x=nx;
+
+  if(dx){
+    const normalFree=playerCanStand(nx,PLAYER.y);
+    const tableEscape=map1CanEscapeStandingTable(PLAYER.x,PLAYER.y,nx,PLAYER.y);
+    if(normalFree||tableEscape)PLAYER.x=nx;
+  }
+
   if(dy){
     const normalFree=playerCanStand(PLAYER.x,ny);
     const wTableDock=dy<0 && map1CanWEnterTableSupport(PLAYER.x,ny);
-    if((normalFree||wTableDock) && !map2BarBlocksMove(PLAYER.x,PLAYER.y,PLAYER.x,ny))PLAYER.y=ny;
+    const tableEscape=map1CanEscapeStandingTable(PLAYER.x,PLAYER.y,PLAYER.x,ny);
+    if((normalFree||wTableDock||tableEscape) &&
+       !map2BarBlocksMove(PLAYER.x,PLAYER.y,PLAYER.x,ny))PLAYER.y=ny;
   }
 }
 
