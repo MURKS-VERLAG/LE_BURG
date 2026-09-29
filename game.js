@@ -699,7 +699,7 @@ function ensureMap1Event3Farmer(){
   map1Event3Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
   map1Event3Farmer.alt='';map1Event3Farmer.draggable=false;
   Object.assign(map1Event3Farmer.style,{
-    position:'absolute',left:'0',top:'0',width:'126px',height:'auto',
+    position:'absolute',left:'0',top:'0',width:'176.4px',height:'auto',
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',zIndex:'13000',willChange:'left,top,transform'
   });
@@ -769,7 +769,7 @@ function showMap1Event3Slash(x,y){
 function growMap1Event3Blood(x,y,z){
   const blood=ensureMap1Event3Blood();
   blood.getAnimations().forEach(a=>a.cancel());
-  blood.style.left=`${x}px`;blood.style.top=`${y-24}px`;
+  blood.style.left=`${x-8}px`;blood.style.top=`${y-30}px`;
   blood.style.zIndex=String(Math.max(1,z-1));
   blood.style.display='block';blood.style.opacity='1';
   blood.animate([
@@ -791,7 +791,25 @@ function map1Event3FarmerHit(){
   // Friedrich: Schlagbild exakt 0,5 s, Bewegung läuft währenddessen unverändert weiter.
   bock.src='assets/npc/event3-bock-slash.png?v=71';
   bock.style.width='103.075px';
+  // Treffer: Pfeif-Song endet INSTANT mit Beginn des Schwerthiebs.
+  map1Event3Whistle.pause();
+  map1Event3Whistle.currentTime=0;
+
+  // Laufenden Trab am Treffer stoppen. Nach vollständigem Schwerthieb-Sound
+  // exakt 0,5 s warten und DANN denselben Trab-Sound erneut starten.
+  map1Event3BockRunSound.pause();
+  map1Event3BockRunSound.currentTime=0;
+  map1Event3SlashSound.pause();
   map1Event3SlashSound.currentTime=0;
+  map1Event3SlashSound.onended=()=>{
+    map1Event3SlashSound.onended=null;
+    map1Event3Later(()=>{
+      if(!map1Event3Active || !map1Event3BockStarted)return;
+      map1Event3BockRunSound.pause();
+      map1Event3BockRunSound.currentTime=0;
+      map1Event3BockRunSound.play().catch(()=>{});
+    },500);
+  };
   map1Event3SlashSound.play().catch(()=>{});
   showMap1Event3Slash(bx,by);
 
@@ -843,7 +861,7 @@ function finishMap1Event3(){
   clearMap1Event3Timers();
   resetMap1Event3Visuals();
   map1Event3Whistle.pause();map1Event3Whistle.currentTime=0;
-  map1Event3SlashSound.pause();map1Event3SlashSound.currentTime=0;
+  map1Event3SlashSound.pause();map1Event3SlashSound.currentTime=0;map1Event3SlashSound.onended=null;
   map1Event3BockSpawnSound.pause();map1Event3BockSpawnSound.currentTime=0;
   map1Event3BockRunSound.pause();map1Event3BockRunSound.currentTime=0;
   if(currentMap===1&&!mapTransitioning&&bgMusic){
@@ -878,7 +896,7 @@ function startMap1Event3(){
     map1Event3FarmerStart=performance.now();
     map1Event3FarmerState='walk';
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';
-    farmer.style.width='126px';
+    farmer.style.width='176.4px';
     farmer.style.display='block';
     farmer.style.visibility='visible';
     farmer.style.opacity='1';
