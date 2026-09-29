@@ -1441,7 +1441,7 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=65`;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=66`;
   /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
@@ -1465,7 +1465,13 @@ function showPlayerFrame(force=false){
   }
 
   const s=playerVisualScale();
-  if(PLAYER.direction==='right'){
+  /* v66: Die neuen OHNE-BIER-Seitensprites blicken im Quellbild nach rechts:
+     D/right = unverändert, A/left = gespiegelt.
+     MIT BIER bleibt die bisherige Spiegelungslogik EXAKT unangetastet. */
+  const mirrorSide = playerHasBeer
+    ? PLAYER.direction==='right'
+    : PLAYER.direction==='left';
+  if(mirrorSide){
     player.style.transform=`translate(-50%,-100%) scale(${-s},${s})`;
   }else{
     player.style.transform=`translate(-50%,-100%) scale(${s})`;
@@ -2462,12 +2468,12 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
   'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
   'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46',
-  'assets/player/nobier-front-1.png?v=65','assets/player/nobier-front-2.png?v=65',
-  'assets/player/nobier-front-3.png?v=65','assets/player/nobier-front-4.png?v=65',
-  'assets/player/nobier-back-1.png?v=65','assets/player/nobier-back-2.png?v=65',
-  'assets/player/nobier-back-3.png?v=65','assets/player/nobier-back-4.png?v=65',
-  'assets/player/nobier-side-1.png?v=65','assets/player/nobier-side-2.png?v=65',
-  'assets/player/nobier-side-3.png?v=65','assets/player/nobier-side-4.png?v=65'
+  'assets/player/nobier-front-1.png?v=66','assets/player/nobier-front-2.png?v=66',
+  'assets/player/nobier-front-3.png?v=66','assets/player/nobier-front-4.png?v=66',
+  'assets/player/nobier-back-1.png?v=66','assets/player/nobier-back-2.png?v=66',
+  'assets/player/nobier-back-3.png?v=66','assets/player/nobier-back-4.png?v=66',
+  'assets/player/nobier-side-1.png?v=66','assets/player/nobier-side-2.png?v=66',
+  'assets/player/nobier-side-3.png?v=66','assets/player/nobier-side-4.png?v=66'
 ];
 async function preloadMap1BearFrames(){
   const paths=[
