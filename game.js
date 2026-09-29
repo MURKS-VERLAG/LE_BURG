@@ -1422,8 +1422,8 @@ const PLAYER_SEQUENCES={
 const PLAYER_NO_BEER_SEQUENCES={
   front:[1,2,3,4],
   back:[1,2,3,4],
-  right:[1,3,2,3],
-  left:[1,3,2,3]
+  right:[2,1,3],
+  left:[2,1,3]
 };
 let playerHasBeer=false;
 function activePlayerSequence(direction){
@@ -1449,10 +1449,11 @@ function playerSpritePath(direction,frame){
 
 function playerVisualScale(){
   let s=1;
-  /* v67: W/WD/WA OHNE Bier jetzt auf derselben Grundgröße wie die anderen
-     No-Beer-Richtungen. MIT Bier bleibt die bisherige Back-Skalierung exakt erhalten. */
+  /* v70: ALLE OHNE-BIER-Richtungen exakt 5 % größer.
+     MIT Bier bleibt jede bisherige Skalierung EXAKT unangetastet. */
+  if(!playerHasBeer)s*=1.05;
   if(PLAYER.direction==='back' && playerHasBeer)s*=.85;
-  if(currentMap===2)s*=1.15; // NUR Map 2: alle Frames exakt 15 % größer.
+  if(currentMap===2)s*=1.15; // NUR Map 2: bisherige Map-2-Skalierung bleibt erhalten.
   return s;
 }
 
@@ -2505,7 +2506,7 @@ async function preloadMap1BearFrames(){
 }
 
 async function preloadPlayerFrames(){
-  /* v69 ANTI-FREEZE:
+  /* v70 ANTI-FREEZE:
      Alle Laufbilder werden VOR game-ready angefordert, decodiert und als lebende
      Image-Objekte im RAM gehalten. No-Beer benutzt damit beim Laufen niemals erst
      im Bewegungs-Tick einen neuen Netzwerk-/Decode-Pfad. */
