@@ -1422,8 +1422,8 @@ const PLAYER_SEQUENCES={
 const PLAYER_NO_BEER_SEQUENCES={
   front:[1,2,3,4],
   back:[1,2,3,4],
-  right:[1,2,3,4],
-  left:[1,2,3,4]
+  right:[1,2,4,3],
+  left:[1,2,4,3]
 };
 let playerHasBeer=false;
 function activePlayerSequence(direction){
@@ -1441,7 +1441,7 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=66`;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=67`;
   /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
@@ -1449,7 +1449,9 @@ function playerSpritePath(direction,frame){
 
 function playerVisualScale(){
   let s=1;
-  if(PLAYER.direction==='back')s*=.85;
+  /* v67: W/WD/WA OHNE Bier jetzt auf derselben Grundgröße wie die anderen
+     No-Beer-Richtungen. MIT Bier bleibt die bisherige Back-Skalierung exakt erhalten. */
+  if(PLAYER.direction==='back' && playerHasBeer)s*=.85;
   if(currentMap===2)s*=1.15; // NUR Map 2: alle Frames exakt 15 % größer.
   return s;
 }
