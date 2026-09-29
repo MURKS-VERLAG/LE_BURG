@@ -308,9 +308,9 @@ function ensureMap1BockReactionOverlay(){
   style.id='map1BockReactionStyle';
   style.textContent=`
     #map1BockReactionLayer{position:fixed;inset:0;z-index:800000;pointer-events:none;display:none;overflow:hidden}
-    #map1BockReactionImage{position:absolute;left:50%;bottom:0;height:min(55vh,620px);width:auto;max-width:56vw;object-fit:contain;object-position:center bottom;transform:translateX(-50%);opacity:0;transition:opacity 180ms ease;will-change:opacity}
-    #map1BockReactionSymbol{position:absolute;left:50%;bottom:min(57vh,642px);transform:translate(-50%,12px) scale(.72);font:900 clamp(54px,6vw,96px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:2px #8b5b00;text-shadow:0 3px 0 #7a4b00,0 0 10px rgba(255,215,60,.95),0 0 24px rgba(255,170,0,.7);opacity:0;transition:opacity 220ms ease,transform 260ms cubic-bezier(.2,.9,.2,1);will-change:opacity,transform}
-    .bockReactionShard{position:absolute;left:50%;bottom:min(57vh,642px);font:900 clamp(18px,2vw,34px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:1px #8b5b00;text-shadow:0 0 7px rgba(255,190,30,.9);pointer-events:none;z-index:800002}
+    #map1BockReactionImage{position:absolute;left:50%;bottom:0;height:min(22vh,248px);width:auto;max-width:22.4vw;object-fit:contain;object-position:center bottom;transform:translateX(-50%);opacity:0;transition:opacity 180ms ease;will-change:opacity}
+    #map1BockReactionSymbol{position:absolute;left:50%;bottom:min(23vh,260px);transform:translate(-50%,12px) scale(.72);font:900 clamp(59.4px,6.6vw,105.6px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:2px #8b5b00;text-shadow:0 3px 0 #7a4b00,0 0 10px rgba(255,215,60,.95),0 0 24px rgba(255,170,0,.7);opacity:0;transition:opacity 220ms ease,transform 260ms cubic-bezier(.2,.9,.2,1);will-change:opacity,transform}
+    .bockReactionShard{position:absolute;left:50%;bottom:min(23vh,260px);font:900 clamp(19.8px,2.2vw,37.4px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:1px #8b5b00;text-shadow:0 0 7px rgba(255,190,30,.9);pointer-events:none;z-index:800002}
   `;
   document.head.appendChild(style);
   map1BockReactionLayer=document.createElement('div');
