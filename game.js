@@ -1422,8 +1422,8 @@ const PLAYER_SEQUENCES={
 const PLAYER_NO_BEER_SEQUENCES={
   front:[1,2,3,4],
   back:[1,2,3,4],
-  right:[1,2,3],
-  left:[1,2,3]
+  right:[1,3,2,3],
+  left:[1,3,2,3]
 };
 let playerHasBeer=false;
 function activePlayerSequence(direction){
@@ -1441,7 +1441,7 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=68`;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=69`;
   /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
@@ -2470,12 +2470,12 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
   'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
   'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46',
-  'assets/player/nobier-front-1.png?v=66','assets/player/nobier-front-2.png?v=66',
-  'assets/player/nobier-front-3.png?v=66','assets/player/nobier-front-4.png?v=66',
-  'assets/player/nobier-back-1.png?v=66','assets/player/nobier-back-2.png?v=66',
-  'assets/player/nobier-back-3.png?v=66','assets/player/nobier-back-4.png?v=66',
-  'assets/player/nobier-side-1.png?v=66','assets/player/nobier-side-2.png?v=66',
-  'assets/player/nobier-side-3.png?v=66','assets/player/nobier-side-4.png?v=66'
+  'assets/player/nobier-front-1.png?v=69','assets/player/nobier-front-2.png?v=69',
+  'assets/player/nobier-front-3.png?v=69','assets/player/nobier-front-4.png?v=69',
+  'assets/player/nobier-back-1.png?v=69','assets/player/nobier-back-2.png?v=69',
+  'assets/player/nobier-back-3.png?v=69','assets/player/nobier-back-4.png?v=69',
+  'assets/player/nobier-side-1.png?v=69','assets/player/nobier-side-2.png?v=69',
+  'assets/player/nobier-side-3.png?v=69'
 ];
 async function preloadMap1BearFrames(){
   const paths=[
@@ -2505,12 +2505,23 @@ async function preloadMap1BearFrames(){
 }
 
 async function preloadPlayerFrames(){
+  /* v69 ANTI-FREEZE:
+     Alle Laufbilder werden VOR game-ready angefordert, decodiert und als lebende
+     Image-Objekte im RAM gehalten. No-Beer benutzt damit beim Laufen niemals erst
+     im Bewegungs-Tick einen neuen Netzwerk-/Decode-Pfad. */
   await Promise.all(PLAYER_FRAME_PATHS.map(src=>new Promise(resolve=>{
     const img=new Image();
+    img.decoding='async';
+    img.fetchPriority='high';
     PLAYER_IMAGE_CACHE.set(src,img);
-    img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
+    const finish=async()=>{
+      try{ if(img.decode) await img.decode(); }catch(_){}
+      resolve();
+    };
+    img.onload=finish;
     img.onerror=resolve;
     img.src=src;
+    if(img.complete && img.naturalWidth)finish();
   })));
 }
 
