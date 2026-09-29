@@ -1413,18 +1413,12 @@ function furnitureTopPassage(s,x,y){
   else if(id==='stuhl')extraWorld=CHAIR_PASSAGE_EXTRA_WORLD;
   const extraSource=extraWorld/dh*s.sourceH;
   if(STANDING_TABLE_IDS.has(id)){
-    // v54 FIX: Die TischPLATTE ist von oben vollständig passierbar.
-    // Kollision bleibt ausschließlich UNTEN an der sichtbaren STÜTZE / am Fuß bestehen.
-    // Maßstab wie vereinbart: exakt 0,5 cm = 8 Weltpixel Restkollision von unten nach oben.
-    // Die horizontale Breite dieser Stützen-/Fuß-Hitbox bleibt alpha-genau unverändert.
-    let last=-1;
-    for(let yy=s.sourceH-1;yy>=0;yy--){
-      if(s.alpha[yy*s.sourceW+sx]>=24){last=yy;break;}
-    }
-    if(last<0)return false;
-    const collisionStripSource=(8/dh)*s.sourceH;
-    const collisionStart=last-collisionStripSource;
-    return sy<collisionStart;
+    // v55: Tischplatte KOMPLETT frei. Kollision beginnt erst an der eigentlichen
+    // mittigen Stütze und bleibt darunter alpha-genau bis zum Fuß erhalten.
+    // Beim verwendeten Stehtisch-PNG endet die Platte bei ca. 68 % der Bildhöhe;
+    // darunter liegt ausschließlich Stütze/Fuß.
+    const supportStart=Math.floor(s.sourceH*.68);
+    return sy<supportStart;
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
 }
@@ -1563,10 +1557,11 @@ function tableTouchesInFacingDirection(s,dir){
     return PLAYER.x>=left-r && PLAYER.x<=right+r &&
            playerBottom<=hitboxTop+2 && hitboxTop-playerBottom<=topTolerance;
   }
-  if(dir==='back'){ // UNTERHALB + W: 0,5 cm näher an den Tisch als v47
+  if(dir==='back'){ // UNTERHALB + W: exakt an der Stützen-Hitbox, mit 0,5 cm erlaubtem Eindringen
     const edge=vb?vb.bottom:bottom;
+    const dockY=edge+r-8;
     return PLAYER.x>=left-r-wLeftToleranceExtra && PLAYER.x<=right+r &&
-           PLAYER.y>=edge && PLAYER.y-edge<=Math.max(0,r+gap-8); // v52: W-Toleranz links ausdrücklich +1 cm
+           Math.abs(PLAYER.y-dockY)<=gap;
   }
   if(dir==='right'){ // LINKS + D
     return PLAYER.y>=top-r+sideTopCut && PLAYER.y<=bottom+r+downExtra &&
@@ -1643,11 +1638,45 @@ function playerCanStand(x,y){
   if(currentMap===2)return map2CanStand(x,y);
   return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);
 }
+function map1CanWEnterTableSupport(x,y){
+  if(currentMap!==1 || PLAYER.direction!=='back')return false;
+
+  // Niemals durch andere Props/Wände tunneln: die Sonderfreigabe gilt ausschließlich
+  // für die drei Stehtische.
+  const blockedByNonTable=(px0,py0)=>{
+    for(const sp of collisionSprites){
+      if(STANDING_TABLE_IDS.has(sp.el.id))continue;
+      if(pointHitsSprite(sp,px0,py0))return true;
+    }
+    return false;
+  };
+  if(blockedByNonTable(x,y))return false;
+  for(let i=0;i<16;i++){
+    const a=i/16*Math.PI*2;
+    if(blockedByNonTable(x+Math.cos(a)*PLAYER.radius,y+Math.sin(a)*PLAYER.radius))return false;
+  }
+
+  // W darf exakt 0,5 cm (= 8 Weltpixel) in die UNTERE Kante der Stützen-Hitbox hinein.
+  for(const id of STANDING_TABLE_IDS){
+    const sp=tableSpriteById(id); if(!sp)continue;
+    const el=sp.el,left=px(el,'left'),right=left+el.offsetWidth;
+    if(x<left-PLAYER.radius || x>right+PLAYER.radius)continue;
+    const vb=tableOpaqueVerticalBoundsAtX(sp,x); if(!vb)continue;
+    const minCenterY=vb.bottom+PLAYER.radius-8;
+    const maxCenterY=vb.bottom+PLAYER.radius+2;
+    if(y>=minCenterY && y<=maxCenterY)return true;
+  }
+  return false;
+}
+
 function movePlayerAxis(dx,dy){
   const nx=PLAYER.x+dx,ny=PLAYER.y+dy;
   if(dx&&playerCanStand(nx,PLAYER.y))PLAYER.x=nx;
-  if(dy&&playerCanStand(PLAYER.x,ny) &&
-     !map2BarBlocksMove(PLAYER.x,PLAYER.y,PLAYER.x,ny))PLAYER.y=ny;
+  if(dy){
+    const normalFree=playerCanStand(PLAYER.x,ny);
+    const wTableDock=dy<0 && map1CanWEnterTableSupport(PLAYER.x,ny);
+    if((normalFree||wTableDock) && !map2BarBlocksMove(PLAYER.x,PLAYER.y,PLAYER.x,ny))PLAYER.y=ny;
+  }
 }
 
 /* IRIS – vollständig JS-gesteuert, unabhängig von altem CSS.
