@@ -1442,6 +1442,16 @@ function standingTablePlatePassage(s,x,y){
 /* Breitere Fußprobe statt nur eines einzigen Pixels. Dadurch bleibt die Figur beim
    Richtungswechsel stabil auf derselben Vorder-/Hinterebene und "clippt" am Baum nicht. */
 function playerBehindSprite(sprite){
+  /* v57 Baum-Minifix:
+     Der Baum darf den Ebenenwechsel nur EINMAL auslösen. Die bisherige breite
+     5-Punkt-Fußprobe konnte an der Baumkontur mehrere Probes nacheinander
+     ein-/austreten lassen -> sichtbar / verdeckt / sichtbar / verdeckt.
+     Für den Baum deshalb exakt EIN stabiler Fußpunkt. Effektgrenze, Baumposition
+     und Stamm-Hitbox bleiben unverändert. */
+  if(sprite?.el?.id==='baum'){
+    return propRatioPassage(sprite,PLAYER.x,PLAYER.y);
+  }
+
   const r=Math.max(5,PLAYER.radius*.72);
   const probes=[[0,0],[-r,0],[r,0],[-r*.55,-2],[r*.55,-2]];
   return probes.some(([ox,oy])=>
@@ -2143,14 +2153,8 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
   'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46'
 ];
-/* v57: Alle animierten NPC-/Eventframes dauerhaft im RAM/Browser-Decode-Cache halten.
-   Wichtig bei schnellen src-Wechseln: kein Nachladen/Decodieren mitten in einer Geh-/Reitsequenz. */
-const NPC_IMAGE_CACHE=new Map();
-
 async function preloadMap1BearFrames(){
   const paths=[
-    'assets/npc/frau-run-1.png?v=02',
-    'assets/npc/frau-run-2.png?v=02',
     'assets/npc/baer-run-1.png?v=22',
     'assets/npc/baer-run-2.png?v=22',
     'assets/npc/baer-run-3.png?v=22',
@@ -2158,39 +2162,22 @@ async function preloadMap1BearFrames(){
     'assets/npc/bock-reiter-2.png?v=27',
     'assets/npc/bock-reiter-3.png?v=27',
     'assets/npc/bock-stop.png?v=30',
-    'assets/npc/bock-dismount.png?v=30',
+    'assets/npc/bock-dismount.png?v=29',
     'assets/npc/bock-final.png?v=30',
     'assets/npc/bock-wunsch.png?v=38',
     'assets/npc/bock-bier.png?v=38',
     'assets/npc/bock-trinkt.png?v=38',
     'assets/npc/bock-krug-leer.png?v=38'
   ];
-
-  await Promise.all(paths.map(src=>{
-    if(NPC_IMAGE_CACHE.has(src)){
-      const cached=NPC_IMAGE_CACHE.get(src);
-      return cached._ready || Promise.resolve();
-    }
-
+  await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
-    img.decoding='async';
+    img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
+    img.onerror=()=>{
+      console.error('BÄR-PRELOAD FEHLER:',src);
+      resolve();
+    };
     img.src=src;
-
-    const ready=(img.decode
-      ? img.decode().catch(()=>new Promise(resolve=>{
-          if(img.complete)resolve();
-          else{img.onload=resolve;img.onerror=resolve;}
-        }))
-      : new Promise(resolve=>{
-          if(img.complete)resolve();
-          else{img.onload=resolve;img.onerror=resolve;}
-        })
-    ).catch(()=>{});
-
-    img._ready=ready;
-    NPC_IMAGE_CACHE.set(src,img);
-    return ready;
-  }));
+  })));
 }
 
 async function preloadPlayerFrames(){
