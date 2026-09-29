@@ -632,6 +632,324 @@ function updateMap1Bock(now){
 }
 
 
+/* MAP 1 – EVENT 3 (Taste 3): Pfeifender Bauer trifft Friedrich Bock.
+   Additiv/isoliert: Event 1 und Event 2 werden nicht verändert. */
+const map1Event3Whistle=new Audio('assets/audio/Human whistle (singing) - sound effect.mp3');
+map1Event3Whistle.preload='auto';
+map1Event3Whistle.volume=.88;
+
+const MAP1_EVENT3_FARMER_DELAY=3000;
+const MAP1_EVENT3_BOCK_DELAY_AFTER_FARMER=4000;
+const MAP1_EVENT3_FARMER_FRAME_MS=430; // gemütliches Schlendern: Original -> gespiegelt -> repeat
+const MAP1_EVENT3_FARMER_DURATION=18500;
+const MAP1_EVENT3_BOCK_FRAME_MS=MAP1_BOCK_FRAME_MS;
+const MAP1_EVENT3_BOCK_DURATION=MAP1_RUNNER_DURATION; // Friedrich nimmt exakt die normale Laufroute der Frau.
+const MAP1_EVENT3_READY_DISTANCE=235;
+const MAP1_EVENT3_HIT_DISTANCE=78;
+
+let map1Event3Active=false;
+let map1Event3Farmer=null;
+let map1Event3Bock=null;
+let map1Event3Slash=null;
+let map1Event3Blood=null;
+let map1Event3FarmerStart=0;
+let map1Event3BockStart=0;
+let map1Event3FarmerStarted=false;
+let map1Event3BockStarted=false;
+let map1Event3AttackStage='none';
+let map1Event3FarmerState='walk';
+let map1Event3Timers=[];
+
+function map1Event3Later(fn,ms){
+  const id=setTimeout(fn,ms);
+  map1Event3Timers.push(id);
+  return id;
+}
+function clearMap1Event3Timers(){
+  for(const id of map1Event3Timers)clearTimeout(id);
+  map1Event3Timers=[];
+}
+function map1Event3PointAt(progress,reverse=false){
+  const p=Math.max(0,Math.min(1,progress));
+  return map1RunnerPointAt(reverse?1-p:p);
+}
+function ensureMap1Event3Farmer(){
+  if(map1Event3Farmer)return map1Event3Farmer;
+  map1Event3Farmer=document.createElement('img');
+  map1Event3Farmer.id='map1Event3Farmer';
+  map1Event3Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
+  map1Event3Farmer.alt='';map1Event3Farmer.draggable=false;
+  Object.assign(map1Event3Farmer.style,{
+    position:'absolute',left:'0',top:'0',width:'88px',height:'auto',
+    transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
+    display:'none',zIndex:'13000',willChange:'left,top,transform'
+  });
+  world.appendChild(map1Event3Farmer);
+  return map1Event3Farmer;
+}
+function ensureMap1Event3Bock(){
+  if(map1Event3Bock)return map1Event3Bock;
+  map1Event3Bock=document.createElement('img');
+  map1Event3Bock.id='map1Event3Bock';
+  map1Event3Bock.src='assets/npc/bock-reiter-1.png?v=27';
+  map1Event3Bock.alt='';map1Event3Bock.draggable=false;
+  Object.assign(map1Event3Bock.style,{
+    position:'absolute',left:'0',top:'0',width:'103.075px',height:'auto',
+    transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
+    display:'none',zIndex:'19000',willChange:'left,top,transform'
+  });
+  world.appendChild(map1Event3Bock);
+  return map1Event3Bock;
+}
+function ensureMap1Event3Blood(){
+  if(map1Event3Blood)return map1Event3Blood;
+  map1Event3Blood=document.createElement('div');
+  map1Event3Blood.id='map1Event3Blood';
+  Object.assign(map1Event3Blood.style,{
+    position:'absolute',left:'0',top:'0',width:'112px',height:'42px',
+    transform:'translate(-50%,-52%) scale(.04)',transformOrigin:'50% 50%',
+    borderRadius:'50%',pointerEvents:'none',display:'none',opacity:'0',
+    zIndex:'1',
+    background:'radial-gradient(ellipse at center,rgba(118,0,0,.96) 0%,rgba(151,5,5,.94) 48%,rgba(91,0,0,.88) 72%,rgba(80,0,0,0) 76%)',
+    filter:'blur(.45px)',willChange:'transform,opacity'
+  });
+  world.appendChild(map1Event3Blood);
+  return map1Event3Blood;
+}
+function ensureMap1Event3Slash(){
+  if(map1Event3Slash)return map1Event3Slash;
+  map1Event3Slash=document.createElement('div');
+  map1Event3Slash.id='map1Event3Slash';
+  Object.assign(map1Event3Slash.style,{
+    position:'absolute',left:'0',top:'0',width:'18px',height:'132px',
+    transformOrigin:'50% 0%',pointerEvents:'none',display:'none',opacity:'0',
+    zIndex:'60000',borderRadius:'60% 40% 55% 45%',
+    background:'linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.98) 38%,rgba(255,226,155,.98) 54%,rgba(255,255,255,0))',
+    boxShadow:'0 0 7px rgba(255,255,255,.98),0 0 15px rgba(255,210,115,.95)',
+    filter:'blur(.15px)',willChange:'transform,opacity'
+  });
+  world.appendChild(map1Event3Slash);
+  return map1Event3Slash;
+}
+function showMap1Event3Slash(x,y){
+  const slash=ensureMap1Event3Slash();
+  // Großer kurzer Hieb: mittig, leicht links versetzt, von oben nach unten.
+  slash.style.left=`${x-22}px`;
+  slash.style.top=`${y-142}px`;
+  slash.style.display='block';
+  slash.style.opacity='1';
+  slash.getAnimations().forEach(a=>a.cancel());
+  slash.animate([
+    {transform:'translate(-50%,-8px) rotate(10deg) scaleY(.18)',opacity:0},
+    {transform:'translate(-50%,0) rotate(10deg) scaleY(1)',opacity:1,offset:.28},
+    {transform:'translate(-50%,70px) rotate(10deg) scaleY(1.05)',opacity:.95,offset:.72},
+    {transform:'translate(-50%,104px) rotate(10deg) scaleY(.76)',opacity:0}
+  ],{duration:430,easing:'cubic-bezier(.18,.72,.18,1)',fill:'forwards'});
+  map1Event3Later(()=>{slash.style.display='none';slash.style.opacity='0';},450);
+}
+function growMap1Event3Blood(x,y,z){
+  const blood=ensureMap1Event3Blood();
+  blood.getAnimations().forEach(a=>a.cancel());
+  blood.style.left=`${x}px`;blood.style.top=`${y+4}px`;
+  blood.style.zIndex=String(Math.max(1,z-1));
+  blood.style.display='block';blood.style.opacity='1';
+  blood.animate([
+    {transform:'translate(-50%,-52%) scale(.04)',opacity:.35},
+    {transform:'translate(-50%,-52%) scale(.38)',opacity:.78,offset:.22},
+    {transform:'translate(-50%,-52%) scale(.72)',opacity:.92,offset:.58},
+    {transform:'translate(-50%,-52%) scale(1)',opacity:.96}
+  ],{duration:4200,easing:'ease-out',fill:'forwards'});
+}
+function map1Event3FarmerHit(){
+  if(!map1Event3Active||map1Event3AttackStage==='hit')return;
+  map1Event3AttackStage='hit';
+
+  const farmer=ensureMap1Event3Farmer();
+  const bock=ensureMap1Event3Bock();
+  const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0;
+  const bx=parseFloat(bock.style.left)||0,by=parseFloat(bock.style.top)||0;
+
+  // Friedrich: Schlagbild exakt 0,5 s, Bewegung läuft währenddessen unverändert weiter.
+  bock.src='assets/npc/event3-bock-slash.png?v=71';
+  bock.style.width='103.075px';
+  showMap1Event3Slash(bx,by);
+
+  // Bauer: sofort kniend/Bauch haltend für exakt 1,5 s.
+  map1Event3FarmerState='kneel';
+  farmer.src='assets/npc/event3-bauer-kneel.png?v=71';
+  farmer.style.width='92px';
+  farmer.style.transform='translate(-50%,-100%) scale(1)';
+
+  map1Event3Later(()=>{
+    if(!map1Event3Active)return;
+    // Nach exakt 0,5 s wieder Friedrichs bestehende Laufanimation.
+    if(map1Event3BockStarted){
+      map1Event3AttackStage='afterHit';
+      bock.src='assets/npc/bock-reiter-1.png?v=27';
+    }
+  },500);
+
+  map1Event3Later(()=>{
+    if(!map1Event3Active)return;
+    // Nach 1,5 s Bauer am Boden; Blutpfütze startet winzig und wächst UNTER ihm.
+    map1Event3FarmerState='dead';
+    farmer.src='assets/npc/event3-bauer-dead.png?v=71';
+    farmer.style.width='128px';
+    farmer.style.transform='translate(-50%,-100%) scale(1)';
+    const z=13000+Math.round(fy);
+    farmer.style.zIndex=String(z);
+    growMap1Event3Blood(fx,fy,z);
+
+    // Bodenbild exakt 5 s, danach Bauer + Blut despawnen.
+    map1Event3Later(()=>{
+      if(!map1Event3Active)return;
+      farmer.style.display='none';
+      const blood=ensureMap1Event3Blood();
+      blood.style.display='none';blood.style.opacity='0';
+      map1Event3FarmerState='gone';
+    },5000);
+  },1500);
+}
+function resetMap1Event3Visuals(){
+  if(map1Event3Farmer){map1Event3Farmer.getAnimations().forEach(a=>a.cancel());map1Event3Farmer.style.display='none';}
+  if(map1Event3Bock){map1Event3Bock.getAnimations().forEach(a=>a.cancel());map1Event3Bock.style.display='none';}
+  if(map1Event3Slash){map1Event3Slash.getAnimations().forEach(a=>a.cancel());map1Event3Slash.style.display='none';}
+  if(map1Event3Blood){map1Event3Blood.getAnimations().forEach(a=>a.cancel());map1Event3Blood.style.display='none';}
+}
+function finishMap1Event3(){
+  if(!map1Event3Active)return;
+  map1Event3Active=false;
+  clearMap1Event3Timers();
+  resetMap1Event3Visuals();
+  map1Event3Whistle.pause();map1Event3Whistle.currentTime=0;
+  if(currentMap===1&&!mapTransitioning&&bgMusic){
+    bgMusic.volume=0;
+    bgMusic.play().catch(()=>{});
+    bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);
+  }
+}
+function startMap1Event3(){
+  if(currentMap!==1||mapTransitioning||map1Event3Active)return;
+  map1Event3Active=true;
+  clearMap1Event3Timers();
+  resetMap1Event3Visuals();
+
+  map1Event3FarmerStarted=false;
+  map1Event3BockStarted=false;
+  map1Event3AttackStage='none';
+  map1Event3FarmerState='walk';
+
+  // Taste 3: Pfeif-Song SOFORT.
+  if(bgMusic)bgMusic.pause();
+  map1Event3Whistle.pause();
+  map1Event3Whistle.currentTime=0;
+  map1Event3Whistle.volume=.88;
+  map1Event3Whistle.play().catch(()=>{});
+
+  // Nach exakt 3 s schlendert der Bauer vom unteren Wegende nach oben.
+  map1Event3Later(()=>{
+    if(!map1Event3Active)return;
+    const farmer=ensureMap1Event3Farmer();
+    map1Event3FarmerStarted=true;
+    map1Event3FarmerStart=performance.now();
+    map1Event3FarmerState='walk';
+    farmer.src='assets/npc/event3-bauer-walk.png?v=71';
+    farmer.style.width='88px';
+    farmer.style.display='block';
+    farmer.style.visibility='visible';
+    farmer.style.opacity='1';
+  },MAP1_EVENT3_FARMER_DELAY);
+
+  // Exakt 4 s nach Bauer-Start: Friedrich oben am anderen Ende.
+  map1Event3Later(()=>{
+    if(!map1Event3Active)return;
+    const bock=ensureMap1Event3Bock();
+    map1Event3BockStarted=true;
+    map1Event3BockStart=performance.now();
+    map1Event3AttackStage='none';
+    bock.src='assets/npc/bock-reiter-1.png?v=27';
+    bock.style.width='103.075px';
+    bock.style.display='block';
+    bock.style.visibility='visible';
+    bock.style.opacity='1';
+  },MAP1_EVENT3_FARMER_DELAY+MAP1_EVENT3_BOCK_DELAY_AFTER_FARMER);
+}
+function updateMap1Event3(now){
+  if(!map1Event3Active)return;
+  const farmer=ensureMap1Event3Farmer();
+  const bock=ensureMap1Event3Bock();
+
+  const visible=currentMap===1&&!mapTransitioning;
+  farmer.style.visibility=visible?'visible':'hidden';
+  bock.style.visibility=visible?'visible':'hidden';
+  if(map1Event3Blood)map1Event3Blood.style.visibility=visible?'visible':'hidden';
+  if(map1Event3Slash)map1Event3Slash.style.visibility=visible?'visible':'hidden';
+
+  // Bauer läuft dieselbe markierte Map-1-Linie rückwärts: unten -> oben.
+  if(map1Event3FarmerStarted && map1Event3FarmerState==='walk'){
+    const t=Math.min(1,(now-map1Event3FarmerStart)/MAP1_EVENT3_FARMER_DURATION);
+    const [x,y]=map1Event3PointAt(t,true);
+    const mirrored=(Math.floor((now-map1Event3FarmerStart)/MAP1_EVENT3_FARMER_FRAME_MS)%2)===1;
+    const perspective=.82+(1-t)*.34;
+    farmer.style.left=`${x}px`;farmer.style.top=`${y}px`;
+    farmer.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
+    farmer.style.zIndex=String(13000+Math.round(y));
+  }
+
+  if(map1Event3BockStarted){
+    const t=Math.min(1,(now-map1Event3BockStart)/MAP1_EVENT3_BOCK_DURATION);
+    const [x,y]=map1Event3PointAt(t,false);
+
+    // Bewegung wird NIEMALS für Attacke angehalten.
+    bock.style.left=`${x}px`;bock.style.top=`${y}px`;
+    bock.style.transform='translate(-50%,-100%) scale(1.026)';
+    bock.style.zIndex=String(19000+Math.round(y));
+
+    if(map1Event3AttackStage!=='hit'){
+      if(map1Event3AttackStage==='afterHit'){
+        const seq=[1,2,3,2];
+        const frame=seq[Math.floor((now-map1Event3BockStart)/MAP1_EVENT3_BOCK_FRAME_MS)%seq.length];
+        const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;
+        if((bock.getAttribute('src')||'')!==wanted)bock.src=wanted;
+      }else if(map1Event3FarmerStarted && map1Event3FarmerState==='walk'){
+        const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0;
+        const d=Math.hypot(x-fx,y-fy);
+
+        if(d<=MAP1_EVENT3_HIT_DISTANCE){
+          map1Event3FarmerHit();
+        }else if(d<=MAP1_EVENT3_READY_DISTANCE){
+          map1Event3AttackStage='ready';
+          if((bock.getAttribute('src')||'')!=='assets/npc/event3-bock-attack-ready.png?v=71')
+            bock.src='assets/npc/event3-bock-attack-ready.png?v=71';
+        }else{
+          const seq=[1,2,3,2];
+          const frame=seq[Math.floor((now-map1Event3BockStart)/MAP1_EVENT3_BOCK_FRAME_MS)%seq.length];
+          const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;
+          if((bock.getAttribute('src')||'')!==wanted)bock.src=wanted;
+        }
+      }
+    }
+
+    // Schlagbild nur 0,5 s; danach bestehende Bock-Laufanimation bei identischer Bewegung.
+    if(map1Event3AttackStage==='hit'){
+      // Schlagbild bleibt timergesteuert exakt 0,5 s; Position läuft trotzdem weiter.
+    }else if(map1Event3AttackStage==='afterHit'){
+      const seq=[1,2,3,2];
+      const frame=seq[Math.floor((now-map1Event3BockStart)/MAP1_EVENT3_BOCK_FRAME_MS)%seq.length];
+      const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;
+      if((bock.getAttribute('src')||'')!==wanted)bock.src=wanted;
+    }
+
+    if(t>=1){
+      bock.style.display='none';
+      map1Event3BockStarted=false;
+      // Event darf nach dem Bauern-Tod sauber auslaufen.
+      map1Event3Later(finishMap1Event3,1200);
+    }
+  }
+}
+
+
 const WORLD_W = 1536;
 const WORLD_H = 1024;
 const ZOOM_LEVELS = [1, 1.55];
@@ -1349,6 +1667,7 @@ function draw(now){
   updateMap1Runner(now);
     updateMap1Bear(now);
   updateMap1Bock(now);
+  updateMap1Event3(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
@@ -2394,6 +2713,7 @@ window.addEventListener('keydown',e=>{
   if(['w','a','s','d'].includes(k)){keys.add(k);e.preventDefault();}
   if(k==='1' && !e.repeat){e.preventDefault();startMap1Runner();}
   if(k==='2' && !e.repeat){e.preventDefault();startMap1BockEvent();}
+  if(k==='3' && !e.repeat){e.preventDefault();startMap1Event3();}
 });
 window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
