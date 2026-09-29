@@ -1347,6 +1347,8 @@ function draw(now){
     updateMap1Bear(now);
   updateMap1Bock(now);
   updateMap1BockInteractionCue();
+  updateMap1TreeInteractionCue();
+  if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
   updateMap1BockMugCue();
   syncMap1EventVisibility();
   syncEventAudioForCurrentMap();
@@ -1807,6 +1809,130 @@ function startMap1TableServe(){
   return true;
 }
 
+
+
+/* MAP 1 – BAUM-VERSTECK v62.
+   Ausschließlich additiv: Bock-Event bleibt vollständig unangetastet.
+   Von UNTEN mit W an den Stamm andocken -> Baum leuchtet. Leertaste -> Spieler
+   verschwindet weich, Kronenbild + Blattstoß erscheinen. Erneute Leertaste -> zurück. */
+const MAP1_TREE_HIDE_IMAGE='assets/npc/baum-versteck.png?v=01';
+let map1TreeHiding=false;
+let map1TreeTransitioning=false;
+let map1TreeHideImage=null;
+let map1TreeLeafLayer=null;
+const MAP1_TREE_DOCK_TOLERANCE_X=34;
+const MAP1_TREE_DOCK_TOLERANCE_Y=16;
+
+function map1TreeSprite(){
+  const el=document.getElementById('baum');
+  return el ? collisionSprites.find(s=>s.el===el) : null;
+}
+function map1TreeDockPoint(){
+  const s=map1TreeSprite(); if(!s)return null;
+  const el=s.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  if(!w||!h)return null;
+  return {x:left+w*.5,y:top+h*TREE_TRUNK_HITBOX.y2+PLAYER.radius+2,left,top,w,h};
+}
+function map1TreeCanInteract(){
+  if(currentMap!==1||mapTransitioning||map1TreeHiding||map1TreeTransitioning||map1TableServing||map1BockReactionLocked)return false;
+  if(PLAYER.direction!=='back')return false;
+  const d=map1TreeDockPoint(); if(!d)return false;
+  return Math.abs(PLAYER.x-d.x)<=MAP1_TREE_DOCK_TOLERANCE_X &&
+         PLAYER.y>=d.y-MAP1_TREE_DOCK_TOLERANCE_Y && PLAYER.y<=d.y+MAP1_TREE_DOCK_TOLERANCE_Y;
+}
+function updateMap1TreeInteractionCue(){
+  const tree=document.getElementById('baum'); if(!tree)return;
+  if(currentMap===1 && map1TreeCanInteract()){
+    tree.style.filter='brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))';
+  }else tree.style.filter='none';
+}
+function ensureMap1TreeHideFX(){
+  const tree=document.getElementById('baum'); if(!tree)return null;
+  if(!map1TreeLeafLayer){
+    map1TreeLeafLayer=document.createElement('div');
+    map1TreeLeafLayer.id='map1TreeLeafLayer';
+    Object.assign(map1TreeLeafLayer.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});
+    world.appendChild(map1TreeLeafLayer);
+  }
+  if(!map1TreeHideImage){
+    map1TreeHideImage=document.createElement('img');
+    map1TreeHideImage.id='map1TreeHideImage';map1TreeHideImage.src=MAP1_TREE_HIDE_IMAGE;map1TreeHideImage.alt='';map1TreeHideImage.draggable=false;
+    Object.assign(map1TreeHideImage.style,{position:'absolute',display:'none',opacity:'0',height:'auto',objectFit:'contain',pointerEvents:'none',userSelect:'none',zIndex:'502',transition:'opacity 360ms ease,transform 420ms cubic-bezier(.2,.85,.25,1)',willChange:'opacity,transform'});
+    world.appendChild(map1TreeHideImage);
+  }
+  syncMap1TreeHideImagePosition();
+  return {image:map1TreeHideImage,leaves:map1TreeLeafLayer};
+}
+function syncMap1TreeHideImagePosition(){
+  if(!map1TreeHideImage)return;
+  const d=map1TreeDockPoint(); if(!d)return;
+  /* Klein, oben und exakt horizontal in der Baumkrone zentriert. */
+  const width=Math.max(52,Math.min(92,d.w*.19));
+  map1TreeHideImage.style.width=`${width}px`;
+  map1TreeHideImage.style.left=`${d.left+d.w*.5}px`;
+  map1TreeHideImage.style.top=`${d.top+d.h*.155}px`;
+  map1TreeHideImage.style.transform='translate(-50%,-18%) scale(.88)';
+}
+function burstMap1TreeLeaves(){
+  const fx=ensureMap1TreeHideFX(),d=map1TreeDockPoint(); if(!fx||!d)return;
+  const originX=d.left+d.w*.5, originY=d.top+d.h*.24;
+  const glyphs=['●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆'];
+  glyphs.forEach((glyph,i)=>{
+    const leaf=document.createElement('span');leaf.textContent=glyph;
+    const size=5+(i%4)*2;
+    Object.assign(leaf.style,{position:'absolute',left:`${originX}px`,top:`${originY}px`,font:`900 ${size}px/1 Georgia,serif`,color:i%3===0?'#78a83a':(i%3===1?'#4f8b2c':'#96bd4d'),textShadow:'0 1px 1px rgba(30,60,15,.35)',pointerEvents:'none',opacity:'1',transform:'translate(-50%,-50%) rotate(0deg)',willChange:'transform,opacity'});
+    fx.leaves.appendChild(leaf);
+    const angle=-Math.PI*.95+(Math.PI*1.9)*(i/(glyphs.length-1));
+    const burst=24+(i%7)*7;
+    const dx=Math.cos(angle)*burst;
+    const up=-22-Math.abs(Math.sin(angle))*42-(i%5)*5;
+    const fall=165+(i%6)*17;
+    const drift=dx+(i%2?18:-18);
+    const rot=(i%2?1:-1)*(180+37*i);
+    const anim=leaf.animate([
+      {transform:'translate(-50%,-50%) translate(0,0) rotate(0deg) scale(.7)',opacity:0,offset:0},
+      {transform:`translate(-50%,-50%) translate(${dx}px,${up}px) rotate(${rot*.28}deg) scale(1)`,opacity:1,offset:.18},
+      {transform:`translate(-50%,-50%) translate(${drift*.82}px,${fall*.55}px) rotate(${rot*.72}deg) scale(.92)`,opacity:.95,offset:.72},
+      {transform:`translate(-50%,-50%) translate(${drift}px,${fall}px) rotate(${rot}deg) scale(.72)`,opacity:0,offset:1}
+    ],{duration:1500+(i%5)*95,easing:'cubic-bezier(.18,.65,.28,1)',fill:'forwards'});
+    anim.onfinish=()=>leaf.remove();
+  });
+}
+function startMap1TreeHide(){
+  if(!map1TreeCanInteract())return false;
+  const fx=ensureMap1TreeHideFX(); if(!fx)return false;
+  map1TreeTransitioning=true;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;
+  const tree=document.getElementById('baum'); if(tree)tree.style.filter='none';
+  player.style.transition='opacity 360ms ease';player.style.opacity='0';
+  burstMap1TreeLeaves();
+  fx.image.style.display='block';fx.image.style.opacity='0';syncMap1TreeHideImagePosition();
+  setTimeout(()=>{
+    if(!map1TreeTransitioning)return;
+    fx.image.style.opacity='1';fx.image.style.transform='translate(-50%,-18%) scale(1)';
+  },150);
+  setTimeout(()=>{
+    map1TreeHiding=true;map1TreeTransitioning=false;player.style.visibility='hidden';player.style.opacity='0';
+  },380);
+  return true;
+}
+function leaveMap1TreeHide(){
+  if(!map1TreeHiding||map1TreeTransitioning)return false;
+  const fx=ensureMap1TreeHideFX(),d=map1TreeDockPoint(); if(!fx||!d)return false;
+  map1TreeTransitioning=true;map1TreeHiding=false;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;
+  burstMap1TreeLeaves();
+  fx.image.style.opacity='0';fx.image.style.transform='translate(-50%,-18%) scale(.88)';
+  PLAYER.x=d.x;PLAYER.y=d.y;setPlayerDirection('front');PLAYER.sequenceIndex=0;PLAYER.frameClock=0;PLAYER.frame=PLAYER_SEQUENCES.front[0];showPlayerFrame(true);
+  player.style.left=`${PLAYER.x}px`;player.style.top=`${PLAYER.y}px`;player.style.visibility='visible';player.style.opacity='0';player.style.transition='opacity 360ms ease';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{player.style.opacity='1';}));
+  setTimeout(()=>{fx.image.style.display='none';map1TreeTransitioning=false;player.style.transition='';playerLastTime=performance.now();updateMap1TreeInteractionCue();},390);
+  return true;
+}
+function toggleMap1TreeHide(){
+  if(map1TreeTransitioning)return true;
+  if(map1TreeHiding)return leaveMap1TreeHide();
+  return startMap1TreeHide();
+}
+
 function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
@@ -2175,7 +2301,7 @@ function checkMapTransition(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(mapTransitioning || map2BarServing || map1TableServing || map1BockReactionLocked){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
+  if(mapTransitioning || map2BarServing || map1TableServing || map1BockReactionLocked || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -2245,7 +2371,7 @@ window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){ if(!toggleMap1TreeHide() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
