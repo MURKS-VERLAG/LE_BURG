@@ -741,7 +741,7 @@ function ensureMap2BarAction(){
 }
 
 function map2BarCanInteract(){
-  if(currentMap!==2 || mapTransitioning || map2BarServing)return false;
+  if(currentMap!==2 || mapTransitioning || map2BarServing || playerHasBeer)return false;
   const cx=MAP2_BAR.left+MAP2_BAR.width/2;
   return PLAYER.direction==='front' &&
     Math.abs(PLAYER.x-cx)<=MAP2_BAR_INTERACT.xTolerance &&
@@ -790,6 +790,9 @@ function startMap2BarServe(){
     progress.style.display='none';
     player.style.transition='';
     map2BarServing=false;
+    playerHasBeer=true;
+    PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence(PLAYER.direction)[0];
+    showPlayerFrame(true);
     updateMap2BarInteractionCue();
   };
   map2BarServeTimer=requestAnimationFrame(tick);
@@ -1414,6 +1417,19 @@ const PLAYER_SEQUENCES={
   left:[1,2,3,4]
 };
 
+/* v63 – Bierstatus: Standard ist OHNE Bier. Die bisherigen Laufbilder/-folgen bleiben
+   vollständig erhalten und werden erst verwendet, sobald an der Theke ein Bier gezapft wurde. */
+const PLAYER_NO_BEER_SEQUENCES={
+  front:[1,2,3,4],
+  back:[1,2,3,4],
+  right:[1,2,3,4],
+  left:[1,2,3,4]
+};
+let playerHasBeer=false;
+function activePlayerSequence(direction){
+  return playerHasBeer ? PLAYER_SEQUENCES[direction] : PLAYER_NO_BEER_SEQUENCES[direction];
+}
+
 const keys=new Set();
 let playerLastTime=performance.now();
 
@@ -1425,6 +1441,8 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=63`;
+  /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
 }
@@ -1461,7 +1479,7 @@ function setPlayerDirection(direction){
   PLAYER.direction=direction;
   PLAYER.sequenceIndex=0;
   PLAYER.frameClock=0;
-  PLAYER.frame=PLAYER_SEQUENCES[direction][0];
+  PLAYER.frame=activePlayerSequence(direction)[0];
   // Wichtig: Richtungsframe SOFORT setzen, bevor im selben Tick Bewegung/Depth berechnet wird.
   showPlayerFrame(true);
 }
@@ -1733,7 +1751,7 @@ function map1InteractiveTafel(){
 }
 
 function map1InteractiveTable(){
-  if(currentMap!==1||mapTransitioning||map1TableServing)return null;
+  if(currentMap!==1||mapTransitioning||map1TableServing||!playerHasBeer)return null;
 
   // Lange Tafel hat eine eigene, strikt W-only Zone von unten.
   const tafel=map1InteractiveTafel();
@@ -1801,7 +1819,8 @@ function startMap1TableServe(){
   map1TableServeTimer=setTimeout(()=>{
     ensureTableMug(table);
     map1TableServing=false;
-    PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES[PLAYER.direction][0];
+    playerHasBeer=false;
+    PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence(PLAYER.direction)[0];
     showPlayerFrame(true);
     updateStandingTableDepth();
     updateMap1TableInteractionCue();
@@ -1921,7 +1940,7 @@ function leaveMap1TreeHide(){
   map1TreeTransitioning=true;map1TreeHiding=false;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;
   burstMap1TreeLeaves();
   fx.image.style.opacity='0';fx.image.style.transform='translate(-50%,-18%) scale(.88)';
-  PLAYER.x=d.x;PLAYER.y=d.y;setPlayerDirection('front');PLAYER.sequenceIndex=0;PLAYER.frameClock=0;PLAYER.frame=PLAYER_SEQUENCES.front[0];showPlayerFrame(true);
+  PLAYER.x=d.x;PLAYER.y=d.y;setPlayerDirection('front');PLAYER.sequenceIndex=0;PLAYER.frameClock=0;PLAYER.frame=activePlayerSequence('front')[0];showPlayerFrame(true);
   player.style.left=`${PLAYER.x}px`;player.style.top=`${PLAYER.y}px`;player.style.visibility='visible';player.style.opacity='0';player.style.transition='opacity 360ms ease';
   requestAnimationFrame(()=>requestAnimationFrame(()=>{player.style.opacity='1';}));
   setTimeout(()=>{fx.image.style.display='none';map1TreeTransitioning=false;player.style.transition='';playerLastTime=performance.now();updateMap1TreeInteractionCue();},390);
@@ -2200,7 +2219,7 @@ async function enterWirtschaft(){
   PLAYER.direction='back';
   PLAYER.sequenceIndex=0;
   PLAYER.frameClock=0;
-  PLAYER.frame=PLAYER_SEQUENCES.back[0];
+  PLAYER.frame=activePlayerSequence('back')[0];
   player.style.left=`${PLAYER.x}px`;
   player.style.top=`${PLAYER.y}px`;
   showPlayerFrame(true);
@@ -2231,7 +2250,7 @@ async function leaveWirtschaft(){
   updateMap2BarVisibility();
   swapMapInstant('assets/maps/terrasse.jpg');
   PLAYER.x=778; PLAYER.y=356; PLAYER.direction='front';
-  PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=PLAYER_SEQUENCES.front[0];
+  PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence('front')[0];
   player.style.left=`${PLAYER.x}px`; player.style.top=`${PLAYER.y}px`;
   showPlayerFrame(true);
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -2329,7 +2348,7 @@ function updatePlayer(now){
     PLAYER.frameClock+=dt*1000;
     while(PLAYER.frameClock>=PLAYER.frameMs){
       PLAYER.frameClock-=PLAYER.frameMs;
-      const seq=PLAYER_SEQUENCES[PLAYER.direction];
+      const seq=activePlayerSequence(PLAYER.direction);
       PLAYER.sequenceIndex=(PLAYER.sequenceIndex+1)%seq.length;
       PLAYER.frame=seq[PLAYER.sequenceIndex];
       showPlayerFrame();
@@ -2442,7 +2461,13 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/side-1.png?v=12','assets/player/side-2.png?v=12',
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
   'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
-  'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46'
+  'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46',
+  'assets/player/nobier-front-1.png?v=63','assets/player/nobier-front-2.png?v=63',
+  'assets/player/nobier-front-3.png?v=63','assets/player/nobier-front-4.png?v=63',
+  'assets/player/nobier-back-1.png?v=63','assets/player/nobier-back-2.png?v=63',
+  'assets/player/nobier-back-3.png?v=63','assets/player/nobier-back-4.png?v=63',
+  'assets/player/nobier-side-1.png?v=63','assets/player/nobier-side-2.png?v=63',
+  'assets/player/nobier-side-3.png?v=63','assets/player/nobier-side-4.png?v=63'
 ];
 async function preloadMap1BearFrames(){
   const paths=[
