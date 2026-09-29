@@ -1441,7 +1441,7 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=63`;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=65`;
   /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
@@ -2462,12 +2462,12 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/side-3.png?v=12','assets/player/side-4.png?v=12',
   'assets/player/tisch-w.png?v=47','assets/player/tisch-s.png?v=47',
   'assets/player/tisch-d.png?v=46','assets/player/tisch-a.png?v=46',
-  'assets/player/nobier-front-1.png?v=63','assets/player/nobier-front-2.png?v=63',
-  'assets/player/nobier-front-3.png?v=63','assets/player/nobier-front-4.png?v=63',
-  'assets/player/nobier-back-1.png?v=63','assets/player/nobier-back-2.png?v=63',
-  'assets/player/nobier-back-3.png?v=63','assets/player/nobier-back-4.png?v=63',
-  'assets/player/nobier-side-1.png?v=63','assets/player/nobier-side-2.png?v=63',
-  'assets/player/nobier-side-3.png?v=63','assets/player/nobier-side-4.png?v=63'
+  'assets/player/nobier-front-1.png?v=65','assets/player/nobier-front-2.png?v=65',
+  'assets/player/nobier-front-3.png?v=65','assets/player/nobier-front-4.png?v=65',
+  'assets/player/nobier-back-1.png?v=65','assets/player/nobier-back-2.png?v=65',
+  'assets/player/nobier-back-3.png?v=65','assets/player/nobier-back-4.png?v=65',
+  'assets/player/nobier-side-1.png?v=65','assets/player/nobier-side-2.png?v=65',
+  'assets/player/nobier-side-3.png?v=65','assets/player/nobier-side-4.png?v=65'
 ];
 async function preloadMap1BearFrames(){
   const paths=[
