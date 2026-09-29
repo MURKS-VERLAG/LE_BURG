@@ -637,6 +637,25 @@ function updateMap1Bock(now){
 const map1Event3Whistle=new Audio('assets/audio/Human whistle (singing) - sound effect.mp3');
 map1Event3Whistle.preload='auto';
 map1Event3Whistle.volume=.88;
+const map1Event3SlashSound=new Audio('assets/audio/swdth_04_converted_by_soundandgo.com_.mp3');
+map1Event3SlashSound.preload='auto';
+map1Event3SlashSound.volume=.95;
+
+const map1Event3BockSpawnSound=new Audio('assets/audio/whinny_m_01_converted_by_soundandgo.com_.mp3');
+map1Event3BockSpawnSound.preload='auto';
+map1Event3BockSpawnSound.volume=.92;
+
+const map1Event3BockRunSound=new Audio('assets/audio/trot_sing_01_converted_by_soundandgo.com_.mp3');
+map1Event3BockRunSound.preload='auto';
+map1Event3BockRunSound.volume=.88;
+
+/* Event-3-Sounds besitzen absichtlich getrennte Audio-Objekte:
+   Pfeifen, Wiehern/Spawn, Huflauf und Schwerthieb dürfen sich überlagern. */
+map1Event3BockSpawnSound.addEventListener('ended',()=>{
+  if(!map1Event3Active || !map1Event3BockStarted)return;
+  map1Event3BockRunSound.currentTime=0;
+  map1Event3BockRunSound.play().catch(()=>{});
+});
 
 const MAP1_EVENT3_FARMER_DELAY=3000;
 const MAP1_EVENT3_BOCK_DELAY_AFTER_FARMER=4000;
@@ -680,7 +699,7 @@ function ensureMap1Event3Farmer(){
   map1Event3Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
   map1Event3Farmer.alt='';map1Event3Farmer.draggable=false;
   Object.assign(map1Event3Farmer.style,{
-    position:'absolute',left:'0',top:'0',width:'88px',height:'auto',
+    position:'absolute',left:'0',top:'0',width:'126px',height:'auto',
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',zIndex:'13000',willChange:'left,top,transform'
   });
@@ -750,7 +769,7 @@ function showMap1Event3Slash(x,y){
 function growMap1Event3Blood(x,y,z){
   const blood=ensureMap1Event3Blood();
   blood.getAnimations().forEach(a=>a.cancel());
-  blood.style.left=`${x}px`;blood.style.top=`${y+4}px`;
+  blood.style.left=`${x}px`;blood.style.top=`${y-24}px`;
   blood.style.zIndex=String(Math.max(1,z-1));
   blood.style.display='block';blood.style.opacity='1';
   blood.animate([
@@ -772,6 +791,8 @@ function map1Event3FarmerHit(){
   // Friedrich: Schlagbild exakt 0,5 s, Bewegung läuft währenddessen unverändert weiter.
   bock.src='assets/npc/event3-bock-slash.png?v=71';
   bock.style.width='103.075px';
+  map1Event3SlashSound.currentTime=0;
+  map1Event3SlashSound.play().catch(()=>{});
   showMap1Event3Slash(bx,by);
 
   // Bauer: sofort kniend/Bauch haltend für exakt 1,5 s.
@@ -822,6 +843,9 @@ function finishMap1Event3(){
   clearMap1Event3Timers();
   resetMap1Event3Visuals();
   map1Event3Whistle.pause();map1Event3Whistle.currentTime=0;
+  map1Event3SlashSound.pause();map1Event3SlashSound.currentTime=0;
+  map1Event3BockSpawnSound.pause();map1Event3BockSpawnSound.currentTime=0;
+  map1Event3BockRunSound.pause();map1Event3BockRunSound.currentTime=0;
   if(currentMap===1&&!mapTransitioning&&bgMusic){
     bgMusic.volume=0;
     bgMusic.play().catch(()=>{});
@@ -854,7 +878,7 @@ function startMap1Event3(){
     map1Event3FarmerStart=performance.now();
     map1Event3FarmerState='walk';
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';
-    farmer.style.width='88px';
+    farmer.style.width='126px';
     farmer.style.display='block';
     farmer.style.visibility='visible';
     farmer.style.opacity='1';
@@ -872,6 +896,13 @@ function startMap1Event3(){
     bock.style.display='block';
     bock.style.visibility='visible';
     bock.style.opacity='1';
+
+    // Bock erscheint: Sound 2 sofort; dessen 'ended'-Handler startet direkt danach Sound 3.
+    // Beide laufen unabhängig vom weiterhin pfeifenden Bauern.
+    map1Event3BockRunSound.pause();
+    map1Event3BockRunSound.currentTime=0;
+    map1Event3BockSpawnSound.currentTime=0;
+    map1Event3BockSpawnSound.play().catch(()=>{});
   },MAP1_EVENT3_FARMER_DELAY+MAP1_EVENT3_BOCK_DELAY_AFTER_FARMER);
 }
 function updateMap1Event3(now){
@@ -1768,9 +1799,9 @@ function playerSpritePath(direction,frame){
 
 function playerVisualScale(){
   let s=1;
-  /* v70: ALLE OHNE-BIER-Richtungen exakt 5 % größer.
+  /* v72: ALLE OHNE-BIER-Richtungen insgesamt exakt 10 % größer.
      MIT Bier bleibt jede bisherige Skalierung EXAKT unangetastet. */
-  if(!playerHasBeer)s*=1.05;
+  if(!playerHasBeer)s*=1.10;
   if(PLAYER.direction==='back' && playerHasBeer)s*=.85;
   if(currentMap===2)s*=1.15; // NUR Map 2: bisherige Map-2-Skalierung bleibt erhalten.
   return s;
