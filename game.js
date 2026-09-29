@@ -1422,8 +1422,8 @@ const PLAYER_SEQUENCES={
 const PLAYER_NO_BEER_SEQUENCES={
   front:[1,2,3,4],
   back:[1,2,3,4],
-  right:[1,2,4,3],
-  left:[1,2,4,3]
+  right:[1,2,3],
+  left:[1,2,3]
 };
 let playerHasBeer=false;
 function activePlayerSequence(direction){
@@ -1441,7 +1441,7 @@ let playerDirectionToken=0;
 
 function playerSpritePath(direction,frame){
   const source=(direction==='left'||direction==='right') ? 'side' : direction;
-  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=67`;
+  if(!playerHasBeer)return `assets/player/nobier-${source}-${frame}.png?v=68`;
   /* Bestehende Bier-Sprites exakt wie bisher. */
   const version=source==='back' ? '' : '?v=12';
   return `assets/player/${source}-${frame}.png${version}`;
