@@ -141,10 +141,40 @@ function syncMap1ScribeConfetti(){
   }
   map1ScribeConfetti.style.display=active?'block':'none';
 }
+function map1EventMusicIsActive(){
+  return !!(map1RunnerActive||map1BearActive||map1BockActive||map1Event3Active||map1Event4Active||map1Event5Active||
+    !map1BearSong.paused||!map1BockSong.paused||!map1Event4Music.paused||!map1Event5Music.paused);
+}
+function pauseMap1Popularity90Song(reset=false){
+  if(!map1Popularity90Song.paused)map1Popularity90Song.pause();
+  if(reset)map1Popularity90Song.currentTime=0;
+}
+function resumeMap1AmbientMusic(){
+  if(map1GameOverStarted||currentMap!==1||mapTransitioning)return;
+  if(map1EventMusicIsActive())return;
+  if(map1Popularity>=90&&map1Popularity<=100){
+    if(bgMusic)bgMusic.pause();
+    if(map1Popularity90Song.paused)map1Popularity90Song.play().catch(()=>{});
+  }else{
+    pauseMap1Popularity90Song(true);
+    if(bgMusic){
+      bgMusic.volume=0;
+      bgMusic.play().catch(()=>{});
+      bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);
+    }
+  }
+}
 function syncMap1Popularity90Song(){
-  const active=map1Popularity>=90&&map1Popularity<=100&&!map1GameOverStarted&&currentMap===1&&!mapTransitioning;
-  if(active){if(map1Popularity90Song.paused)map1Popularity90Song.play().catch(()=>{});}
-  else if(!map1Popularity90Song.paused){map1Popularity90Song.pause();map1Popularity90Song.currentTime=0;}
+  const active=map1Popularity>=90&&map1Popularity<=100&&!map1GameOverStarted&&currentMap===1&&!mapTransitioning&&!map1EventMusicIsActive();
+  if(active){
+    if(bgMusic)bgMusic.pause();
+    if(map1Popularity90Song.paused)map1Popularity90Song.play().catch(()=>{});
+  }else{
+    pauseMap1Popularity90Song(map1Popularity<90);
+    if(map1Popularity<90&&!map1EventMusicIsActive()&&currentMap===1&&!mapTransitioning&&bgMusic&&bgMusic.paused){
+      bgMusic.volume=MAP1_BG_VOLUME;bgMusic.play().catch(()=>{});
+    }
+  }
 }
 
 function ensureMap1Scribe(){
@@ -232,8 +262,12 @@ function startMap1GameOver(){
   setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},4900);
   setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},11400);
 }
-function showMap1PopularityDelta(delta){
-  if(!delta)return;
+let map1PopularityDeltaQueue=[];
+let map1PopularityDeltaBusy=false;
+function runNextMap1PopularityDelta(){
+  if(map1PopularityDeltaBusy||!map1PopularityDeltaQueue.length)return;
+  map1PopularityDeltaBusy=true;
+  const delta=map1PopularityDeltaQueue.shift();
   ensureMap1Scribe();
   const fx=document.createElement('div');
   fx.textContent=`${delta>0?'+':''}${delta}`;
@@ -243,18 +277,25 @@ function showMap1PopularityDelta(delta){
     left:'50%',
     top:'4%',
     transform:'translate(-50%,0)',
-    font:'900 clamp(19px,2vw,30px)/1 Georgia,serif',
+    font:'700 22px/1 sans-serif',
     color:positive?'#2aa83a':'#c71919',
-    textShadow:'0 2px 3px rgba(0,0,0,.82),0 0 2px rgba(255,245,220,.75)',
-    pointerEvents:'none',zIndex:'20',opacity:'1',whiteSpace:'nowrap'
+    textShadow:'0 2px 3px rgba(0,0,0,.8)',
+    pointerEvents:'none',zIndex:'30000',opacity:'1',whiteSpace:'nowrap'
   });
   map1ScribeWrap.appendChild(fx);
   fx.animate([
     {transform:'translate(-50%,8px)',opacity:1},
-    {transform:'translate(-50%,-34px)',opacity:1,offset:.55},
-    {transform:'translate(-50%,-58px)',opacity:0}
-  ],{duration:1500,easing:'ease-out',fill:'forwards'});
-  setTimeout(()=>fx.remove(),1550);
+    {transform:'translate(-50%,-72px)',opacity:1,offset:.62},
+    {transform:'translate(-50%,-128px)',opacity:0}
+  ],{duration:2800,easing:'ease-out',fill:'forwards'});
+  setTimeout(()=>fx.remove(),2850);
+  // Nächste Beliebtheitsanzeige exakt 2 s später starten – niemals gleichzeitig.
+  setTimeout(()=>{map1PopularityDeltaBusy=false;runNextMap1PopularityDelta();},2000);
+}
+function showMap1PopularityDelta(delta){
+  if(!delta)return;
+  map1PopularityDeltaQueue.push(delta);
+  runNextMap1PopularityDelta();
 }
 function changeMap1Popularity(delta){
   const old=map1Popularity;map1Popularity=Math.max(0,Math.min(100,map1Popularity+delta));
@@ -395,6 +436,7 @@ function showBockPuff(x,y){
 function startMap1BockEvent(){
   if(currentMap!==1 || mapTransitioning || map1BockActive)return;
   map1BockActive=true;
+  pauseMap1Popularity90Song(false);
   map1BockStage='waiting';
   syncMap1Scribe();
 
@@ -606,7 +648,7 @@ function finishMap1BockDeparture(){
   const rider=ensureMap1BockRider();rider.style.display='none';map1BockStage='done';map1BockActive=false;syncMap1Scribe();
   bockFadeAudio(map1BockSong,0,1800,()=>{map1BockSong.pause();map1BockSong.currentTime=0;map1BockSong.volume=.72;});
   const {dark,fog}=ensureMap1BockFX();dark.style.transition='opacity 1800ms ease';dark.style.opacity='0';fog.style.transition='opacity 1600ms ease';fog.style.opacity='0';
-  setTimeout(()=>{fog.style.display='none';dark.style.display='none';if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}},1900);
+  setTimeout(()=>{fog.style.display='none';dark.style.display='none';resumeMap1AmbientMusic();},1900);
 }
 
 function startMap1BockBeerServe(){
@@ -979,15 +1021,12 @@ function finishMap1Event3(){
   map1Event3SlashSound.pause();map1Event3SlashSound.currentTime=0;map1Event3SlashSound.onended=null;
   map1Event3BockSpawnSound.pause();map1Event3BockSpawnSound.currentTime=0;
   map1Event3BockRunSound.pause();map1Event3BockRunSound.currentTime=0;
-  if(currentMap===1&&!mapTransitioning&&bgMusic){
-    bgMusic.volume=0;
-    bgMusic.play().catch(()=>{});
-    bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);
-  }
+  resumeMap1AmbientMusic();
 }
 function startMap1Event3(){
   if(currentMap!==1||mapTransitioning||map1Event3Active)return;
   map1Event3Active=true;
+  pauseMap1Popularity90Song(false);
   map1Event3ScribeHit=false;
   setMap1GuestCount(0);
   syncMap1Scribe();
@@ -1144,11 +1183,12 @@ function finishMap1Event4(){
   map1Event4Flame.pause();map1Event4Flame.currentTime=0;
   map1Event4Music.pause();map1Event4Music.currentTime=0;
   if(map1Event4Kalif)map1Event4Kalif.style.display='none';
-  if(currentMap===1&&!mapTransitioning&&bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);}
+  resumeMap1AmbientMusic();
 }
 function startMap1Event4(){
   if(currentMap!==1||mapTransitioning||map1Event4Active)return;
   map1Event4Active=true;map1Event4Walking=false;map1Event4SpecialStart=-1;map1Event4PopularityDone=false;
+  pauseMap1Popularity90Song(false);
   map1Event4IgniteAt=-1;map1Event4FireStart=-1;map1Event4FireDone=false;
   const kalif=ensureMap1Event4Kalif();kalif.style.display='none';
   if(bgMusic)bgMusic.pause();map1Event4Music.pause();map1Event4Music.currentTime=0;
@@ -1290,11 +1330,13 @@ function finishMap1Event5(){
   stopMap1Event5BurnSounds();
   map1Event5Music.pause();map1Event5Music.currentTime=0;
   if(map1Event5Farmer)map1Event5Farmer.style.display='none';if(map1Event5Kalif)map1Event5Kalif.style.display='none';
-  if(currentMap===1&&!mapTransitioning&&bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);}
+  resumeMap1AmbientMusic();
 }
 function startMap1Event5(){
   if(currentMap!==1||mapTransitioning||map1Event5Active)return;
   map1Event5Active=true;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;map1Event5FarmerState='walk';map1Event5FireStage='none';map1Event5FirePendingAt=-1;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
+  pauseMap1Popularity90Song(false);
+  setMap1GuestCount(0);
   clearMap1Event5Timers();stopMap1Event5BurnSounds();
   const farmer=ensureMap1Event5Farmer(),kalif=ensureMap1Event5Kalif();farmer.style.display='none';kalif.style.display='none';
   if(bgMusic)bgMusic.pause();
@@ -1303,6 +1345,7 @@ function startMap1Event5(){
   map1Event5Later(()=>{
     if(!map1Event5Active)return;
     map1Event5FarmerStarted=true;map1Event5FarmerStart=performance.now();map1Event5FarmerState='walk';
+    setMap1GuestCount(1);
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';farmer.style.width='176.4px';farmer.style.display='block';farmer.style.visibility='visible';farmer.style.opacity='1';
     beginMap1Event5Kalif();
   },MAP1_EVENT5_FARMER_DELAY);
@@ -1310,6 +1353,7 @@ function startMap1Event5(){
 function map1Event5Ignite(now){
   if(map1Event5FireStage!=='none')return;
   const kalif=ensureMap1Event5Kalif();map1Event5FireStage='fire';map1Event5FireStart=now;map1Event5FirePendingAt=-1;
+  setMap1GuestCount(0);
   changeMap1Popularity(-1);
   changeMap1Popularity(10);
   // Flammenbild zwingend NACH bereits gezeigtem kalif-8.
@@ -1371,7 +1415,7 @@ function updateMap1Event5(now){
           const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
           // Erst nachdem kalif-8 tatsächlich sichtbar war, darf beim nächsten Nähe-Check das Feuerbild kommen.
           const current=(kalif.getAttribute('src')||'');
-          if(d<=MAP1_EVENT5_FIRE_DISTANCE&&current.includes('kalif-8.png')&&map1Event5FirePendingAt<0)map1Event5FirePendingAt=now+500;
+          if(d<=MAP1_EVENT5_FIRE_DISTANCE&&current.includes('kalif-8.png')&&map1Event5FirePendingAt<0)map1Event5FirePendingAt=now+1000;
         }
       }
     }
@@ -1796,10 +1840,7 @@ function finishMap1BearSong(){
   map1BearSong.volume=MAP1_BEAR_SONG_VOLUME;
   map1BearSongWatchRAF=0;
   map1BearSongFadeRAF=0;
-  if(bgMusic){
-    bgMusic.volume=MAP1_BG_VOLUME;
-    bgMusic.play().catch(()=>{});
-  }
+  resumeMap1AmbientMusic();
 }
 
 /* Song beginnt 0,3 s nach Schrei-Beginn.
@@ -1884,6 +1925,8 @@ function startMap1BearAudioLoop(){
 function startMap1Runner(){
   if(currentMap!==1 || mapTransitioning || map1RunnerActive)return;
   const el=ensureMap1Runner();
+
+  pauseMap1Popularity90Song(false);
 
   // Taste 1: Schrei SOFORT. Er läuft vollständig weiter und wird NICHT vom Song beendet.
   clearTimeout(map1RunnerTimer);
@@ -2153,6 +2196,7 @@ window.addEventListener('resize',()=>{
 if(bgMusic){
   bgMusic.volume=MAP1_BG_VOLUME;
   const playMusic=()=>{
+    if(map1EventMusicIsActive()||map1Popularity>=90){syncMap1Popularity90Song();return;}
     bgMusic.play().then(()=>{
       window.removeEventListener('pointerdown',playMusic);
       window.removeEventListener('keydown',playMusic);
