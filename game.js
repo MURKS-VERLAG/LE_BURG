@@ -71,12 +71,16 @@ const MAP1_SCRIBE_IMAGES={
   bock:'assets/npc/schreiber-2.png?v=76',
   warning:'assets/npc/schreiber-3.png?v=76',
   low:'assets/npc/schreiber-4.png?v=77',
+  critical:'assets/npc/schreiber-6.png?v=79',
+  gameover:'assets/npc/schreiber-gameover.png?v=79',
   happy:'assets/npc/schreiber-5.png?v=77'
 };
 let map1Popularity=69;
 let map1GuestCount=0;
 let map1ScribeWrap=null,map1ScribeImage=null,map1ScribePopularity=null,map1ScribeGuests=null;
 let map1ScribeMode='normal';
+let map1GameOverStarted=false;
+let map1GameOverOverlay=null,map1GameOverDust=null,map1GameOverReplay=null;
 
 function ensureMap1Scribe(){
   if(map1ScribeWrap)return map1ScribeWrap;
@@ -107,7 +111,7 @@ function ensureMap1Scribe(){
 function renderMap1ScribeNumbers(){
   if(!map1ScribePopularity||!map1ScribeGuests)return;
   map1ScribePopularity.textContent=String(map1Popularity);
-  map1ScribePopularity.style.color=(map1Popularity>=40&&map1Popularity<=49)?'#c71919':'#2aa83a';
+  map1ScribePopularity.style.color=map1Popularity<50?'#c71919':'#2aa83a';
   map1ScribeGuests.textContent=String(map1GuestCount);
   map1ScribeGuests.style.color=map1GuestCount===0?'#c71919':'#111111';
 }
@@ -118,10 +122,12 @@ function wantedMap1ScribeMode(){
   if(map1Popularity>=80)return 'happy';
   if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
   if(map1Popularity>=20&&map1Popularity<=39)return 'low';
+  if(map1Popularity>=1&&map1Popularity<=19)return 'critical';
   return 'normal';
 }
 function syncMap1Scribe(force=false){
   ensureMap1Scribe();
+  if(map1GameOverStarted)return;
   const visible=currentMap===1&&!mapTransitioning;
   map1ScribeWrap.style.visibility=visible?'visible':'hidden';
   const mode=wantedMap1ScribeMode();
@@ -138,7 +144,30 @@ function syncMap1Scribe(force=false){
   },150);
 }
 function setMap1GuestCount(n){map1GuestCount=Math.max(0,Math.round(n));renderMap1ScribeNumbers();}
-function changeMap1Popularity(delta){map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));renderMap1ScribeNumbers();syncMap1Scribe();}
+function ensureMap1GameOverFX(){
+  if(map1GameOverOverlay)return;
+  const st=document.createElement('style');st.id='map1GameOverStyle';st.textContent=`
+    @keyframes scribeDustPuff{0%{opacity:0;transform:translate(-50%,-50%) scale(.12)}18%{opacity:.98}70%{opacity:.82}100%{opacity:0;transform:translate(-50%,-50%) scale(3.5)}}
+    @keyframes replayPulse{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.08)}}`;
+  document.head.appendChild(st);
+  map1GameOverOverlay=document.createElement('div');Object.assign(map1GameOverOverlay.style,{position:'fixed',inset:'0',background:'#000',opacity:'0',pointerEvents:'none',zIndex:'89990',transition:'opacity 6500ms linear'});game.appendChild(map1GameOverOverlay);
+  map1GameOverDust=document.createElement('div');Object.assign(map1GameOverDust.style,{position:'absolute',left:'6%',bottom:'13%',width:'150px',height:'150px',borderRadius:'50%',pointerEvents:'none',zIndex:'90010',display:'none',background:'radial-gradient(circle,rgba(214,181,128,.96) 0%,rgba(190,150,98,.88) 28%,rgba(161,120,76,.62) 50%,rgba(139,100,61,.28) 67%,rgba(139,100,61,0) 78%)',filter:'blur(7px)'});game.appendChild(map1GameOverDust);
+  map1GameOverReplay=document.createElement('button');map1GameOverReplay.type='button';map1GameOverReplay.textContent='↻';map1GameOverReplay.setAttribute('aria-label','Spiel neu starten');Object.assign(map1GameOverReplay.style,{position:'fixed',left:'50%',top:'50%',transform:'translate(-50%,-50%)',width:'104px',height:'104px',border:'3px solid rgba(220,190,140,.92)',borderRadius:'50%',background:'rgba(20,15,10,.7)',color:'#e3c79a',font:'700 76px/88px Georgia,serif',textAlign:'center',cursor:'pointer',zIndex:'90020',display:'none',opacity:'0',transition:'opacity 900ms ease',animation:'replayPulse 2.2s ease-in-out infinite'});map1GameOverReplay.onclick=()=>location.reload();game.appendChild(map1GameOverReplay);
+}
+function startMap1GameOver(){
+  if(map1GameOverStarted)return;map1GameOverStarted=true;ensureMap1Scribe();ensureMap1GameOverFX();keys.clear();PLAYER.moving=false;
+  map1ScribePopularity.textContent='';map1ScribeGuests.textContent='';map1ScribeMode='gameover';map1ScribeImage.style.opacity='0';
+  setTimeout(()=>{map1ScribeImage.src=MAP1_SCRIBE_IMAGES.gameover;map1ScribeImage.style.opacity='1';},120);
+  map1GameOverDust.style.display='block';map1GameOverDust.style.animation='none';void map1GameOverDust.offsetWidth;map1GameOverDust.style.animation='scribeDustPuff 2200ms ease-out forwards';
+  setTimeout(()=>{map1ScribeWrap.style.transition='opacity 900ms ease,filter 900ms ease';map1ScribeWrap.style.opacity='0';map1ScribeWrap.style.filter='blur(5px)';},1000);
+  setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},1900);
+  setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},8600);
+}
+function changeMap1Popularity(delta){
+  const old=map1Popularity;map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));
+  if(map1Popularity===0&&old>0){startMap1GameOver();return;}
+  renderMap1ScribeNumbers();syncMap1Scribe();
+}
 
 /* MAP 1 – EVENT 2: DER BOCK GEHT UM (Taste 2). */
 const map1BockSong=new Audio('assets/audio/Der Bock geht um.mp3');
@@ -2713,7 +2742,7 @@ function syncMap1NpcPlayerDepth(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
+  if(map1GameOverStarted || mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -2876,7 +2905,8 @@ async function preloadMap1BearFrames(){
     'assets/npc/bock-trinkt.png?v=38','assets/npc/bock-krug-leer.png?v=38',
     'assets/npc/event3-bock-attack-ready.png?v=71','assets/npc/event3-bock-slash.png?v=71',
     'assets/npc/event3-bauer-walk.png?v=71','assets/npc/event3-bauer-kneel.png?v=71','assets/npc/event3-bauer-dead.png?v=71',
-    'assets/npc/baum-versteck.png?v=01'
+    'assets/npc/baum-versteck.png?v=01',
+    'assets/npc/schreiber-6.png?v=79','assets/npc/schreiber-gameover.png?v=79'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
