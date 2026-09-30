@@ -60,9 +60,9 @@ map1RunnerSound.volume=1;
    Fester HUD-Charakter unten links: keine Hitbox, liegt vor der Spielfigur,
    während die bestehende Welt-/Randkollision vollständig unverändert bleibt. */
 const MAP1_SCRIBE_IMAGES={
-  normal:'assets/npc/schreiber-1.png?v=75',
-  bock:'assets/npc/schreiber-2.png?v=75',
-  warning:'assets/npc/schreiber-3.png?v=75'
+  normal:'assets/npc/schreiber-1.png?v=76',
+  bock:'assets/npc/schreiber-2.png?v=76',
+  warning:'assets/npc/schreiber-3.png?v=76'
 };
 let map1Popularity=69;
 let map1GuestCount=0;
@@ -74,7 +74,7 @@ function ensureMap1Scribe(){
   map1ScribeWrap=document.createElement('div');
   map1ScribeWrap.id='map1Scribe';
   Object.assign(map1ScribeWrap.style,{
-    position:'absolute',left:'0',bottom:'0',width:'clamp(250px, 28.5vw, 430px)',
+    position:'absolute',left:'0',bottom:'0',width:'clamp(100px, 11.4vw, 172px)',
     aspectRatio:'2 / 3',pointerEvents:'none',userSelect:'none',zIndex:'70000',
     overflow:'visible',opacity:'1',transition:'opacity 220ms ease'
   });
@@ -85,11 +85,11 @@ function ensureMap1Scribe(){
     objectPosition:'left bottom',transform:'scaleX(-1)',transformOrigin:'50% 100%',
     pointerEvents:'none',userSelect:'none',transition:'opacity 220ms ease',opacity:'1'
   });
-  const numberBase={position:'absolute',bottom:'24.0%',fontFamily:'Georgia,serif',fontWeight:'900',fontSize:'clamp(24px,3.0vw,46px)',lineHeight:'1',textShadow:'0 2px 2px rgba(255,245,220,.95), 0 0 3px rgba(255,245,220,.95)',pointerEvents:'none',zIndex:'2',transform:'rotate(-2deg)'};
+  const numberBase={position:'absolute',bottom:'33.5%',fontFamily:'Georgia,serif',fontWeight:'900',fontSize:'clamp(10px,1.2vw,18px)',lineHeight:'1',textAlign:'center',minWidth:'1.8em',textShadow:'0 1px 1px rgba(255,245,220,.95), 0 0 2px rgba(255,245,220,.95)',pointerEvents:'none',zIndex:'2',transform:'translateX(-50%) rotate(-2deg)'};
   map1ScribePopularity=document.createElement('div');
-  Object.assign(map1ScribePopularity.style,numberBase,{left:'32.0%',color:'#2aa83a'});
+  Object.assign(map1ScribePopularity.style,numberBase,{left:'25.0%',color:'#2aa83a'});
   map1ScribeGuests=document.createElement('div');
-  Object.assign(map1ScribeGuests.style,numberBase,{left:'66.0%',color:'#c71919',transform:'rotate(2deg)'});
+  Object.assign(map1ScribeGuests.style,numberBase,{left:'61.0%',color:'#c71919',transform:'translateX(-50%) rotate(2deg)'});
   map1ScribeWrap.append(map1ScribeImage,map1ScribePopularity,map1ScribeGuests);
   game.appendChild(map1ScribeWrap);
   renderMap1ScribeNumbers();
@@ -103,8 +103,10 @@ function renderMap1ScribeNumbers(){
   map1ScribeGuests.style.color=map1GuestCount===0?'#c71919':'#111111';
 }
 function wantedMap1ScribeMode(){
-  if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
+  // Laufende Bockevents haben IMMER Vorrang: bei jeder neuen Taste 2/3 wird Bild 2 gezeigt.
+  // Erst nach Eventende greift wieder der dauerhafte Beliebtheitszustand (40–49 => Bild 3).
   if(map1BockActive||map1Event3Active)return 'bock';
+  if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
   return 'normal';
 }
 function syncMap1Scribe(force=false){
