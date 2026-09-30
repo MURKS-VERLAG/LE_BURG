@@ -1080,10 +1080,12 @@ function startMap1Event4(){
   map1Event4Active=true;map1Event4Walking=false;map1Event4SpecialStart=-1;map1Event4PopularityDone=false;
   const kalif=ensureMap1Event4Kalif();kalif.style.display='none';
   if(bgMusic)bgMusic.pause();map1Event4Music.pause();map1Event4Music.currentTime=0;
+  // Taste 4: Crusader-Song sofort zusammen mit dem Intro-Sound starten.
+  map1Event4Music.currentTime=0;map1Event4Music.play().catch(()=>{});
   map1Event4Intro.pause();map1Event4Intro.currentTime=0;
   map1Event4Intro.onended=()=>{
     if(!map1Event4Active)return;
-    map1Event4Music.currentTime=0;map1Event4Music.play().catch(()=>{});
+    // Musik läuft bereits seit Tastendruck; nach Intro erscheint der Kalif.
     map1Event4Start=performance.now();map1Event4Walking=true;
     kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   };
@@ -1100,8 +1102,8 @@ function updateMap1Event4(now){
   if(map1Event4SpecialStart<0){
     const phase=Math.floor(elapsed/MAP1_EVENT4_FRAME_MS);
     mirror=(phase%2)===1;
-    // Frühestens nach 2 s, aber zwingend erst NACH einem vollständig gezeigten gespiegelten Anhang-1-Frame.
-    if(elapsed>=2000 && (phase%2)===0){map1Event4SpecialStart=phase*MAP1_EVENT4_FRAME_MS;}
+    // Frühestens nach 5 s, aber zwingend erst NACH einem vollständig gezeigten gespiegelten Kalif-1-Frame.
+    if(elapsed>=5000 && (phase%2)===0){map1Event4SpecialStart=phase*MAP1_EVENT4_FRAME_MS;}
   }
   if(map1Event4SpecialStart>=0){
     const se=elapsed-map1Event4SpecialStart;
