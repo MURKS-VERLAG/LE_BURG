@@ -72,7 +72,7 @@ const MAP1_SCRIBE_IMAGES={
   warning:'assets/npc/schreiber-3.png?v=76',
   low:'assets/npc/schreiber-4.png?v=77',
   critical:'assets/npc/schreiber-6.png?v=79',
-  gameover:'assets/npc/schreiber-gameover.png?v=79',
+  gameover:'assets/npc/schreiber-gameover.png?v=81',
   happy:'assets/npc/schreiber-5.png?v=77'
 };
 let map1Popularity=69;
@@ -81,6 +81,32 @@ let map1ScribeWrap=null,map1ScribeImage=null,map1ScribePopularity=null,map1Scrib
 let map1ScribeMode='normal';
 let map1GameOverStarted=false;
 let map1GameOverOverlay=null,map1GameOverDust=null,map1GameOverReplay=null;
+
+/* v81 – Beliebtheits-/Game-Over-Sounds. Bereichssounds nur beim Eintritt in den Bereich. */
+const map1GameOverSound=new Audio('assets/audio/General_Warning2_converted_by_soundandgo.com_ (1).mp3');
+const map1Popularity40Sound=new Audio('assets/audio/Pop_Popularity5_converted_by_soundandgo.com_(1).mp3');
+const map1PopularityUnder50Sound=new Audio('assets/audio/Pop_Emigrate_converted_by_soundandgo.com_.mp3');
+const map1Popularity1to19Sound=new Audio('assets/audio/Pop_Popularity7_converted_by_soundandgo.com_ (1).mp3');
+const map1Popularity20to39Sound=new Audio('assets/audio/Pop_Popularity8_converted_by_soundandgo.com_.mp3');
+[map1GameOverSound,map1Popularity40Sound,map1PopularityUnder50Sound,map1Popularity1to19Sound,map1Popularity20to39Sound].forEach(a=>{a.preload='auto';a.volume=1;});
+let map1PopularitySoundQueue=[];
+let map1PopularitySoundPlaying=false;
+function playNextMap1PopularitySound(){
+  if(map1PopularitySoundPlaying||!map1PopularitySoundQueue.length)return;
+  const a=map1PopularitySoundQueue.shift();map1PopularitySoundPlaying=true;a.pause();a.currentTime=0;
+  const done=()=>{a.onended=null;map1PopularitySoundPlaying=false;playNextMap1PopularitySound();};
+  a.onended=done;
+  const pr=a.play();if(pr&&typeof pr.catch==='function')pr.catch(()=>done());
+}
+function queueMap1PopularitySound(a){map1PopularitySoundQueue.push(a);playNextMap1PopularitySound();}
+function scheduleMap1PopularitySounds(oldValue,newValue){
+  const sounds=[];
+  if(newValue>=40&&newValue<=49 && !(oldValue>=40&&oldValue<=49))sounds.push(map1Popularity40Sound);
+  if(oldValue>=50&&newValue<50)sounds.push(map1PopularityUnder50Sound);
+  if(newValue>=20&&newValue<=39 && !(oldValue>=20&&oldValue<=39))sounds.push(map1Popularity20to39Sound);
+  if(newValue>=1&&newValue<=19 && !(oldValue>=1&&oldValue<=19))sounds.push(map1Popularity1to19Sound);
+  if(sounds.length)setTimeout(()=>{for(const a of sounds)queueMap1PopularitySound(a);},3000);
+}
 
 function ensureMap1Scribe(){
   if(map1ScribeWrap)return map1ScribeWrap;
@@ -139,6 +165,7 @@ function syncMap1Scribe(force=false){
   setTimeout(()=>{
     if(!map1ScribeImage)return;
     map1ScribeImage.src=src;
+    map1ScribeImage.style.transform='scaleX(-1)';
     const reveal=()=>{if(map1ScribeImage)map1ScribeImage.style.opacity='1';};
     if(map1ScribeImage.complete)requestAnimationFrame(reveal); else map1ScribeImage.onload=reveal;
   },150);
@@ -156,15 +183,17 @@ function ensureMap1GameOverFX(){
 }
 function startMap1GameOver(){
   if(map1GameOverStarted)return;map1GameOverStarted=true;ensureMap1Scribe();ensureMap1GameOverFX();keys.clear();PLAYER.moving=false;
+  map1GameOverSound.pause();map1GameOverSound.currentTime=0;map1GameOverSound.play().catch(()=>{});
   map1ScribePopularity.textContent='';map1ScribeGuests.textContent='';map1ScribeMode='gameover';map1ScribeImage.style.opacity='0';
-  setTimeout(()=>{map1ScribeImage.src=MAP1_SCRIBE_IMAGES.gameover;map1ScribeImage.style.opacity='1';},120);
-  map1GameOverDust.style.display='block';map1GameOverDust.style.animation='none';void map1GameOverDust.offsetWidth;map1GameOverDust.style.animation='scribeDustPuff 4200ms ease-out forwards';
-  setTimeout(()=>{map1ScribeWrap.style.transition='opacity 900ms ease,filter 900ms ease';map1ScribeWrap.style.opacity='0';map1ScribeWrap.style.filter='blur(5px)';},3000);
-  setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},3900);
-  setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},10400);
+  setTimeout(()=>{map1ScribeImage.src=MAP1_SCRIBE_IMAGES.gameover;map1ScribeImage.style.transform='none';map1ScribeImage.style.opacity='1';},120);
+  map1GameOverDust.style.display='block';map1GameOverDust.style.animation='none';void map1GameOverDust.offsetWidth;map1GameOverDust.style.animation='scribeDustPuff 5200ms ease-out forwards';
+  setTimeout(()=>{map1ScribeWrap.style.transition='opacity 900ms ease,filter 900ms ease';map1ScribeWrap.style.opacity='0';map1ScribeWrap.style.filter='blur(5px)';},4000);
+  setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},4900);
+  setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},11400);
 }
 function changeMap1Popularity(delta){
   const old=map1Popularity;map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));
+  scheduleMap1PopularitySounds(old,map1Popularity);
   if(map1Popularity===0&&old>0){startMap1GameOver();return;}
   renderMap1ScribeNumbers();syncMap1Scribe();
 }
@@ -782,7 +811,6 @@ function growMap1Event3Blood(x,y,z){
   const blood=ensureMap1Event3Blood();
   blood.getAnimations().forEach(a=>a.cancel());
   blood.style.left=`${x-8}px`;blood.style.top=`${y-30}px`;
-  blood.dataset.footY=String(y);
   blood.style.zIndex=String(Math.max(1,z-1));
   blood.style.display='block';blood.style.opacity='1';
   blood.animate([
@@ -2735,9 +2763,13 @@ function syncMap1NpcPlayerDepth(){
   apply(map1Bear,parseFloat(map1Bear?.style.top));
   apply(map1BockRider,parseFloat(map1BockRider?.style.top));
   apply(map1BockFinal,parseFloat(map1BockFinal?.style.top));
-  apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
+  // Laufender + kniender Bauer: bisherige Fußlinienregel bleibt exakt bestehen.
+  // Liegender Bauer: Spieler liegt GENERELL davor, unabhängig von der Fußlinie.
+  if(map1Event3FarmerState==='dead'&&map1Event3Farmer&&map1Event3Farmer.style.display!=='none'&&map1Event3Farmer.style.visibility!=='hidden')
+    map1Event3Farmer.style.zIndex=String(playerZ-1);
+  else apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
-  // Blut bleibt IMMER exakt eine Ebene hinter dem Bauern – auch wenn die Spieler-Tiefensortierung läuft.
+  // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
     if(Number.isFinite(farmerZ))map1Event3Blood.style.zIndex=String(farmerZ-1);
