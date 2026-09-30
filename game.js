@@ -194,7 +194,6 @@ function startMap1BockEvent(){
   clearTimeout(map1BockExitTimer);
   clearTimeout(map1BockFinalTimer);
   map1BockServing=false;
-  resetMap1BockReactionOverlay();
   map1BockBeerCount=0;
   if(map1BockThought){
     map1BockThought.style.display='none';
@@ -292,109 +291,7 @@ const MAP1_BOCK_INTERACT_X=86;
 const MAP1_BOCK_INTERACT_Y_MAX=72;
 
 
-/* TASTE 2 – additive Reaktions-Overlays vor dem bestehenden Wegreiten.
-   Bestehende Bock-Timings/Sounds/Sprites bleiben unangetastet. */
-const MAP1_BOCK_REACTION_1='assets/npc/bock-reaktion-1.png?v=01';
-const MAP1_BOCK_REACTION_2='assets/npc/bock-reaktion-2.png?v=01';
-let map1BockReactionLayer=null;
-let map1BockReactionImage=null;
-let map1BockReactionSymbol=null;
-let map1BockReactionLocked=false;
-let map1BockReactionTimers=[];
-
-function ensureMap1BockReactionOverlay(){
-  if(map1BockReactionLayer)return map1BockReactionLayer;
-  const style=document.createElement('style');
-  style.id='map1BockReactionStyle';
-  style.textContent=`
-    #map1BockReactionLayer{position:fixed;inset:0;z-index:800000;pointer-events:none;display:none;overflow:hidden}
-    #map1BockReactionImage{position:absolute;left:50%;bottom:0;height:min(22vh,248px);width:auto;max-width:22.4vw;object-fit:contain;object-position:center bottom;transform:translateX(-50%);opacity:0;transition:opacity 180ms ease;will-change:opacity}
-    #map1BockReactionSymbol{position:absolute;left:50%;bottom:min(23vh,260px);transform:translate(-50%,12px) scale(.72);font:900 clamp(59.4px,6.6vw,105.6px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:2px #8b5b00;text-shadow:0 3px 0 #7a4b00,0 0 10px rgba(255,215,60,.95),0 0 24px rgba(255,170,0,.7);opacity:0;transition:opacity 220ms ease,transform 260ms cubic-bezier(.2,.9,.2,1);will-change:opacity,transform}
-    .bockReactionShard{position:absolute;left:50%;bottom:min(23vh,260px);font:900 clamp(19.8px,2.2vw,37.4px)/1 Georgia,serif;color:#ffd53a;-webkit-text-stroke:1px #8b5b00;text-shadow:0 0 7px rgba(255,190,30,.9);pointer-events:none;z-index:800002}
-  `;
-  document.head.appendChild(style);
-  map1BockReactionLayer=document.createElement('div');
-  map1BockReactionLayer.id='map1BockReactionLayer';
-  map1BockReactionImage=document.createElement('img');
-  map1BockReactionImage.id='map1BockReactionImage';
-  map1BockReactionImage.alt='';map1BockReactionImage.draggable=false;
-  map1BockReactionSymbol=document.createElement('div');
-  map1BockReactionSymbol.id='map1BockReactionSymbol';
-  map1BockReactionLayer.append(map1BockReactionImage,map1BockReactionSymbol);
-  game.appendChild(map1BockReactionLayer);
-  return map1BockReactionLayer;
-}
-function clearMap1BockReactionTimers(){for(const t of map1BockReactionTimers)clearTimeout(t);map1BockReactionTimers=[];}
-function resetMap1BockReactionOverlay(){
-  clearMap1BockReactionTimers();map1BockReactionLocked=false;
-  if(map1BockReactionLayer){map1BockReactionLayer.querySelectorAll('.bockReactionShard').forEach(n=>n.remove());map1BockReactionLayer.style.display='none';}
-  if(map1BockReactionImage){map1BockReactionImage.style.opacity='0';}
-  if(map1BockReactionSymbol){map1BockReactionSymbol.style.opacity='0';map1BockReactionSymbol.style.transform='translate(-50%,12px) scale(.72)';}
-  if(player)player.style.visibility='visible';
-}
-function showMap1BockReactionSymbol(char){
-  ensureMap1BockReactionOverlay();
-  map1BockReactionSymbol.textContent=char;
-  map1BockReactionSymbol.style.transition='none';
-  map1BockReactionSymbol.style.opacity='0';
-  map1BockReactionSymbol.style.transform='translate(-50%,12px) scale(.72)';
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    map1BockReactionSymbol.style.transition='opacity 220ms ease,transform 260ms cubic-bezier(.2,.9,.2,1)';
-    map1BockReactionSymbol.style.opacity='1';
-    map1BockReactionSymbol.style.transform='translate(-50%,0) scale(1)';
-  }));
-}
-function explodeMap1BockDollar(){
-  if(!map1BockReactionLayer||!map1BockReactionSymbol)return;
-  map1BockReactionSymbol.style.opacity='0';
-  map1BockReactionSymbol.style.transform='translate(-50%,0) scale(1.18)';
-  const pieces=['◆','▲','●','■','◆','▲','●','■','◆','▲','●','■','◆','▲'];
-  pieces.forEach((glyph,i)=>{
-    const shard=document.createElement('span');shard.className='bockReactionShard';shard.textContent=glyph;
-    const a=(Math.PI*2*i/pieces.length)-Math.PI/2;
-    const d=70+(i%4)*24,dx=Math.cos(a)*d,dy=-Math.sin(a)*d;
-    shard.style.transform='translate(-50%,0) scale(.9)';shard.style.opacity='1';
-    map1BockReactionLayer.appendChild(shard);
-    const anim=shard.animate([
-      {transform:'translate(-50%,0) rotate(0deg) scale(.9)',opacity:1},
-      {transform:`translate(calc(-50% + ${dx}px),${dy}px) rotate(${(i%2?1:-1)*(120+i*19)}deg) scale(.35)`,opacity:0}
-    ],{duration:720,easing:'cubic-bezier(.12,.72,.25,1)',fill:'forwards'});
-    anim.onfinish=()=>shard.remove();
-  });
-}
-function scheduleMap1BockReactionOverlays(){
-  resetMap1BockReactionOverlay();ensureMap1BockReactionOverlay();
-  /* Bestehender Ablauf: fiveBeersDone -> 1000 ms -> beginDeparture -> 540 + 500 + 1500 ms ->
-     vorhandener departure-Sound / Wegreiten. Damit liegt dessen Start 3540 ms nach fiveBeersDone. */
-  const laughAt=3540, image1At=laughAt-1000;
-  const later=(fn,ms)=>{const id=setTimeout(fn,ms);map1BockReactionTimers.push(id);};
-  later(()=>{
-    if(currentMap!==1||!map1BockActive)return;
-    map1BockReactionLocked=true;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;player.style.visibility='hidden';
-    map1BockReactionLayer.style.display='block';map1BockReactionImage.src=MAP1_BOCK_REACTION_1;map1BockReactionImage.style.opacity='0';
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{map1BockReactionImage.style.opacity='1';}));
-  },image1At);
-  later(()=>{if(map1BockReactionLocked)showMap1BockReactionSymbol('$');},image1At+500);
-  later(()=>{
-    if(!map1BockReactionLocked)return;
-    showMap1BockReactionSymbol('?');
-    map1BockReactionImage.style.opacity='0';
-    map1BockReactionImage.src=MAP1_BOCK_REACTION_2;
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{map1BockReactionImage.style.opacity='1';}));
-  },laughAt);
-  later(()=>{if(map1BockReactionLocked)showMap1BockReactionSymbol('$');},laughAt+500);
-  later(()=>{if(map1BockReactionLocked)explodeMap1BockDollar();},laughAt+1500);
-  later(()=>{
-    if(!map1BockReactionLocked)return;
-    map1BockReactionImage.style.opacity='0';
-    later(()=>{map1BockReactionLocked=false;map1BockReactionLayer.style.display='none';player.style.visibility='visible';playerLastTime=performance.now();},190);
-  },laughAt+2000);
-}
-function preloadMap1BockReactionImages(){
-  return Promise.all([MAP1_BOCK_REACTION_1,MAP1_BOCK_REACTION_2].map(src=>new Promise(resolve=>{
-    const img=new Image();img.onload=()=>img.decode?.().catch(()=>{}).finally(resolve);img.onerror=resolve;img.src=src;
-  })));
-}
+/* TASTE 2 – Nahaufnahme-/Symbol-Reaktionsoverlay vollständig entfernt (v74). */
 
 function ensureMap1BockThought(){
   if(map1BockThought)return map1BockThought;
@@ -527,7 +424,7 @@ function startMap1BockBeerServe(){
       dropMap1BockMug(map1BockBeerCount);
       map1BockBeerCount++;map1BockServing=false;
       if(map1BockBeerCount<MAP1_BOCK_BEERS_REQUIRED){map1BockStage='waitingBeer';showMap1BockThought();}
-      else{map1BockStage='fiveBeersDone';hideMap1BockThought();scheduleMap1BockReactionOverlays();clearTimeout(map1BockExitTimer);map1BockExitTimer=setTimeout(beginMap1BockDeparture,1000);}
+      else{map1BockStage='fiveBeersDone';hideMap1BockThought();clearTimeout(map1BockExitTimer);map1BockExitTimer=setTimeout(beginMap1BockDeparture,1000);}
       updateMap1BockInteractionCue();
     },3000);
   },1000);
@@ -1001,7 +898,7 @@ function updateMap1Event3(now){
 
 const WORLD_W = 1536;
 const WORLD_H = 1024;
-const ZOOM_LEVELS = [1, 1.55];
+const ZOOM_LEVELS = [1];
 
 let zoomIndex = 0;
 let baseScale = 1;
@@ -1738,11 +1635,7 @@ game.addEventListener('mousemove',e=>{
   updateTargetFromPointer();
   clampPosition();
 });
-game.addEventListener('wheel',e=>{
-  e.preventDefault();
-  if(e.deltaY<0)setZoom(zoomIndex+1);
-  else if(e.deltaY>0)setZoom(zoomIndex-1);
-},{passive:false});
+/* v74: Nur noch die vollständig herausgezoomte Ansicht; Mausrad verändert den Zoom nicht mehr. */
 window.addEventListener('resize',()=>{
   calculateBaseScale();
   updateTargetFromPointer();
@@ -2230,7 +2123,7 @@ function map1TreeDockPoint(){
   return {x:left+w*.5,y:top+h*TREE_TRUNK_HITBOX.y2+PLAYER.radius+2,left,top,w,h};
 }
 function map1TreeCanInteract(){
-  if(currentMap!==1||mapTransitioning||map1TreeHiding||map1TreeTransitioning||map1TableServing||map1BockReactionLocked)return false;
+  if(currentMap!==1||mapTransitioning||map1TreeHiding||map1TreeTransitioning||map1TableServing)return false;
   if(PLAYER.direction!=='back')return false;
   const d=map1TreeDockPoint(); if(!d)return false;
   return Math.abs(PLAYER.x-d.x)<=MAP1_TREE_DOCK_TOLERANCE_X &&
@@ -2263,7 +2156,7 @@ function syncMap1TreeHideImagePosition(){
   if(!map1TreeHideImage)return;
   const d=map1TreeDockPoint(); if(!d)return;
   /* Klein, oben und exakt horizontal in der Baumkrone zentriert. */
-  const width=Math.max(52,Math.min(92,d.w*.19));
+  const width=Math.max(52,Math.min(92,d.w*.19))*1.15;
   map1TreeHideImage.style.width=`${width}px`;
   map1TreeHideImage.style.left=`${d.left+d.w*.5}px`;
   map1TreeHideImage.style.top=`${d.top+d.h*.155}px`;
@@ -2697,7 +2590,7 @@ function checkMapTransition(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(mapTransitioning || map2BarServing || map1TableServing || map1BockReactionLocked || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
+  if(mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -2847,30 +2740,31 @@ const PLAYER_FRAME_PATHS = [
   'assets/player/nobier-side-1.png?v=69','assets/player/nobier-side-2.png?v=69',
   'assets/player/nobier-side-3.png?v=69'
 ];
+const EVENT_IMAGE_CACHE=new Map();
 async function preloadMap1BearFrames(){
+  /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
+     Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
-    'assets/npc/baer-run-1.png?v=22',
-    'assets/npc/baer-run-2.png?v=22',
-    'assets/npc/baer-run-3.png?v=22',
-    'assets/npc/bock-reiter-1.png?v=27',
-    'assets/npc/bock-reiter-2.png?v=27',
-    'assets/npc/bock-reiter-3.png?v=27',
-    'assets/npc/bock-stop.png?v=30',
-    'assets/npc/bock-dismount.png?v=29',
-    'assets/npc/bock-final.png?v=30',
-    'assets/npc/bock-wunsch.png?v=38',
-    'assets/npc/bock-bier.png?v=38',
-    'assets/npc/bock-trinkt.png?v=38',
-    'assets/npc/bock-krug-leer.png?v=38'
+    'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
+    'assets/npc/baer-run-1.png?v=22','assets/npc/baer-run-2.png?v=22','assets/npc/baer-run-3.png?v=22',
+    'assets/npc/bock-reiter-1.png?v=27','assets/npc/bock-reiter-2.png?v=27','assets/npc/bock-reiter-3.png?v=27',
+    'assets/npc/bock-stop.png?v=30','assets/npc/bock-dismount.png?v=30','assets/npc/bock-dismount.png?v=29',
+    'assets/npc/bock-final.png?v=30','assets/npc/bock-wunsch.png?v=38','assets/npc/bock-bier.png?v=38',
+    'assets/npc/bock-trinkt.png?v=38','assets/npc/bock-krug-leer.png?v=38',
+    'assets/npc/event3-bock-attack-ready.png?v=71','assets/npc/event3-bock-slash.png?v=71',
+    'assets/npc/event3-bauer-walk.png?v=71','assets/npc/event3-bauer-kneel.png?v=71','assets/npc/event3-bauer-dead.png?v=71',
+    'assets/npc/baum-versteck.png?v=01'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
-    img.onload=()=>img.decode().catch(()=>{}).finally(resolve);
-    img.onerror=()=>{
-      console.error('BÄR-PRELOAD FEHLER:',src);
-      resolve();
-    };
+    img.decoding='async';
+    EVENT_IMAGE_CACHE.set(src,img);
+    let done=false;
+    const finish=async()=>{if(done)return;done=true;try{if(img.decode)await img.decode();}catch(_){}resolve();};
+    img.onload=finish;
+    img.onerror=()=>{console.error('EVENT-PRELOAD FEHLER:',src);finish();};
     img.src=src;
+    if(img.complete&&img.naturalWidth)finish();
   })));
 }
 
@@ -2895,6 +2789,19 @@ async function preloadPlayerFrames(){
   })));
 }
 
+function resumeAnimationSystem(){
+  /* v74: Browser dürfen requestAnimationFrame/Decoding bei inaktiven Tabs drosseln.
+     Beim Zurückkehren Zeitbasis und aktuellen Player-Frame sauber neu synchronisieren,
+     ohne Eventinhalte, Timings, Sounds oder Positionen zu verändern. */
+  playerLastTime=performance.now();
+  if(player)showPlayerFrame(true);
+  cancelAnimationFrame(rafId);
+  rafId=requestAnimationFrame(draw);
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeAnimationSystem();});
+window.addEventListener('focus',resumeAnimationSystem);
+window.addEventListener('pageshow',resumeAnimationSystem);
+
 async function start(){
   calculateBaseScale();
   setIrisRadius(150);
@@ -2903,7 +2810,6 @@ async function start(){
 
   await preloadPlayerFrames();
   await preloadMap1BearFrames();
-  await preloadMap1BockReactionImages();
   applyMap1LayoutFixes();
   ensureMap1Runner();
   ensureMap1Bear();
