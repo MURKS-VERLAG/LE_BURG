@@ -56,6 +56,77 @@ const MAP1_BG_VOLUME=.40;
 map1RunnerSound.preload='auto';
 map1RunnerSound.volume=1;
 
+/* MAP 1 – SCHREIBER / LIVE-STAND v75.
+   Fester HUD-Charakter unten links: keine Hitbox, liegt vor der Spielfigur,
+   während die bestehende Welt-/Randkollision vollständig unverändert bleibt. */
+const MAP1_SCRIBE_IMAGES={
+  normal:'assets/npc/schreiber-1.png?v=75',
+  bock:'assets/npc/schreiber-2.png?v=75',
+  warning:'assets/npc/schreiber-3.png?v=75'
+};
+let map1Popularity=69;
+let map1GuestCount=0;
+let map1ScribeWrap=null,map1ScribeImage=null,map1ScribePopularity=null,map1ScribeGuests=null;
+let map1ScribeMode='normal';
+
+function ensureMap1Scribe(){
+  if(map1ScribeWrap)return map1ScribeWrap;
+  map1ScribeWrap=document.createElement('div');
+  map1ScribeWrap.id='map1Scribe';
+  Object.assign(map1ScribeWrap.style,{
+    position:'absolute',left:'0',bottom:'0',width:'clamp(250px, 28.5vw, 430px)',
+    aspectRatio:'2 / 3',pointerEvents:'none',userSelect:'none',zIndex:'70000',
+    overflow:'visible',opacity:'1',transition:'opacity 220ms ease'
+  });
+  map1ScribeImage=document.createElement('img');
+  map1ScribeImage.alt='';map1ScribeImage.draggable=false;map1ScribeImage.src=MAP1_SCRIBE_IMAGES.normal;
+  Object.assign(map1ScribeImage.style,{
+    position:'absolute',left:'0',bottom:'0',width:'100%',height:'100%',objectFit:'contain',
+    objectPosition:'left bottom',transform:'scaleX(-1)',transformOrigin:'50% 100%',
+    pointerEvents:'none',userSelect:'none',transition:'opacity 220ms ease',opacity:'1'
+  });
+  const numberBase={position:'absolute',bottom:'24.0%',fontFamily:'Georgia,serif',fontWeight:'900',fontSize:'clamp(24px,3.0vw,46px)',lineHeight:'1',textShadow:'0 2px 2px rgba(255,245,220,.95), 0 0 3px rgba(255,245,220,.95)',pointerEvents:'none',zIndex:'2',transform:'rotate(-2deg)'};
+  map1ScribePopularity=document.createElement('div');
+  Object.assign(map1ScribePopularity.style,numberBase,{left:'32.0%',color:'#2aa83a'});
+  map1ScribeGuests=document.createElement('div');
+  Object.assign(map1ScribeGuests.style,numberBase,{left:'66.0%',color:'#c71919',transform:'rotate(2deg)'});
+  map1ScribeWrap.append(map1ScribeImage,map1ScribePopularity,map1ScribeGuests);
+  game.appendChild(map1ScribeWrap);
+  renderMap1ScribeNumbers();
+  return map1ScribeWrap;
+}
+function renderMap1ScribeNumbers(){
+  if(!map1ScribePopularity||!map1ScribeGuests)return;
+  map1ScribePopularity.textContent=String(map1Popularity);
+  map1ScribePopularity.style.color=(map1Popularity>=40&&map1Popularity<=49)?'#c71919':'#2aa83a';
+  map1ScribeGuests.textContent=String(map1GuestCount);
+  map1ScribeGuests.style.color=map1GuestCount===0?'#c71919':'#111111';
+}
+function wantedMap1ScribeMode(){
+  if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
+  if(map1BockActive||map1Event3Active)return 'bock';
+  return 'normal';
+}
+function syncMap1Scribe(force=false){
+  ensureMap1Scribe();
+  const visible=currentMap===1&&!mapTransitioning;
+  map1ScribeWrap.style.visibility=visible?'visible':'hidden';
+  const mode=wantedMap1ScribeMode();
+  if(!force&&mode===map1ScribeMode)return;
+  map1ScribeMode=mode;
+  const src=MAP1_SCRIBE_IMAGES[mode];
+  if((map1ScribeImage.getAttribute('src')||'')===src)return;
+  map1ScribeImage.style.opacity='0';
+  setTimeout(()=>{
+    if(!map1ScribeImage)return;
+    map1ScribeImage.src=src;
+    const reveal=()=>{if(map1ScribeImage)map1ScribeImage.style.opacity='1';};
+    if(map1ScribeImage.complete)requestAnimationFrame(reveal); else map1ScribeImage.onload=reveal;
+  },150);
+}
+function setMap1GuestCount(n){map1GuestCount=Math.max(0,Math.round(n));renderMap1ScribeNumbers();}
+function changeMap1Popularity(delta){map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));renderMap1ScribeNumbers();syncMap1Scribe();}
+
 /* MAP 1 – EVENT 2: DER BOCK GEHT UM (Taste 2). */
 const map1BockSong=new Audio('assets/audio/Der Bock geht um.mp3');
 map1BockSong.preload='auto';
@@ -187,6 +258,7 @@ function startMap1BockEvent(){
   if(currentMap!==1 || mapTransitioning || map1BockActive)return;
   map1BockActive=true;
   map1BockStage='waiting';
+  syncMap1Scribe();
 
   // Kompletter Wiederholungs-Reset für Taste 2.
   clearTimeout(map1BockServeTimer);
@@ -393,7 +465,7 @@ function beginMap1BockDeparture(){
   },540);
 }
 function finishMap1BockDeparture(){
-  const rider=ensureMap1BockRider();rider.style.display='none';map1BockStage='done';map1BockActive=false;
+  const rider=ensureMap1BockRider();rider.style.display='none';map1BockStage='done';map1BockActive=false;syncMap1Scribe();
   bockFadeAudio(map1BockSong,0,1800,()=>{map1BockSong.pause();map1BockSong.currentTime=0;map1BockSong.volume=.72;});
   const {dark,fog}=ensureMap1BockFX();dark.style.transition='opacity 1800ms ease';dark.style.opacity='0';fog.style.transition='opacity 1600ms ease';fog.style.opacity='0';
   setTimeout(()=>{fog.style.display='none';dark.style.display='none';if(bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,2200);}},1900);
@@ -679,6 +751,8 @@ function growMap1Event3Blood(x,y,z){
 function map1Event3FarmerHit(){
   if(!map1Event3Active||map1Event3AttackStage==='hit')return;
   map1Event3AttackStage='hit';
+  setMap1GuestCount(0);
+  changeMap1Popularity(-20);
 
   const farmer=ensureMap1Event3Farmer();
   const bock=ensureMap1Event3Bock();
@@ -755,6 +829,7 @@ function resetMap1Event3Visuals(){
 function finishMap1Event3(){
   if(!map1Event3Active)return;
   map1Event3Active=false;
+  syncMap1Scribe();
   clearMap1Event3Timers();
   resetMap1Event3Visuals();
   map1Event3Whistle.pause();map1Event3Whistle.currentTime=0;
@@ -770,6 +845,8 @@ function finishMap1Event3(){
 function startMap1Event3(){
   if(currentMap!==1||mapTransitioning||map1Event3Active)return;
   map1Event3Active=true;
+  setMap1GuestCount(0);
+  syncMap1Scribe();
   clearMap1Event3Timers();
   resetMap1Event3Visuals();
 
@@ -790,6 +867,7 @@ function startMap1Event3(){
     if(!map1Event3Active)return;
     const farmer=ensureMap1Event3Farmer();
     map1Event3FarmerStarted=true;
+    setMap1GuestCount(1);
     map1Event3FarmerStart=performance.now();
     map1Event3FarmerState='walk';
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';
@@ -1619,6 +1697,7 @@ function draw(now){
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
   updateMap1BockMugCue();
   syncMap1EventVisibility();
+  syncMap1Scribe();
   syncEventAudioForCurrentMap();
 rafId=requestAnimationFrame(draw);
 }
@@ -2813,6 +2892,8 @@ async function start(){
   applyMap1LayoutFixes();
   ensureMap1Runner();
   ensureMap1Bear();
+  ensureMap1Scribe();
+  syncMap1Scribe(true);
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
