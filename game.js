@@ -82,30 +82,62 @@ let map1ScribeMode='normal';
 let map1GameOverStarted=false;
 let map1GameOverOverlay=null,map1GameOverDust=null,map1GameOverReplay=null;
 
-/* v81 – Beliebtheits-/Game-Over-Sounds. Bereichssounds nur beim Eintritt in den Bereich. */
+/* v84 – Schreiber: vollständige Beliebtheits-Sprachlogik. Bereichssounds nur beim Eintritt. */
 const map1GameOverSound=new Audio('assets/audio/General_Warning2_converted_by_soundandgo.com_ (1).mp3');
 const map1Popularity40Sound=new Audio('assets/audio/Pop_Popularity5_converted_by_soundandgo.com_(1).mp3');
 const map1PopularityUnder50Sound=new Audio('assets/audio/Pop_Emigrate_converted_by_soundandgo.com_.mp3');
 const map1Popularity1to19Sound=new Audio('assets/audio/Pop_Popularity7_converted_by_soundandgo.com_ (1).mp3');
 const map1Popularity20to39Sound=new Audio('assets/audio/Pop_Popularity8_converted_by_soundandgo.com_.mp3');
-[map1GameOverSound,map1Popularity40Sound,map1PopularityUnder50Sound,map1Popularity1to19Sound,map1Popularity20to39Sound].forEach(a=>{a.preload='auto';a.volume=1;});
+const map1PopularityImmigrateSound=new Audio('assets/audio/Pop_Immigrate_converted_by_soundandgo.com_(1).mp3');
+const map1Popularity50to69Sound=new Audio('assets/audio/Pop_Popularity4_converted_by_soundandgo.com_.mp3');
+const map1Popularity70to89Sound=new Audio('assets/audio/Pop_Popularity3_converted_by_soundandgo.com_(1).mp3');
+const map1Popularity90to100Sound=new Audio('assets/audio/Pop_Popularity2_converted_by_soundandgo.com_ (1).mp3');
+[map1GameOverSound,map1Popularity40Sound,map1PopularityUnder50Sound,map1Popularity1to19Sound,map1Popularity20to39Sound,map1PopularityImmigrateSound,map1Popularity50to69Sound,map1Popularity70to89Sound,map1Popularity90to100Sound].forEach(a=>{a.preload='auto';a.volume=1;});
 let map1PopularitySoundQueue=[];
 let map1PopularitySoundPlaying=false;
 function playNextMap1PopularitySound(){
   if(map1PopularitySoundPlaying||!map1PopularitySoundQueue.length)return;
-  const a=map1PopularitySoundQueue.shift();map1PopularitySoundPlaying=true;a.pause();a.currentTime=0;
-  const done=()=>{a.onended=null;map1PopularitySoundPlaying=false;playNextMap1PopularitySound();};
+  const item=map1PopularitySoundQueue.shift();
+  const a=item.audio||item, delay=item.delay||0;
+  map1PopularitySoundPlaying=true;a.pause();a.currentTime=0;
+  const done=()=>{a.onended=null;setTimeout(()=>{map1PopularitySoundPlaying=false;playNextMap1PopularitySound();},delay);};
   a.onended=done;
   const pr=a.play();if(pr&&typeof pr.catch==='function')pr.catch(()=>done());
 }
-function queueMap1PopularitySound(a){map1PopularitySoundQueue.push(a);playNextMap1PopularitySound();}
+function queueMap1PopularitySound(a,delay=0){map1PopularitySoundQueue.push({audio:a,delay});playNextMap1PopularitySound();}
 function scheduleMap1PopularitySounds(oldValue,newValue){
-  const sounds=[];
-  if(newValue>=40&&newValue<=49 && !(oldValue>=40&&oldValue<=49))sounds.push(map1Popularity40Sound);
-  if(oldValue>=50&&newValue<50)sounds.push(map1PopularityUnder50Sound);
-  if(newValue>=20&&newValue<=39 && !(oldValue>=20&&oldValue<=39))sounds.push(map1Popularity20to39Sound);
-  if(newValue>=1&&newValue<=19 && !(oldValue>=1&&oldValue<=19))sounds.push(map1Popularity1to19Sound);
-  if(sounds.length)setTimeout(()=>{for(const a of sounds)queueMap1PopularitySound(a);},3000);
+  const priority=[];
+  const ranges=[];
+  // Ein-/Auswanderung hat IMMER Vorrang. Danach vier Sekunden Stille vor einer Bereichsmeldung.
+  if(oldValue>=50&&newValue<50)priority.push(map1PopularityUnder50Sound);
+  if(oldValue<50&&newValue>=50)priority.push(map1PopularityImmigrateSound);
+  if(newValue>=40&&newValue<=49 && !(oldValue>=40&&oldValue<=49))ranges.push(map1Popularity40Sound);
+  if(newValue>=20&&newValue<=39 && !(oldValue>=20&&oldValue<=39))ranges.push(map1Popularity20to39Sound);
+  if(newValue>=1&&newValue<=19 && !(oldValue>=1&&oldValue<=19))ranges.push(map1Popularity1to19Sound);
+  if(newValue>=50&&newValue<=69 && !(oldValue>=50&&oldValue<=69))ranges.push(map1Popularity50to69Sound);
+  if(newValue>=70&&newValue<=89 && !(oldValue>=70&&oldValue<=89))ranges.push(map1Popularity70to89Sound);
+  if(newValue>=90&&newValue<=100 && !(oldValue>=90&&oldValue<=100))ranges.push(map1Popularity90to100Sound);
+  if(priority.length||ranges.length)setTimeout(()=>{
+    for(let i=0;i<priority.length;i++)queueMap1PopularitySound(priority[i], i===priority.length-1&&ranges.length?4000:0);
+    for(const a of ranges)queueMap1PopularitySound(a);
+  },3000);
+}
+
+let map1ScribeConfetti=null;
+function syncMap1ScribeConfetti(){
+  ensureMap1Scribe();
+  const active=map1Popularity>=90&&map1Popularity<=100&&!map1GameOverStarted;
+  if(!map1ScribeConfetti){
+    const st=document.createElement('style');st.id='map1ScribeConfettiStyle';st.textContent=`
+      @keyframes map1ConfettiFall{0%{transform:translate3d(0,-35px,0) rotate(0deg);opacity:0}8%{opacity:1}100%{transform:translate3d(var(--drift),230px,0) rotate(760deg);opacity:.95}}`;
+    document.head.appendChild(st);
+    map1ScribeConfetti=document.createElement('div');map1ScribeConfetti.id='map1ScribeConfetti';
+    Object.assign(map1ScribeConfetti.style,{position:'absolute',left:'0',bottom:'0',width:'clamp(125px,14vw,215px)',height:'clamp(190px,23vw,340px)',overflow:'hidden',pointerEvents:'none',zIndex:'70010',display:'none'});
+    const colors=['#f4c542','#d33','#2aa83a','#4b78d1','#b54bd1','#fff1a8'];
+    for(let i=0;i<34;i++){const c=document.createElement('i');Object.assign(c.style,{position:'absolute',left:`${(i*37)%100}%`,top:`${-8-(i%7)*9}px`,width:`${5+(i%3)*2}px`,height:`${8+(i%4)*2}px`,background:colors[i%colors.length],opacity:'.95',borderRadius:'1px',animation:`map1ConfettiFall ${1.7+(i%6)*.22}s linear ${-(i%9)*.31}s infinite`});c.style.setProperty('--drift',`${-35+(i*19)%70}px`);map1ScribeConfetti.appendChild(c);}
+    game.appendChild(map1ScribeConfetti);
+  }
+  map1ScribeConfetti.style.display=active&&currentMap===1&&!mapTransitioning?'block':'none';
 }
 
 function ensureMap1Scribe(){
@@ -192,10 +224,10 @@ function startMap1GameOver(){
   setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},11400);
 }
 function changeMap1Popularity(delta){
-  const old=map1Popularity;map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));
+  const old=map1Popularity;map1Popularity=Math.max(0,Math.min(100,map1Popularity+delta));
   scheduleMap1PopularitySounds(old,map1Popularity);
   if(map1Popularity===0&&old>0){startMap1GameOver();return;}
-  renderMap1ScribeNumbers();syncMap1Scribe();
+  renderMap1ScribeNumbers();syncMap1Scribe();syncMap1ScribeConfetti();
 }
 
 /* MAP 1 – EVENT 2: DER BOCK GEHT UM (Taste 2). */
