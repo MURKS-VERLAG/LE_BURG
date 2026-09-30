@@ -17,6 +17,13 @@ function playDoorPassSound(){
   doorPassSound.play().catch(()=>{});
 }
 
+/* v77 – laute Interaktionssounds: Krug abstellen, Baum-Versteck, Bierzapfen. */
+const map1TablePutDownSound=new Audio('assets/audio/puller_impact_converted_by_soundandgo.com_.mp3');
+const map1TreeHideSound=new Audio('assets/audio/harvest_01_converted_by_soundandgo.com_.mp3');
+const map2BeerTapSound=new Audio('assets/audio/cauldron_01_converted_by_soundandgo.com_.mp3');
+[map1TablePutDownSound,map1TreeHideSound,map2BeerTapSound].forEach(a=>{a.preload='auto';a.volume=1;});
+function playLoudInteractionSound(a){a.pause();a.currentTime=0;a.play().catch(()=>{});}
+
 /* MAP 1 – panisch davonrennende Magd (Taste 1). */
 let map1Runner=null;
 let map1RunnerActive=false;
@@ -62,7 +69,9 @@ map1RunnerSound.volume=1;
 const MAP1_SCRIBE_IMAGES={
   normal:'assets/npc/schreiber-1.png?v=76',
   bock:'assets/npc/schreiber-2.png?v=76',
-  warning:'assets/npc/schreiber-3.png?v=76'
+  warning:'assets/npc/schreiber-3.png?v=76',
+  low:'assets/npc/schreiber-4.png?v=77',
+  happy:'assets/npc/schreiber-5.png?v=77'
 };
 let map1Popularity=69;
 let map1GuestCount=0;
@@ -74,7 +83,7 @@ function ensureMap1Scribe(){
   map1ScribeWrap=document.createElement('div');
   map1ScribeWrap.id='map1Scribe';
   Object.assign(map1ScribeWrap.style,{
-    position:'absolute',left:'0',bottom:'0',width:'clamp(100px, 11.4vw, 172px)',
+    position:'absolute',left:'0',bottom:'0',width:'clamp(105px, 11.97vw, 180.6px)',
     aspectRatio:'2 / 3',pointerEvents:'none',userSelect:'none',zIndex:'70000',
     overflow:'visible',opacity:'1',transition:'opacity 220ms ease'
   });
@@ -85,7 +94,7 @@ function ensureMap1Scribe(){
     objectPosition:'left bottom',transform:'scaleX(-1)',transformOrigin:'50% 100%',
     pointerEvents:'none',userSelect:'none',transition:'opacity 220ms ease',opacity:'1'
   });
-  const numberBase={position:'absolute',bottom:'33.5%',fontFamily:'Georgia,serif',fontWeight:'900',fontSize:'clamp(10px,1.2vw,18px)',lineHeight:'1',textAlign:'center',minWidth:'1.8em',textShadow:'0 1px 1px rgba(255,245,220,.95), 0 0 2px rgba(255,245,220,.95)',pointerEvents:'none',zIndex:'2',transform:'translateX(-50%) rotate(-2deg)'};
+  const numberBase={position:'absolute',bottom:'33.5%',fontFamily:'Georgia,serif',fontWeight:'900',fontSize:'clamp(10.5px,1.26vw,18.9px)',lineHeight:'1',textAlign:'center',minWidth:'1.8em',textShadow:'0 1px 1px rgba(255,245,220,.95), 0 0 2px rgba(255,245,220,.95)',pointerEvents:'none',zIndex:'2',transform:'translateX(-50%) rotate(-2deg)'};
   map1ScribePopularity=document.createElement('div');
   Object.assign(map1ScribePopularity.style,numberBase,{left:'25.0%',color:'#2aa83a'});
   map1ScribeGuests=document.createElement('div');
@@ -106,7 +115,9 @@ function wantedMap1ScribeMode(){
   // Laufende Bockevents haben IMMER Vorrang: bei jeder neuen Taste 2/3 wird Bild 2 gezeigt.
   // Erst nach Eventende greift wieder der dauerhafte Beliebtheitszustand (40–49 => Bild 3).
   if(map1BockActive||map1Event3Active)return 'bock';
+  if(map1Popularity>=80)return 'happy';
   if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
+  if(map1Popularity>=20&&map1Popularity<=39)return 'low';
   return 'normal';
 }
 function syncMap1Scribe(force=false){
@@ -1109,6 +1120,7 @@ function startMap2BarServe(){
   if(!map2BarCanInteract())return;
   const {bar,action,progress}=ensureMap2BarAction();
   map2BarServing=true;
+  playLoudInteractionSound(map2BeerTapSound);
   keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
   bar.style.filter='none';
   // Exakter Motivtausch im selben Paint-Zyklus: niemals alte + neue Theke gleichzeitig.
@@ -2162,6 +2174,7 @@ function startMap1TableServe(){
   const dir=PLAYER.direction;
   const src=MAP1_TABLE_ACTION_SPRITES[dir];
   player.setAttribute('src',src);
+  playLoudInteractionSound(map1TablePutDownSound);
   player.style.zIndex=(dir==='front')?String(MAP1_PLAYER_BEHIND_Z):'1000'; // v50: S-Ausschank bleibt hinter dem Tisch; A/D/W unverändert
   const scale=playerVisualScale();
   // A ist als eigenes, physisch gespiegeltes D-Asset enthalten; deshalb hier keine zweite Spiegelung.
@@ -2272,6 +2285,7 @@ function startMap1TreeHide(){
   if(!map1TreeCanInteract())return false;
   const fx=ensureMap1TreeHideFX(); if(!fx)return false;
   map1TreeTransitioning=true;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;
+  playLoudInteractionSound(map1TreeHideSound);
   const tree=document.getElementById('baum'); if(tree)tree.style.filter='none';
   player.style.transition='opacity 360ms ease';player.style.opacity='0';
   burstMap1TreeLeaves();
@@ -2289,6 +2303,7 @@ function leaveMap1TreeHide(){
   if(!map1TreeHiding||map1TreeTransitioning)return false;
   const fx=ensureMap1TreeHideFX(),d=map1TreeDockPoint(); if(!fx||!d)return false;
   map1TreeTransitioning=true;map1TreeHiding=false;keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;
+  playLoudInteractionSound(map1TreeHideSound);
   burstMap1TreeLeaves();
   fx.image.style.opacity='0';fx.image.style.transform='translate(-50%,-18%) scale(.88)';
   PLAYER.x=d.x;PLAYER.y=d.y;setPlayerDirection('front');PLAYER.sequenceIndex=0;PLAYER.frameClock=0;PLAYER.frame=activePlayerSequence('front')[0];showPlayerFrame(true);
