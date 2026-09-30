@@ -90,8 +90,10 @@ const map1Popularity1to19Sound=new Audio('assets/audio/Pop_Popularity7_converted
 const map1Popularity20to39Sound=new Audio('assets/audio/Pop_Popularity8_converted_by_soundandgo.com_.mp3');
 const map1PopularityImmigrateSound=new Audio('assets/audio/Pop_Immigrate_converted_by_soundandgo.com_(1).mp3');
 const map1Popularity50to69Sound=new Audio('assets/audio/Pop_Popularity4_converted_by_soundandgo.com_.mp3');
-const map1Popularity70to89Sound=new Audio('assets/audio/Pop_Popularity3_converted_by_soundandgo.com_(1).mp3');
-const map1Popularity90to100Sound=new Audio('assets/audio/Pop_Popularity2_converted_by_soundandgo.com_ (1).mp3');
+const map1Popularity70to89Sound=new Audio('assets/audio/Pop_Popularity2_converted_by_soundandgo.com_ (1).mp3');
+const map1Popularity90to100Sound=new Audio('assets/audio/Pop_Popularity1_converted_by_soundandgo.com_ (2).mp3');
+const map1Popularity90Song=new Audio('assets/audio/Pints a Flowin.mp3');
+map1Popularity90Song.preload='auto';map1Popularity90Song.volume=.72;map1Popularity90Song.loop=true;
 [map1GameOverSound,map1Popularity40Sound,map1PopularityUnder50Sound,map1Popularity1to19Sound,map1Popularity20to39Sound,map1PopularityImmigrateSound,map1Popularity50to69Sound,map1Popularity70to89Sound,map1Popularity90to100Sound].forEach(a=>{a.preload='auto';a.volume=1;});
 let map1PopularitySoundQueue=[];
 let map1PopularitySoundPlaying=false;
@@ -132,12 +134,17 @@ function syncMap1ScribeConfetti(){
       @keyframes map1ConfettiFall{0%{transform:translate3d(0,-35px,0) rotate(0deg);opacity:0}8%{opacity:1}100%{transform:translate3d(var(--drift),230px,0) rotate(760deg);opacity:.95}}`;
     document.head.appendChild(st);
     map1ScribeConfetti=document.createElement('div');map1ScribeConfetti.id='map1ScribeConfetti';
-    Object.assign(map1ScribeConfetti.style,{position:'absolute',left:'0',bottom:'0',width:'clamp(125px,14vw,215px)',height:'clamp(190px,23vw,340px)',overflow:'hidden',pointerEvents:'none',zIndex:'70010',display:'none'});
+    Object.assign(map1ScribeConfetti.style,{position:'absolute',left:'0',bottom:'0',width:'clamp(105px,11.7vw,176px)',height:'clamp(190px,23vw,340px)',overflow:'hidden',pointerEvents:'none',zIndex:'70010',display:'none'});
     const colors=['#f4c542','#d33','#2aa83a','#4b78d1','#b54bd1','#fff1a8'];
     for(let i=0;i<34;i++){const c=document.createElement('i');Object.assign(c.style,{position:'absolute',left:`${(i*37)%100}%`,top:`${-8-(i%7)*9}px`,width:`${5+(i%3)*2}px`,height:`${8+(i%4)*2}px`,background:colors[i%colors.length],opacity:'.95',borderRadius:'1px',animation:`map1ConfettiFall ${1.7+(i%6)*.22}s linear ${-(i%9)*.31}s infinite`});c.style.setProperty('--drift',`${-35+(i*19)%70}px`);map1ScribeConfetti.appendChild(c);}
     game.appendChild(map1ScribeConfetti);
   }
   map1ScribeConfetti.style.display=active&&currentMap===1&&!mapTransitioning?'block':'none';
+}
+function syncMap1Popularity90Song(){
+  const active=map1Popularity>=90&&map1Popularity<=100&&!map1GameOverStarted&&currentMap===1&&!mapTransitioning;
+  if(active){if(map1Popularity90Song.paused)map1Popularity90Song.play().catch(()=>{});}
+  else if(!map1Popularity90Song.paused){map1Popularity90Song.pause();map1Popularity90Song.currentTime=0;}
 }
 
 function ensureMap1Scribe(){
@@ -227,7 +234,7 @@ function changeMap1Popularity(delta){
   const old=map1Popularity;map1Popularity=Math.max(0,Math.min(100,map1Popularity+delta));
   scheduleMap1PopularitySounds(old,map1Popularity);
   if(map1Popularity===0&&old>0){startMap1GameOver();return;}
-  renderMap1ScribeNumbers();syncMap1Scribe();syncMap1ScribeConfetti();
+  renderMap1ScribeNumbers();syncMap1Scribe();syncMap1ScribeConfetti();syncMap1Popularity90Song();
 }
 
 /* MAP 1 – EVENT 2: DER BOCK GEHT UM (Taste 2). */
@@ -798,7 +805,7 @@ function ensureMap1Event3Blood(){
   map1Event3Blood=document.createElement('div');
   map1Event3Blood.id='map1Event3Blood';
   Object.assign(map1Event3Blood.style,{
-    position:'absolute',left:'0',top:'0',width:'112px',height:'42px',
+    position:'absolute',left:'0',top:'0',width:'84px',height:'42px',
     transform:'translate(-50%,-52%) scale(.04)',transformOrigin:'50% 50%',
     borderRadius:'50%',pointerEvents:'none',display:'none',opacity:'0',
     zIndex:'1',
@@ -1129,7 +1136,7 @@ function updateMap1Event4(now){
   if(!map1Event4Walking)return;
   const elapsed=now-map1Event4Start,t=Math.min(1,elapsed/MAP1_EVENT4_DURATION),p=map1RunnerPointAt(t);
   kalif.style.left=`${p[0]}px`;kalif.style.top=`${p[1]}px`;
-  const perspective=.82+t*.34;
+  const perspective=(.82+t*.34)*.75;
   let src='assets/npc/kalif-1.png?v=82',mirror=false;
   if(map1Event4SpecialStart<0){
     const phase=Math.floor(elapsed/MAP1_EVENT4_FRAME_MS);
@@ -1687,7 +1694,7 @@ function updateMap1Runner(now){
   const mirrored=(phase===1||phase===3);
   const wanted=useSecond?'assets/npc/frau-run-2.png?v=02':'assets/npc/frau-run-1.png?v=02';
   if(el.getAttribute('src')!==wanted)el.setAttribute('src',wanted);
-  const perspective=.82+t*.34;
+  const perspective=(.82+t*.34)*.75;
   el.style.left=`${x}px`;
   el.style.top=`${y}px`;
   el.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
@@ -1796,7 +1803,7 @@ function updateMap1Bear(now){
   const wantedBearSrc=wanted.split('?')[0];
   if(currentBearSrc!==wantedBearSrc) el.setAttribute('src',wanted);
 
-  const perspective=.82+t*.34;
+  const perspective=(.82+t*.34)*.75;
   el.style.left=`${x}px`;
   el.style.top=`${y}px`;
   el.style.transform=`translate(-50%,-100%) scale(${mirrored?-perspective:perspective},${perspective})`;
