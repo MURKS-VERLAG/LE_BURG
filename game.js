@@ -114,7 +114,7 @@ function renderMap1ScribeNumbers(){
 function wantedMap1ScribeMode(){
   // Laufende Bockevents haben IMMER Vorrang: bei jeder neuen Taste 2/3 wird Bild 2 gezeigt.
   // Erst nach Eventende greift wieder der dauerhafte Beliebtheitszustand (40–49 => Bild 3).
-  if(map1BockActive||map1Event3Active)return 'bock';
+  if(map1BockActive||(map1Event3Active&&map1Event3ScribeHit))return 'bock';
   if(map1Popularity>=80)return 'happy';
   if(map1Popularity>=40&&map1Popularity<=49)return 'warning';
   if(map1Popularity>=20&&map1Popularity<=39)return 'low';
@@ -649,6 +649,7 @@ const MAP1_EVENT3_READY_DISTANCE=235;
 const MAP1_EVENT3_HIT_DISTANCE=78;
 
 let map1Event3Active=false;
+let map1Event3ScribeHit=false; // v78: Taste 3 wechselt den Schreiber erst exakt beim Schwerthieb.
 let map1Event3Farmer=null;
 let map1Event3Bock=null;
 let map1Event3Slash=null;
@@ -752,6 +753,7 @@ function growMap1Event3Blood(x,y,z){
   const blood=ensureMap1Event3Blood();
   blood.getAnimations().forEach(a=>a.cancel());
   blood.style.left=`${x-8}px`;blood.style.top=`${y-30}px`;
+  blood.dataset.footY=String(y);
   blood.style.zIndex=String(Math.max(1,z-1));
   blood.style.display='block';blood.style.opacity='1';
   blood.animate([
@@ -785,6 +787,9 @@ function map1Event3FarmerHit(){
   map1Event3BockRunSound.currentTime=0;
   map1Event3SlashSound.pause();
   map1Event3SlashSound.currentTime=0;
+  // v78: Erst JETZT – exakt mit dem Schwerthieb-Sound – auf Schreiber Bild 2 wechseln.
+  map1Event3ScribeHit=true;
+  syncMap1Scribe();
   map1Event3SlashSound.onended=()=>{
     map1Event3SlashSound.onended=null;
     map1Event3Later(()=>{
@@ -842,6 +847,7 @@ function resetMap1Event3Visuals(){
 function finishMap1Event3(){
   if(!map1Event3Active)return;
   map1Event3Active=false;
+  map1Event3ScribeHit=false;
   syncMap1Scribe();
   clearMap1Event3Timers();
   resetMap1Event3Visuals();
@@ -858,6 +864,7 @@ function finishMap1Event3(){
 function startMap1Event3(){
   if(currentMap!==1||mapTransitioning||map1Event3Active)return;
   map1Event3Active=true;
+  map1Event3ScribeHit=false;
   setMap1GuestCount(0);
   syncMap1Scribe();
   clearMap1Event3Timers();
@@ -1706,6 +1713,7 @@ function draw(now){
     updateMap1Bear(now);
   updateMap1Bock(now);
   updateMap1Event3(now);
+  syncMap1NpcPlayerDepth();
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
@@ -2682,6 +2690,25 @@ function checkMapTransition(){
     PLAYER.y=t.y+PLAYER.radius;
     enterWirtschaft();
   }
+}
+
+/* v78 – einheitliche Fußlinien-Tiefe NUR für Event-NPCs + Blut.
+   Spieler unterhalb der NPC-Fußlinie = Spieler davor; oberhalb = Spieler dahinter.
+   Props, Stehtische, Bierkrüge und deren bestehende Ebenenlogik bleiben unangetastet. */
+function syncMap1NpcPlayerDepth(){
+  if(currentMap!==1||!player)return;
+  const playerZ=Number(player.style.zIndex)||10000;
+  const apply=(el,footY)=>{
+    if(!el||el.style.display==='none'||el.style.visibility==='hidden'||!Number.isFinite(footY))return;
+    el.style.zIndex=String(PLAYER.y>footY?playerZ-1:playerZ+1);
+  };
+  apply(map1Runner,parseFloat(map1Runner?.style.top));
+  apply(map1Bear,parseFloat(map1Bear?.style.top));
+  apply(map1BockRider,parseFloat(map1BockRider?.style.top));
+  apply(map1BockFinal,parseFloat(map1BockFinal?.style.top));
+  apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
+  apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
+  apply(map1Event3Blood,parseFloat(map1Event3Blood?.dataset.footY));
 }
 
 function updatePlayer(now){
