@@ -158,10 +158,10 @@ function startMap1GameOver(){
   if(map1GameOverStarted)return;map1GameOverStarted=true;ensureMap1Scribe();ensureMap1GameOverFX();keys.clear();PLAYER.moving=false;
   map1ScribePopularity.textContent='';map1ScribeGuests.textContent='';map1ScribeMode='gameover';map1ScribeImage.style.opacity='0';
   setTimeout(()=>{map1ScribeImage.src=MAP1_SCRIBE_IMAGES.gameover;map1ScribeImage.style.opacity='1';},120);
-  map1GameOverDust.style.display='block';map1GameOverDust.style.animation='none';void map1GameOverDust.offsetWidth;map1GameOverDust.style.animation='scribeDustPuff 2200ms ease-out forwards';
-  setTimeout(()=>{map1ScribeWrap.style.transition='opacity 900ms ease,filter 900ms ease';map1ScribeWrap.style.opacity='0';map1ScribeWrap.style.filter='blur(5px)';},1000);
-  setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},1900);
-  setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},8600);
+  map1GameOverDust.style.display='block';map1GameOverDust.style.animation='none';void map1GameOverDust.offsetWidth;map1GameOverDust.style.animation='scribeDustPuff 4200ms ease-out forwards';
+  setTimeout(()=>{map1ScribeWrap.style.transition='opacity 900ms ease,filter 900ms ease';map1ScribeWrap.style.opacity='0';map1ScribeWrap.style.filter='blur(5px)';},3000);
+  setTimeout(()=>{map1ScribeWrap.style.visibility='hidden';map1GameOverOverlay.style.opacity='1';},3900);
+  setTimeout(()=>{map1GameOverReplay.style.display='block';requestAnimationFrame(()=>map1GameOverReplay.style.opacity='1');map1GameOverReplay.style.pointerEvents='auto';},10400);
 }
 function changeMap1Popularity(delta){
   const old=map1Popularity;map1Popularity=Math.max(0,Math.min(99,map1Popularity+delta));
@@ -2737,7 +2737,11 @@ function syncMap1NpcPlayerDepth(){
   apply(map1BockFinal,parseFloat(map1BockFinal?.style.top));
   apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
-  apply(map1Event3Blood,parseFloat(map1Event3Blood?.dataset.footY));
+  // Blut bleibt IMMER exakt eine Ebene hinter dem Bauern – auch wenn die Spieler-Tiefensortierung läuft.
+  if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
+    const farmerZ=Number(map1Event3Farmer.style.zIndex);
+    if(Number.isFinite(farmerZ))map1Event3Blood.style.zIndex=String(farmerZ-1);
+  }
 }
 
 function updatePlayer(now){
