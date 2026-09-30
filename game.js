@@ -1050,6 +1050,77 @@ function updateMap1Event3(now){
   }
 }
 
+/* MAP 1 – EVENT 4 (Taste 4): Kalif. Additiv/isoliert; Events 1–3 bleiben unverändert. */
+const MAP1_EVENT4_FRAME_MS=430;
+const MAP1_EVENT4_DURATION=22000; // sehr langsamer Lauf, exakt auf der Bock-/Runner-Linie oben -> unten
+const map1Event4Intro=new Audio('assets/audio/ca_extra_01_converted_by_soundandgo.com_ (1).mp3');
+const map1Event4Music=new Audio('assets/audio/Stronghold Crusader Soundtrack - 03 Crusader.mp3');
+const map1Event4Ignite=new Audio('assets/audio/firepop7_converted_by_soundandgo.com_.mp3');
+map1Event4Intro.preload='auto';map1Event4Intro.volume=1;
+map1Event4Music.preload='auto';map1Event4Music.volume=.72;map1Event4Music.loop=true;
+map1Event4Ignite.preload='auto';map1Event4Ignite.volume=1;
+let map1Event4Active=false,map1Event4Walking=false,map1Event4Kalif=null,map1Event4Start=0,map1Event4SpecialStart=-1,map1Event4PopularityDone=false;
+function ensureMap1Event4Kalif(){
+  if(map1Event4Kalif)return map1Event4Kalif;
+  map1Event4Kalif=document.createElement('img');map1Event4Kalif.id='map1Event4Kalif';map1Event4Kalif.alt='';map1Event4Kalif.draggable=false;
+  map1Event4Kalif.src='assets/npc/kalif-1.png?v=82';
+  Object.assign(map1Event4Kalif.style,{position:'absolute',left:'0',top:'0',width:'112px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'19500',willChange:'left,top,transform'});
+  world.appendChild(map1Event4Kalif);return map1Event4Kalif;
+}
+function finishMap1Event4(){
+  if(!map1Event4Active)return;map1Event4Active=false;map1Event4Walking=false;
+  map1Event4Intro.pause();map1Event4Intro.currentTime=0;map1Event4Intro.onended=null;
+  map1Event4Ignite.pause();map1Event4Ignite.currentTime=0;
+  map1Event4Music.pause();map1Event4Music.currentTime=0;
+  if(map1Event4Kalif)map1Event4Kalif.style.display='none';
+  if(currentMap===1&&!mapTransitioning&&bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);}
+}
+function startMap1Event4(){
+  if(currentMap!==1||mapTransitioning||map1Event4Active)return;
+  map1Event4Active=true;map1Event4Walking=false;map1Event4SpecialStart=-1;map1Event4PopularityDone=false;
+  const kalif=ensureMap1Event4Kalif();kalif.style.display='none';
+  if(bgMusic)bgMusic.pause();map1Event4Music.pause();map1Event4Music.currentTime=0;
+  map1Event4Intro.pause();map1Event4Intro.currentTime=0;
+  map1Event4Intro.onended=()=>{
+    if(!map1Event4Active)return;
+    map1Event4Music.currentTime=0;map1Event4Music.play().catch(()=>{});
+    map1Event4Start=performance.now();map1Event4Walking=true;
+    kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
+  };
+  map1Event4Intro.play().catch(()=>{});
+}
+function updateMap1Event4(now){
+  if(!map1Event4Active)return;
+  const kalif=ensureMap1Event4Kalif();kalif.style.visibility=(currentMap===1&&!mapTransitioning)?'visible':'hidden';
+  if(!map1Event4Walking)return;
+  const elapsed=now-map1Event4Start,t=Math.min(1,elapsed/MAP1_EVENT4_DURATION),p=map1RunnerPointAt(t);
+  kalif.style.left=`${p[0]}px`;kalif.style.top=`${p[1]}px`;
+  const perspective=.82+t*.34;
+  let src='assets/npc/kalif-1.png?v=82',mirror=false;
+  if(map1Event4SpecialStart<0){
+    const phase=Math.floor(elapsed/MAP1_EVENT4_FRAME_MS);
+    mirror=(phase%2)===1;
+    // Frühestens nach 2 s, aber zwingend erst NACH einem vollständig gezeigten gespiegelten Anhang-1-Frame.
+    if(elapsed>=2000 && (phase%2)===0){map1Event4SpecialStart=phase*MAP1_EVENT4_FRAME_MS;}
+  }
+  if(map1Event4SpecialStart>=0){
+    const se=elapsed-map1Event4SpecialStart;
+    mirror=false;
+    if(se<MAP1_EVENT4_FRAME_MS){src='assets/npc/kalif-2.png?v=82';}
+    else if(se<MAP1_EVENT4_FRAME_MS*2){
+      src='assets/npc/kalif-3.png?v=82';
+      if(!map1Event4PopularityDone){map1Event4PopularityDone=true;changeMap1Popularity(10);map1Event4Ignite.currentTime=0;map1Event4Ignite.play().catch(()=>{});}
+    }else{
+      const post=Math.floor((se-MAP1_EVENT4_FRAME_MS*2)/MAP1_EVENT4_FRAME_MS)%2;
+      src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';
+    }
+  }
+  if((kalif.getAttribute('src')||'')!==src)kalif.src=src;
+  kalif.style.transform=`translate(-50%,-100%) scale(${mirror?-perspective:perspective},${perspective})`;
+  kalif.style.zIndex=String(19500+Math.round(p[1]));
+  if(t>=1)finishMap1Event4();
+}
+
 
 const WORLD_W = 1536;
 const WORLD_H = 1024;
@@ -1770,6 +1841,7 @@ function draw(now){
     updateMap1Bear(now);
   updateMap1Bock(now);
   updateMap1Event3(now);
+  updateMap1Event4(now);
   syncMap1NpcPlayerDepth();
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -2769,6 +2841,7 @@ function syncMap1NpcPlayerDepth(){
     map1Event3Farmer.style.zIndex=String(playerZ-1);
   else apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
+  apply(map1Event4Kalif,parseFloat(map1Event4Kalif?.style.top));
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -2844,6 +2917,7 @@ window.addEventListener('keydown',e=>{
   if(k==='1' && !e.repeat){e.preventDefault();startMap1Runner();}
   if(k==='2' && !e.repeat){e.preventDefault();startMap1BockEvent();}
   if(k==='3' && !e.repeat){e.preventDefault();startMap1Event3();}
+  if(k==='4' && !e.repeat){e.preventDefault();startMap1Event4();}
 });
 window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
@@ -2942,6 +3016,7 @@ async function preloadMap1BearFrames(){
     'assets/npc/event3-bock-attack-ready.png?v=71','assets/npc/event3-bock-slash.png?v=71',
     'assets/npc/event3-bauer-walk.png?v=71','assets/npc/event3-bauer-kneel.png?v=71','assets/npc/event3-bauer-dead.png?v=71',
     'assets/npc/baum-versteck.png?v=01',
+    'assets/npc/kalif-1.png?v=82','assets/npc/kalif-2.png?v=82','assets/npc/kalif-3.png?v=82','assets/npc/kalif-7.png?v=82','assets/npc/kalif-8.png?v=82',
     'assets/npc/schreiber-6.png?v=79','assets/npc/schreiber-gameover.png?v=79'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
