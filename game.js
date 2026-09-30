@@ -1097,10 +1097,13 @@ const MAP1_EVENT4_DURATION=22000; // sehr langsamer Lauf, exakt auf der Bock-/Ru
 const map1Event4Intro=new Audio('assets/audio/ca_extra_01_converted_by_soundandgo.com_ (1).mp3');
 const map1Event4Music=new Audio('assets/audio/Stronghold Crusader Soundtrack - 03 Crusader.mp3');
 const map1Event4Ignite=new Audio('assets/audio/firepop7_converted_by_soundandgo.com_.mp3');
+const map1Event4Flame=new Audio('assets/audio/event5-flame.mp3');
 map1Event4Intro.preload='auto';map1Event4Intro.volume=1;
 map1Event4Music.preload='auto';map1Event4Music.volume=.72;map1Event4Music.loop=true;
 map1Event4Ignite.preload='auto';map1Event4Ignite.volume=1;
+map1Event4Flame.preload='auto';map1Event4Flame.volume=1;
 let map1Event4Active=false,map1Event4Walking=false,map1Event4Kalif=null,map1Event4Start=0,map1Event4SpecialStart=-1,map1Event4PopularityDone=false;
+let map1Event4IgniteAt=-1,map1Event4FireStart=-1,map1Event4FireDone=false;
 function ensureMap1Event4Kalif(){
   if(map1Event4Kalif)return map1Event4Kalif;
   map1Event4Kalif=document.createElement('img');map1Event4Kalif.id='map1Event4Kalif';map1Event4Kalif.alt='';map1Event4Kalif.draggable=false;
@@ -1112,6 +1115,7 @@ function finishMap1Event4(){
   if(!map1Event4Active)return;map1Event4Active=false;map1Event4Walking=false;
   map1Event4Intro.pause();map1Event4Intro.currentTime=0;map1Event4Intro.onended=null;
   map1Event4Ignite.pause();map1Event4Ignite.currentTime=0;
+  map1Event4Flame.pause();map1Event4Flame.currentTime=0;
   map1Event4Music.pause();map1Event4Music.currentTime=0;
   if(map1Event4Kalif)map1Event4Kalif.style.display='none';
   if(currentMap===1&&!mapTransitioning&&bgMusic){bgMusic.volume=0;bgMusic.play().catch(()=>{});bockFadeAudio(bgMusic,MAP1_BG_VOLUME,900);}
@@ -1119,6 +1123,7 @@ function finishMap1Event4(){
 function startMap1Event4(){
   if(currentMap!==1||mapTransitioning||map1Event4Active)return;
   map1Event4Active=true;map1Event4Walking=false;map1Event4SpecialStart=-1;map1Event4PopularityDone=false;
+  map1Event4IgniteAt=-1;map1Event4FireStart=-1;map1Event4FireDone=false;
   const kalif=ensureMap1Event4Kalif();kalif.style.display='none';
   if(bgMusic)bgMusic.pause();map1Event4Music.pause();map1Event4Music.currentTime=0;
   // Taste 4: Crusader-Song sofort zusammen mit dem Intro-Sound starten.
@@ -1152,13 +1157,32 @@ function updateMap1Event4(now){
     if(se<MAP1_EVENT4_FRAME_MS){src='assets/npc/kalif-2.png?v=82';}
     else if(se<MAP1_EVENT4_FRAME_MS*2){
       src='assets/npc/kalif-3.png?v=82';
-      if(!map1Event4PopularityDone){map1Event4PopularityDone=true;changeMap1Popularity(10);map1Event4Ignite.currentTime=0;map1Event4Ignite.play().catch(()=>{});}
+      if(!map1Event4PopularityDone){
+        map1Event4PopularityDone=true;changeMap1Popularity(10);
+        map1Event4IgniteAt=now;
+        map1Event4Ignite.currentTime=0;map1Event4Ignite.play().catch(()=>{});
+      }
     }else{
       const post=Math.floor((se-MAP1_EVENT4_FRAME_MS*2)/MAP1_EVENT4_FRAME_MS)%2;
       src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';
     }
   }
+  // Genau 3 Sekunden nach dem Fackel-Anzünden: derselbe Feuerspucker-Effekt wie Event 5.
+  // Nur Flammenbild + Feuerspucker-Sound; KEIN Schrei und KEIN Brenn-Loop.
+  if(map1Event4IgniteAt>=0&&!map1Event4FireDone&&map1Event4FireStart<0&&now-map1Event4IgniteAt>=3000){
+    map1Event4FireStart=now;
+    map1Event4Flame.pause();map1Event4Flame.currentTime=0;map1Event4Flame.play().catch(()=>{});
+  }
+  if(map1Event4FireStart>=0&&!map1Event4FireDone){
+    if(now-map1Event4FireStart<MAP1_EVENT4_FRAME_MS+300){
+      src='assets/npc/event5-kalif-fire.png?v=87';mirror=false;
+    }else{
+      map1Event4FireDone=true;
+      src='assets/npc/kalif-7.png?v=82';mirror=false;
+    }
+  }
   if((kalif.getAttribute('src')||'')!==src)kalif.src=src;
+  kalif.style.width=src.includes('event5-kalif-fire.png')?'252px':'112px';
   kalif.style.transform=`translate(-50%,-100%) scale(${mirror?-perspective:perspective},${perspective})`;
   kalif.style.zIndex=String(19500+Math.round(p[1]));
   if(t>=1)finishMap1Event4();
@@ -1227,14 +1251,12 @@ function startMap1Event5AfterFlameSounds(){
 function beginMap1Event5Kalif(){
   if(!map1Event5Active)return;
   const kalif=ensureMap1Event5Kalif();
+  // Event 5: Kalif läuft bereits in exakt demselben Moment los, in dem Intro-Sound + Crusader-Song starten.
+  // Dadurch bleibt die Fackel-Anzünd-Wegstelle an seiner Laufroute unverändert, die Begegnung mit dem Bauern liegt aber weiter unten.
+  map1Event5KalifStart=performance.now();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
+  kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.width='112px';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   map1Event5Music.pause();map1Event5Music.currentTime=0;map1Event5Music.play().catch(()=>{});
-  map1Event5Intro.pause();map1Event5Intro.currentTime=0;
-  map1Event5Intro.onended=()=>{
-    if(!map1Event5Active)return;
-    map1Event5KalifStart=performance.now();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
-    kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
-  };
-  map1Event5Intro.play().catch(()=>{});
+  map1Event5Intro.pause();map1Event5Intro.currentTime=0;map1Event5Intro.onended=null;map1Event5Intro.play().catch(()=>{});
 }
 function finishMap1Event5(){
   if(!map1Event5Active)return;map1Event5Active=false;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;
@@ -1331,9 +1353,9 @@ function updateMap1Event5(now){
     }
     if(map1Event5FireStage==='fire'){
       src='assets/npc/event5-kalif-fire.png?v=87';mirror=false;
-      if(now-map1Event5FireStart>=MAP1_EVENT5_KALIF_FRAME_MS){map1Event5FireStage='afterFire';src='assets/npc/kalif-7.png?v=82';}
+      if(now-map1Event5FireStart>=MAP1_EVENT5_KALIF_FRAME_MS+300){map1Event5FireStage='afterFire';src='assets/npc/kalif-7.png?v=82';}
     }else if(map1Event5FireStage==='afterFire'){
-      const post=Math.floor((now-map1Event5FireStart-MAP1_EVENT5_KALIF_FRAME_MS)/MAP1_EVENT5_KALIF_FRAME_MS)%2;
+      const post=Math.floor((now-map1Event5FireStart-(MAP1_EVENT5_KALIF_FRAME_MS+300))/MAP1_EVENT5_KALIF_FRAME_MS)%2;
       src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';mirror=false;
       if(map1Event5FarmerStarted&&map1Event5FarmerState==='walk'){
         const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
