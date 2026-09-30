@@ -1176,18 +1176,20 @@ const MAP1_EVENT5_HIT_DISTANCE=78;
 const map1Event5Whistle=new Audio('assets/audio/Human whistle (singing) - sound effect.mp3');
 const map1Event5Intro=new Audio('assets/audio/ca_extra_01_converted_by_soundandgo.com_ (1).mp3');
 const map1Event5Music=new Audio('assets/audio/Stronghold Crusader Soundtrack - 03 Crusader.mp3');
+const map1Event5TorchIgnite=new Audio('assets/audio/firepop7_converted_by_soundandgo.com_.mp3');
 const map1Event5Flame=new Audio('assets/audio/event5-flame.mp3');
 const map1Event5Scream=new Audio('assets/audio/event5-scream.mp3');
 const map1Event5BurnLoop=new Audio('assets/audio/event5-burn-loop.mp3');
 map1Event5Whistle.preload='auto';map1Event5Whistle.volume=.88;
 map1Event5Intro.preload='auto';map1Event5Intro.volume=1;
 map1Event5Music.preload='auto';map1Event5Music.volume=.72;map1Event5Music.loop=true;
+map1Event5TorchIgnite.preload='auto';map1Event5TorchIgnite.volume=1;
 map1Event5Flame.preload='auto';map1Event5Flame.volume=1;
 map1Event5Scream.preload='auto';map1Event5Scream.volume=1;
 map1Event5BurnLoop.preload='auto';map1Event5BurnLoop.volume=1;
 let map1Event5Active=false,map1Event5Farmer=null,map1Event5Kalif=null;
 let map1Event5FarmerStarted=false,map1Event5KalifWalking=false;
-let map1Event5FarmerStart=0,map1Event5KalifStart=0,map1Event5TorchStart=-1;
+let map1Event5FarmerStart=0,map1Event5KalifStart=0,map1Event5TorchStart=-1,map1Event5TorchSoundDone=false;
 let map1Event5FireStage='none',map1Event5FireStart=0,map1Event5HitTime=0,map1Event5HitProgress=0;
 let map1Event5FarmerState='walk',map1Event5BurnRepeat=0,map1Event5Timers=[];
 function map1Event5Later(fn,ms){const id=setTimeout(fn,ms);map1Event5Timers.push(id);return id;}
@@ -1229,7 +1231,7 @@ function beginMap1Event5Kalif(){
   map1Event5Intro.pause();map1Event5Intro.currentTime=0;
   map1Event5Intro.onended=()=>{
     if(!map1Event5Active)return;
-    map1Event5KalifStart=performance.now();map1Event5KalifWalking=true;map1Event5TorchStart=-1;
+    map1Event5KalifStart=performance.now();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
     kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   };
   map1Event5Intro.play().catch(()=>{});
@@ -1239,6 +1241,7 @@ function finishMap1Event5(){
   clearMap1Event5Timers();
   map1Event5Whistle.pause();map1Event5Whistle.currentTime=0;
   map1Event5Intro.pause();map1Event5Intro.currentTime=0;map1Event5Intro.onended=null;
+  map1Event5TorchIgnite.pause();map1Event5TorchIgnite.currentTime=0;
   map1Event5Flame.pause();map1Event5Flame.currentTime=0;map1Event5Flame.onended=null;
   stopMap1Event5BurnSounds();
   map1Event5Music.pause();map1Event5Music.currentTime=0;
@@ -1247,7 +1250,7 @@ function finishMap1Event5(){
 }
 function startMap1Event5(){
   if(currentMap!==1||mapTransitioning||map1Event5Active)return;
-  map1Event5Active=true;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;map1Event5FarmerState='walk';map1Event5FireStage='none';map1Event5TorchStart=-1;
+  map1Event5Active=true;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;map1Event5FarmerState='walk';map1Event5FireStage='none';map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
   clearMap1Event5Timers();stopMap1Event5BurnSounds();
   const farmer=ensureMap1Event5Farmer(),kalif=ensureMap1Event5Kalif();farmer.style.display='none';kalif.style.display='none';
   if(bgMusic)bgMusic.pause();
@@ -1266,7 +1269,14 @@ function map1Event5Ignite(now){
   // Flammenbild zwingend NACH bereits gezeigtem kalif-8.
   kalif.src='assets/npc/event5-kalif-fire.png?v=87';
   map1Event5Flame.pause();map1Event5Flame.currentTime=0;
-  map1Event5Flame.onended=()=>{if(map1Event5Active)startMap1Event5AfterFlameSounds();};
+  let afterFlameStarted=false;
+  const startAfterFlameOnce=()=>{if(afterFlameStarted||!map1Event5Active)return;afterFlameStarted=true;startMap1Event5AfterFlameSounds();};
+  map1Event5Flame.onended=startAfterFlameOnce;
+  const armAfterFlame=()=>{
+    const d=map1Event5Flame.duration;
+    if(Number.isFinite(d)&&d>0)map1Event5Later(startAfterFlameOnce,Math.max(0,(d-1)*1000));
+  };
+  if(map1Event5Flame.readyState>=1)armAfterFlame();else map1Event5Flame.addEventListener('loadedmetadata',armAfterFlame,{once:true});
   map1Event5Flame.play().catch(()=>{});
 }
 function map1Event5FarmerHit(now,progress){
@@ -1304,8 +1314,11 @@ function updateMap1Event5(now){
     if(map1Event5TorchStart>=0){
       const se=elapsed-map1Event5TorchStart;mirror=false;
       if(se<MAP1_EVENT5_KALIF_FRAME_MS)src='assets/npc/kalif-2.png?v=82';
-      else if(se<MAP1_EVENT5_KALIF_FRAME_MS*2)src='assets/npc/kalif-3.png?v=82';
-      else{
+      else if(se<MAP1_EVENT5_KALIF_FRAME_MS*2){
+        src='assets/npc/kalif-3.png?v=82';
+        // Exakt wie Event 4: beim Wechsel auf das Flamme-Anzünden-Bild derselbe firepop-Sound.
+        if(!map1Event5TorchSoundDone){map1Event5TorchSoundDone=true;map1Event5TorchIgnite.pause();map1Event5TorchIgnite.currentTime=0;map1Event5TorchIgnite.play().catch(()=>{});}
+      }else{
         const post=Math.floor((se-MAP1_EVENT5_KALIF_FRAME_MS*2)/MAP1_EVENT5_KALIF_FRAME_MS)%2;
         src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';
         if(map1Event5FireStage==='none'&&map1Event5FarmerStarted&&map1Event5FarmerState==='walk'){
@@ -1328,6 +1341,9 @@ function updateMap1Event5(now){
       }
     }
     if((kalif.getAttribute('src')||'')!==src)kalif.src=src;
+    // Das Feuerspuckerbild ist ein breites 3:2-Motiv. Nur für diesen Frame größer rendern,
+    // damit der Kalif selbst dieselbe sichtbare Körpergröße wie seine normalen Kalif-Sprites behält.
+    kalif.style.width=src.includes('event5-kalif-fire.png')?'252px':'112px';
     kalif.style.transform=`translate(-50%,-100%) scale(${mirror?-perspective:perspective},${perspective})`;
     if(kt>=1){kalif.style.display='none';map1Event5KalifWalking=false;map1Event5Later(finishMap1Event5,1200);}
   }
