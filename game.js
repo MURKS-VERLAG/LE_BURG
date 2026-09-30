@@ -139,7 +139,7 @@ function syncMap1ScribeConfetti(){
     for(let i=0;i<34;i++){const c=document.createElement('i');Object.assign(c.style,{position:'absolute',left:`${(i*37)%100}%`,top:`${-8-(i%7)*9}px`,width:`${5+(i%3)*2}px`,height:`${8+(i%4)*2}px`,background:colors[i%colors.length],opacity:'.95',borderRadius:'1px',animation:`map1ConfettiFall ${1.7+(i%6)*.22}s linear ${-(i%9)*.31}s infinite`});c.style.setProperty('--drift',`${-35+(i*19)%70}px`);map1ScribeConfetti.appendChild(c);}
     game.appendChild(map1ScribeConfetti);
   }
-  map1ScribeConfetti.style.display=active&&currentMap===1&&!mapTransitioning?'block':'none';
+  map1ScribeConfetti.style.display=active?'block':'none';
 }
 function syncMap1Popularity90Song(){
   const active=map1Popularity>=90&&map1Popularity<=100&&!map1GameOverStarted&&currentMap===1&&!mapTransitioning;
@@ -193,8 +193,10 @@ function wantedMap1ScribeMode(){
 function syncMap1Scribe(force=false){
   ensureMap1Scribe();
   if(map1GameOverStarted)return;
-  const visible=currentMap===1&&!mapTransitioning;
-  map1ScribeWrap.style.visibility=visible?'visible':'hidden';
+  // v86 – Der Schreiber ist ein globales HUD und bleibt auf Map 1 UND Map 2 bestehen.
+  // Beim Kartenwechsel wird er nicht mapabhängig entfernt; die Iris liegt darüber und
+  // verdeckt ihn während des geschlossenen Übergangs automatisch.
+  map1ScribeWrap.style.visibility='visible';
   const mode=wantedMap1ScribeMode();
   if(!force&&mode===map1ScribeMode)return;
   map1ScribeMode=mode;
