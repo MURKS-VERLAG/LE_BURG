@@ -2750,6 +2750,7 @@ function resolveMap1GuestSatisfaction(tableId,waitMs,unserved=false){
   showMap1GuestEmotion(tableId,kind);
   if(unserved)changeMap1Popularity(-2);
   else if(kind==='green')changeMap1Popularity(1);
+  else if(kind==='yellow'){} // v100: neutral/gelb = ausdrücklich KEINE Beliebtheitsänderung
   else if(kind==='red')changeMap1Popularity(-1);
 }
 
@@ -2952,7 +2953,7 @@ function ensureMap1Woman(){
   map1WomanEl.src='assets/npc/gast-frau-walk-1.png?v=95';map1WomanEl.alt='';map1WomanEl.draggable=false;
   // v98: feste BILDHÖHE statt feste Breite. Dadurch haben Walk + Order trotz unterschiedlicher
   // Quell-Seitenverhältnisse exakt dieselbe sichtbare Höhe und derselbe Fußanker bleibt stehen.
-  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'106.692px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
+  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'117.3612px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
   world.appendChild(map1WomanEl);return map1WomanEl;
 }
 function ensureMap1WomanThought(){
@@ -2962,51 +2963,22 @@ function ensureMap1WomanThought(){
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
 }
-function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h];} // v96: Füße exakt auf Höhe der unteren Tisch-Hitboxkante
+function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.28,top+h];} // v100: Lauf endet bewusst VOR der Tisch-Hitbox – exakt dort bleibt sie zum Bestellen stehen
 function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
-const MAP1_WOMAN_SCALE=.88485; // v99: Größenverhältnis bleibt; Elementhöhe selbst ist exakt 40 % kleiner
-const MAP1_WOMAN_ANCHORS=new Map();
-function calibrateMap1WomanAnchor(src){
-  if(MAP1_WOMAN_ANCHORS.has(src))return;
-  MAP1_WOMAN_ANCHORS.set(src,null);
-  const img=new Image();img.decoding='async';img.src=src;
-  const scan=()=>{
-    try{
-      const w=img.naturalWidth,h=img.naturalHeight;if(!w||!h)return;
-      const c=document.createElement('canvas');c.width=w;c.height=h;
-      const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);
-      const d=ctx.getImageData(0,0,w,h).data;let minX=w,maxX=-1,maxY=-1;
-      for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(d[(y*w+x)*4+3]>=24){if(x<minX)minX=x;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}
-      if(maxX>=minX&&maxY>=0)MAP1_WOMAN_ANCHORS.set(src,{w,h,cx:(minX+maxX)/2,bottom:maxY+1});
-    }catch(_){MAP1_WOMAN_ANCHORS.set(src,false);}
-  };
-  if(img.complete)scan();else img.onload=scan;
-}
-[
- 'assets/npc/gast-frau-walk-1.png?v=95','assets/npc/gast-frau-walk-2.png?v=95',
- 'assets/npc/gast-frau-walk-3.png?v=95','assets/npc/gast-frau-walk-4.png?v=95',
- 'assets/npc/gast-frau-order-1.png?v=95','assets/npc/gast-frau-order-2.png?v=95','assets/npc/gast-frau-order-3.png?v=95'
-].forEach(calibrateMap1WomanAnchor);
+const MAP1_WOMAN_SCALE=.88485; // v100: Gastfrau gegenüber v99 exakt 10 % größer
 function setMap1WomanFrame(src,mirror=false){
-  const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;
-  const a=MAP1_WOMAN_ANCHORS.get(src),boxH=parseFloat(el.style.height)||106.692;
-  let dx=0,dy=0;
-  if(a&&a.w&&a.h){
-    const boxW=boxH*a.w/a.h;
-    dx=boxW*(.5-a.cx/a.w);
-    dy=boxH*(1-a.bottom/a.h);
-    if(mirror)dx=-dx;
-  }
-  // Sichtbare Fußunterkante + sichtbare Körpermitte bleiben bei JEDEM Walk-/Orderbild
-  // auf demselben logischen Pfad-/Andockpunkt. Kein Positionsreset beim Bildwechsel.
-  el.style.transform=`translate(calc(-50% + ${dx}px),calc(-100% + ${dy}px)) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;
+  const el=ensureMap1Woman();
+  if((el.getAttribute('src')||'')!==src)el.src=src;
+  // v100: EIN fester Fußanker für ALLE Frauenbilder. Keine bildabhängige X/Y-Korrektur mehr:
+  // dadurch kein Bounce beim Wechsel Lauf -> Bestellung und kein Rechtsruck beim Rückweg.
+  el.style.transform=`translate(-50%,-100%) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;
 }
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
 function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
 function map1WomanCanTakeOrder(){return false;} // v98: automatische Bestellung beim Andocken; keine Nähe-/Leuchtinteraktion.
 function takeMap1WomanOrder(){return false;}
-function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];}
+function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];} // v100: Rückweg startet exakt an der aktuellen Standposition – kein vorgeschalteter Rechtsruck
 function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
 function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
