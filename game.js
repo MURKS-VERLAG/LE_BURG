@@ -3312,12 +3312,13 @@ function map1PondGeometry(){
   const el=document.getElementById('teich');if(!el)return null;
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   return {cx:left+w*.51147,cy:top+h*.48570,rx:w*.40255,ry:h*.28720,angle:.097883,
-    ax:left+w*.184,ay:top+h*.7106,bx:left+w*.425,by:top+h*.493,
+    ax:left+w*.184,ay:top+h*.7106+5,bx:left+w*.425,by:top+h*.493+5,
+    entryAX:left+w*.184,entryAY:top+h*.7106,
     entryRX:w*.0608,entryRY:h*.0754};
 }
 function map1PondLocal(g,x,y){const dx=x-g.cx,dy=y-g.cy,c=Math.cos(g.angle),s=Math.sin(g.angle);return[(dx*c+dy*s)/g.rx,(-dx*s+dy*c)/g.ry];}
 function map1PondInside(x,y){const g=map1PondGeometry();if(!g)return false;const[u,v]=map1PondLocal(g,x,y);return u*u+v*v<=1;}
-function map1PierEntryContains(g,x,y){return ((x-g.ax)/g.entryRX)**2+((y-g.ay)/g.entryRY)**2<=1;}
+function map1PierEntryContains(g,x,y){return ((x-g.entryAX)/g.entryRX)**2+((y-g.entryAY)/g.entryRY)**2<=1;}
 function map1LandscapeStandFree(x,y){
   if(x<10||y<10||x>WORLD_W-10||y>WORLD_H-10)return false;
   return !collisionSprites.some(s=>s.el.id!=='teich'&&circleHitsSpecificSprite(s,x,y,PLAYER.radius));
@@ -3330,6 +3331,7 @@ function moveMap1Pier(dx,dy){
     const up=keys.has('w')&&keys.has('d')&&!keys.has('a')&&!keys.has('s');
     const down=keys.has('s')&&keys.has('a')&&!keys.has('w')&&!keys.has('d');
     if(!up&&!down)return true;
+    setPlayerDirection(up?'back':'front');
     const step=Math.hypot(dx,dy)/len,raw=map1PierPosition+(up?step:-step);
     const t=Math.max(0,Math.min(1,raw)),x=g.ax+vx*t,y=g.ay+vy*t;
     if(map1LandscapeStandFree(x,y)){map1PierPosition=t;PLAYER.x=x;PLAYER.y=y;}
@@ -3341,12 +3343,12 @@ function moveMap1Pier(dx,dy){
   }
   if(!map1PierEntryArmed){if(!map1PierEntryContains(g,PLAYER.x,PLAYER.y))map1PierEntryArmed=true;return false;}
   // Segmentprüfung verhindert, dass auch bei einem langen Tick der Eintritt übersprungen wird.
-  const ux=(PLAYER.x-g.ax)/g.entryRX,uy=(PLAYER.y-g.ay)/g.entryRY;
+  const ux=(PLAYER.x-g.entryAX)/g.entryRX,uy=(PLAYER.y-g.entryAY)/g.entryRY;
   const sx=dx/g.entryRX,sy=dy/g.entryRY,q=Math.max(0,Math.min(1,-(ux*sx+uy*sy)/(sx*sx+sy*sy||1)));
   if((ux+sx*q)**2+(uy+sy*q)**2<=1){
     const t=Math.max(0,Math.min(1,((PLAYER.x+dx-g.ax)*vx+(PLAYER.y+dy-g.ay)*vy)/(len*len)));
     const x=g.ax+vx*t,y=g.ay+vy*t;
-    if(map1LandscapeStandFree(x,y)){map1PierPosition=t;PLAYER.x=x;PLAYER.y=y;return true;}
+    if(map1LandscapeStandFree(x,y)){map1PierPosition=t;PLAYER.x=x;PLAYER.y=y;setPlayerDirection(keys.has('s')&&keys.has('a')?'front':'back');return true;}
   }
   return false;
 }
@@ -3713,6 +3715,11 @@ function updatePlayer(now){
   if(keys.has('w'))dy-=1;
   if(keys.has('s'))dy+=1;
 
+  if(currentMap===1&&map1PierPosition!==null){
+    const up=keys.has('w')&&keys.has('d')&&!keys.has('a')&&!keys.has('s');
+    const down=keys.has('s')&&keys.has('a')&&!keys.has('w')&&!keys.has('d');
+    if(!up&&!down){dx=0;dy=0;}
+  }
   PLAYER.moving=dx!==0||dy!==0;
   if(PLAYER.moving){
     const len=Math.hypot(dx,dy);
@@ -3786,9 +3793,9 @@ window.addEventListener('keyup',e=>{
 window.addEventListener('blur',()=>keys.clear());
 
 /* v106: neue Landschaftsobjekte, unabhängig von den bisherigen Prop-Zonen. */
-const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.59,.72],[.61,.83],[.64,.90],[.73,.97],[.70,1],[.33,1],[.32,.95],[.43,.89],[.46,.82]];
+const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.61,.72],[.61,1],[.44,1]]; // v108: gerade Stammseiten, keine seitlichen Wurzel-Hitboxen
 function map1AppleCrownAt(s,x,y){
-  return map1AppleCrownBaseAt(s,x,y)||map1AppleCrownBaseAt(s,x,y-15);
+  return map1AppleCrownBaseAt(s,x,y)||map1AppleCrownBaseAt(s,x,y-30);
 }
 function map1AppleCrownBaseAt(s,x,y){
   const p=spriteLocalPoint(s,x,y);if(!p)return false;
@@ -3798,14 +3805,29 @@ function map1AppleCrownBaseAt(s,x,y){
   for(let sy=0;sy<end;sy++)if(s.alpha[sy*s.sourceW+p.sx]>=24){if(first<0)first=sy;last=sy;}
   return first>=0&&p.sy>=first&&p.sy<=last;
 }
+const MAP1_LANDSCAPE_GLOW='brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))';
+function map1AppleDockedFromBelow(sp){
+  if(currentMap!==1||PLAYER.direction!=='back'||!sp)return false;
+  const el=sp.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  if(PLAYER.x<left+w*.44||PLAYER.x>=left+w*.61)return false;
+  const sx=Math.max(0,Math.min(sp.sourceW-1,Math.floor((PLAYER.x-left)/w*sp.sourceW)));
+  let bottom=-1;
+  for(let sy=sp.sourceH-1;sy>=sp.sourceH*.72;sy--)if(sp.alpha[sy*sp.sourceW+sx]>=24){bottom=sy;break;}
+  if(bottom<0)return false;
+  const edge=top+(bottom+.5)/sp.sourceH*h;
+  return PLAYER.y>=edge&&Math.abs(PLAYER.y-(edge+PLAYER.radius))<=8;
+}
 function syncMap1LandscapeDepth(){
   const tree=document.getElementById('apfelbaum'),pond=document.getElementById('teich');
   if(tree){
     tree.style.visibility=currentMap===1?'visible':'hidden';
     const sp=collisionSprites.find(s=>s.el===tree),z=Number(player.style.zIndex)||MAP1_PLAYER_FRONT_Z;
     tree.style.zIndex=String(currentMap===1&&sp&&map1AppleCrownAt(sp,PLAYER.x,PLAYER.y)?z+1:490);
+    tree.style.filter=map1AppleDockedFromBelow(sp)?MAP1_LANDSCAPE_GLOW:'none';
   }
-  if(pond){pond.style.visibility=currentMap===1?'visible':'hidden';pond.style.zIndex='490';}
+  if(pond){pond.style.visibility=currentMap===1?'visible':'hidden';pond.style.zIndex='490';
+    pond.style.filter=currentMap===1&&map1PierPosition===1&&PLAYER.direction==='back'&&!(keys.has('s')&&keys.has('a'))?MAP1_LANDSCAPE_GLOW:'none';
+  }
 }
 async function prepareMap1Landscape(){
   for(const id of ['apfelbaum','teich']){
@@ -3910,7 +3932,7 @@ async function preloadMap1BearFrames(){
     'assets/npc/gast-bauer-order-1.png?v=92','assets/npc/gast-bauer-order-2.png?v=92','assets/npc/gast-bauer-order-3.png?v=92',
     'assets/npc/gast-bauer-back-1.png?v=92','assets/npc/gast-bauer-back-2.png?v=92','assets/npc/gast-bauer-back-3.png?v=92',
     'assets/npc/gast-krug-leer.png?v=92',
-    'assets/props/apfelbaum.png?v=106','assets/props/teich.png?v=106',
+    'assets/props/apfelbaum.png?v=106','assets/props/teich.png?v=108',
     'assets/npc/gast-frau-walk-1.png?v=95','assets/npc/gast-frau-walk-2.png?v=95',
     'assets/npc/gast-frau-walk-3.png?v=95','assets/npc/gast-frau-walk-4.png?v=95',
     'assets/npc/gast-frau-order-1.png?v=95','assets/npc/gast-frau-order-2.png?v=95','assets/npc/gast-frau-order-3.png?v=95'
