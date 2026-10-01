@@ -2715,6 +2715,39 @@ function startMap1TableServe(){
 
 
 
+/* v98 – Gästezufriedenheit: kleine Masken steigen zentral von der Tischplatte auf.
+   Zeit/Fade entsprechen der bestehenden Beliebtheitsanzeige am Schreiber. */
+const MAP1_GUEST_EMOTION_IMAGES={
+  green:'assets/npc/gast-emotion-gruen.png?v=98',
+  yellow:'assets/npc/gast-emotion-gelb.png?v=98',
+  red:'assets/npc/gast-emotion-rot.png?v=98'
+};
+function showMap1GuestEmotion(tableId,kind){
+  const table=document.getElementById(tableId),src=MAP1_GUEST_EMOTION_IMAGES[kind];
+  if(!table||!src)return;
+  const left=px(table,'left'),top=px(table,'top'),w=table.offsetWidth,h=table.offsetHeight;
+  const fx=document.createElement('img');fx.src=src;fx.alt='';fx.draggable=false;
+  Object.assign(fx.style,{
+    position:'absolute',left:`${left+w/2}px`,top:`${top+h*.23}px`,width:'48px',height:'auto',
+    transform:'translate(-50%,-50%)',pointerEvents:'none',userSelect:'none',zIndex:'30000',opacity:'1'
+  });
+  world.appendChild(fx);
+  fx.animate([
+    {transform:'translate(-50%,8px) scale(.82)',opacity:1},
+    {transform:'translate(-50%,-72px) scale(1)',opacity:1,offset:.62},
+    {transform:'translate(-50%,-128px) scale(.92)',opacity:0}
+  ],{duration:2800,easing:'ease-out',fill:'forwards'});
+  setTimeout(()=>fx.remove(),2850);
+}
+function map1GuestEmotionKind(waitMs){return waitMs<30000?'green':waitMs<60000?'yellow':'red';}
+function resolveMap1GuestSatisfaction(tableId,waitMs,unserved=false){
+  const kind=unserved?'red':map1GuestEmotionKind(waitMs);
+  showMap1GuestEmotion(tableId,kind);
+  if(unserved)changeMap1Popularity(-2);
+  else if(kind==='green')changeMap1Popularity(1);
+  else if(kind==='red')changeMap1Popularity(-1);
+}
+
 /* MAP 1 – ERSTE ECHTE GÄSTE v93: Bauer am rechten Stehtisch.
    Zwei Varianten teilen sich denselben Slot und können NIEMALS gleichzeitig existieren:
    SCHNELL: 50 % Versuch alle 30 s. LANGSAM: 50 % Versuch alle 60 s.
@@ -2723,6 +2756,7 @@ let map1GuestEl=null,map1GuestThought=null;
 let map1GuestActive=false,map1GuestVariant='fast',map1GuestStage='idle';
 let map1GuestPath=[],map1GuestStart=0,map1GuestDuration=0,map1GuestReturnStart=0,map1GuestReturnDuration=0;
 let map1GuestFastInterval=0,map1GuestSlowInterval=0,map1GuestDrinkTimer=0,map1GuestMugTimer=0;
+let map1GuestWaitStart=0,map1GuestServiceWaitMs=0;
 const MAP1_GUEST_WIDTH=100.8; // v96: Bauer generell +5 %
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
@@ -2776,22 +2810,18 @@ function map1GuestPointOnPath(pts,t){
 function map1GuestPerspective(y){return 1.10;} // Breite bereits +5 %; bestehende Perspektive bleibt unverändert
 function setMap1GuestFrame(src,mirror=false,scale=1){
   const el=ensureMap1Guest();if((el.getAttribute('src')||'')!==src)el.src=src;
-  el.style.transform=`translate(-50%,-100%) scale(${scale})${mirror?' rotateY(180deg)':''}`;
+  // v98: Nur Bestell-/Warte-/Trinkbilder des Bauern weitere 5 % größer; Laufbilder unverändert.
+  const poseScale=src.includes('gast-bauer-order-')?scale*1.05:scale;
+  el.style.transform=`translate(-50%,-100%) scale(${poseScale})${mirror?' rotateY(180deg)':''}`;
 }
 function map1GuestOccupiesRightTable(){return map1GuestActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1GuestStage);}
 function showMap1GuestThought(){
   const b=ensureMap1GuestThought(),[x,y]=map1GuestDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1GuestStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));
 }
 function hideMap1GuestThought(){if(map1GuestThought){map1GuestThought.style.opacity='0';map1GuestThought.style.transform='scale(.84)';setTimeout(()=>{if(map1GuestThought&&map1GuestThought.style.opacity==='0')map1GuestThought.style.display='none';},280);}}
-function map1GuestCanTakeOrder(){return currentMap===1&&!mapTransitioning&&map1GuestActive&&map1GuestStage==='ordering'&&Math.hypot(PLAYER.x-parseFloat(map1GuestEl.style.left),PLAYER.y-parseFloat(map1GuestEl.style.top))<=MAP1_GUEST_INTERACT_DISTANCE;}
-function takeMap1GuestOrder(){
-  if(!map1GuestCanTakeOrder())return false;
-  map1GuestStage='waitingBeer';setMap1GuestFrame('assets/npc/gast-bauer-order-3.png?v=92',false,map1GuestPerspective(parseFloat(map1GuestEl.style.top)||470));showMap1GuestThought();updateMap1GuestCue();return true;
-}
-function updateMap1GuestCue(){
-  if(!map1GuestEl)return;
-  map1GuestEl.style.filter=map1GuestCanTakeOrder()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';
-}
+function map1GuestCanTakeOrder(){return false;} // v98: Bestellung startet automatisch beim Andocken; keine Nähe-/Leuchtinteraktion mehr.
+function takeMap1GuestOrder(){return false;}
+function updateMap1GuestCue(){if(map1GuestEl)map1GuestEl.style.filter='none';}
 function clearMap1GuestTimers(){clearTimeout(map1GuestDrinkTimer);clearTimeout(map1GuestMugTimer);map1GuestDrinkTimer=map1GuestMugTimer=0;}
 function beginMap1GuestReturn(){
   if(!map1GuestActive||map1GuestStage==='returning')return;
@@ -2835,7 +2865,7 @@ function map1ExistingFullTableMug(id){
 }
 function map1GuestBeerServed(table,mug){
   if(!map1GuestActive||!['ordering','waitingBeer'].includes(map1GuestStage)||table?.el?.id!=='stehtischRechts')return false;
-  hideMap1GuestThought();map1GuestStage='beerOnTable';
+  hideMap1GuestThought();map1GuestServiceWaitMs=Math.max(0,performance.now()-map1GuestWaitStart);map1GuestStage='beerOnTable';
   const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];
   // Solange der VOLLE Krug sichtbar auf dem Tisch steht, bleibt der Bauer in seiner Wartepose.
   setMap1GuestFrame('assets/npc/gast-bauer-order-3.png?v=92',false,map1GuestPerspective(y));
@@ -2852,6 +2882,7 @@ function map1GuestBeerServed(table,mug){
         mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';
         mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);
       }
+      resolveMap1GuestSatisfaction('stehtischRechts',map1GuestServiceWaitMs,false);
       beginMap1GuestReturn();
     },3000);
   },2000);
@@ -2860,6 +2891,9 @@ function map1GuestBeerServed(table,mug){
 function updateMap1Guest(now){
   if(!map1GuestActive){updateMap1GuestCue();return;}
   if(map1Popularity<50&&!['returning'].includes(map1GuestStage))beginMap1GuestReturn();
+  if(map1GuestStage==='waitingBeer'&&map1GuestWaitStart&&now-map1GuestWaitStart>=90000){
+    hideMap1GuestThought();resolveMap1GuestSatisfaction('stehtischRechts',90000,true);beginMap1GuestReturn();
+  }
   const el=ensureMap1Guest();
   if(map1GuestStage==='arriving'){
     const t=Math.min(1,(now-map1GuestStart)/map1GuestDuration),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);
@@ -2873,7 +2907,14 @@ function updateMap1Guest(now){
       const mirror=Math.floor((now-map1GuestStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;
       setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',mirror,scale);
     }
-    if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);const mug=map1ExistingFullTableMug('stehtischRechts');if(mug)map1GuestBeerServed(tableSpriteById('stehtischRechts'),mug);}
+    if(t>=1){
+      // v98: Beim Andocken sofort Bestellgeste + Bier-Gedankenblase, ganz ohne Spieler-Nähe.
+      map1GuestWaitStart=performance.now();map1GuestServiceWaitMs=0;
+      map1GuestStage='waitingBeer';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);
+      const mug=map1ExistingFullTableMug('stehtischRechts');
+      if(mug)map1GuestBeerServed(tableSpriteById('stehtischRechts'),mug);
+      else showMap1GuestThought();
+    }
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
@@ -2896,6 +2937,7 @@ function updateMap1Guest(now){
 let map1WomanEl=null,map1WomanThought=null;
 let map1WomanActive=false,map1WomanStage='idle',map1WomanPath=[],map1WomanStart=0,map1WomanReturnStart=0;
 let map1WomanSpawnTimer=0,map1WomanDrinkTimer=0,map1WomanMugTimer=0;
+let map1WomanWaitStart=0,map1WomanServiceWaitMs=0;
 const MAP1_WOMAN_DURATION=11000;
 const MAP1_WOMAN_FRAME_MS=MAP1_GUEST_FAST_FRAME_MS;
 const MAP1_WOMAN_INTERACT_DISTANCE=92;
@@ -2903,8 +2945,10 @@ function ensureMap1Woman(){
   if(map1WomanEl)return map1WomanEl;
   map1WomanEl=document.createElement('img');map1WomanEl.id='map1GuestWoman';map1WomanEl.dataset.npcRole='normalGuest';
   map1WomanEl.src='assets/npc/gast-frau-walk-1.png?v=95';map1WomanEl.alt='';map1WomanEl.draggable=false;
-  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'96px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
-  const sync=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||96;map1WomanEl.style.width=`${w}px`;};sync();requestAnimationFrame(sync);world.appendChild(map1WomanEl);return map1WomanEl;
+  // v98: feste BILDHÖHE statt feste Breite. Dadurch haben Walk + Order trotz unterschiedlicher
+  // Quell-Seitenverhältnisse exakt dieselbe sichtbare Höhe und derselbe Fußanker bleibt stehen.
+  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'177.82px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
+  world.appendChild(map1WomanEl);return map1WomanEl;
 }
 function ensureMap1WomanThought(){
   if(map1WomanThought)return map1WomanThought;
@@ -2920,25 +2964,51 @@ function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.g
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
 function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
-function map1WomanCanTakeOrder(){return currentMap===1&&!mapTransitioning&&map1WomanActive&&map1WomanStage==='ordering'&&Math.hypot(PLAYER.x-parseFloat(map1WomanEl.style.left),PLAYER.y-parseFloat(map1WomanEl.style.top))<=MAP1_WOMAN_INTERACT_DISTANCE;}
-function takeMap1WomanOrder(){if(!map1WomanCanTakeOrder())return false;map1WomanStage='waitingBeer';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');showMap1WomanThought();return true;}
+function map1WomanCanTakeOrder(){return false;} // v98: automatische Bestellung beim Andocken; keine Nähe-/Leuchtinteraktion.
+function takeMap1WomanOrder(){return false;}
 function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];}
 function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
 function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
 function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
 function map1WomanBeerServed(table,mug){
-  if(!map1WomanActive||!['ordering','waitingBeer'].includes(map1WomanStage)||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
+  if(!map1WomanActive||!['ordering','waitingBeer'].includes(map1WomanStage)||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanServiceWaitMs=Math.max(0,performance.now()-map1WomanWaitStart);map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
   map1WomanMugTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='beerOnTable')return;if(mug?.isConnected)mug.style.display='none';map1WomanStage='drinking';setMap1WomanFrame('assets/npc/gast-frau-order-2.png?v=95');
-    map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}beginMap1WomanReturn();},3000);
+    map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}resolveMap1GuestSatisfaction('stehtischLinks',map1WomanServiceWaitMs,false);beginMap1WomanReturn();},3000);
   },2000);return true;
 }
 function updateMap1Woman(now){
-  if(!map1WomanActive)return;if(map1Popularity<50&&map1WomanStage!=='returning')beginMap1WomanReturn();const el=ensureMap1Woman();
-  if(map1WomanStage==='arriving'){const t=Math.min(1,(now-map1WomanStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);if(t>=1){map1WomanStage='ordering';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');const mug=map1ExistingFullTableMug('stehtischLinks');if(mug)map1WomanBeerServed(tableSpriteById('stehtischLinks'),mug);}}
-  else if(map1WomanStage==='returning'){const t=Math.min(1,(now-map1WomanReturnStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanReturnStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,true);if(t>=1)finishMap1Woman();}
-  if(map1WomanThought&&map1WomanThought.style.display!=='none'){const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1WomanThought.style.left=`${x+18}px`;map1WomanThought.style.top=`${y-204}px`;}
-  el.style.filter=map1WomanCanTakeOrder()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';
+  if(!map1WomanActive)return;
+  if(map1Popularity<50&&map1WomanStage!=='returning')beginMap1WomanReturn();
+  if(map1WomanStage==='waitingBeer'&&map1WomanWaitStart&&now-map1WomanWaitStart>=90000){
+    hideMap1WomanThought();resolveMap1GuestSatisfaction('stehtischLinks',90000,true);beginMap1WomanReturn();
+  }
+  const el=ensureMap1Woman();
+  if(map1WomanStage==='arriving'){
+    const t=Math.min(1,(now-map1WomanStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);
+    el.style.left=`${x}px`;el.style.top=`${y}px`;
+    const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanStart)/MAP1_WOMAN_FRAME_MS)%4];
+    setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);
+    if(t>=1){
+      // v98: KEIN Positionsreset. Exakt am letzten Laufpunkt stehen bleiben und dort direkt bestellen.
+      map1WomanWaitStart=performance.now();map1WomanServiceWaitMs=0;
+      map1WomanStage='waitingBeer';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');
+      const mug=map1ExistingFullTableMug('stehtischLinks');
+      if(mug)map1WomanBeerServed(tableSpriteById('stehtischLinks'),mug);
+      else showMap1WomanThought();
+    }
+  }else if(map1WomanStage==='returning'){
+    const t=Math.min(1,(now-map1WomanReturnStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);
+    // v98: Rückweg beginnt exakt an der aktuellen Fußposition – kein Rechtsruck vor dem Loslaufen.
+    el.style.left=`${x}px`;el.style.top=`${y}px`;
+    const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanReturnStart)/MAP1_WOMAN_FRAME_MS)%4];
+    setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,true);
+    if(t>=1)finishMap1Woman();
+  }
+  if(map1WomanThought&&map1WomanThought.style.display!=='none'){
+    const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1WomanThought.style.left=`${x+18}px`;map1WomanThought.style.top=`${y-204}px`;
+  }
+  el.style.filter='none';
 }
 
 /* MAP 1 – BAUM-VERSTECK v62.
