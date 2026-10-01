@@ -2236,6 +2236,7 @@ function draw(now){
   updateMap1Guest(now);
   updateMap1Woman(now);
   syncMap1NpcPlayerDepth();
+  syncMap1LandscapeDepth();
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
@@ -3720,6 +3721,33 @@ window.addEventListener('keyup',e=>{
 });
 window.addEventListener('blur',()=>keys.clear());
 
+/* v106: neue Landschaftsobjekte, unabhängig von den bisherigen Prop-Zonen. */
+const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.59,.72],[.61,.83],[.64,.90],[.73,.97],[.70,1],[.33,1],[.32,.95],[.43,.89],[.46,.82]];
+function map1AppleCrownAt(s,x,y){
+  const p=spriteLocalPoint(s,x,y);if(!p)return false;
+  const end=Math.floor(s.sourceH*.72);if(p.sy>=end)return false;
+  // Innerhalb der Kronensilhouette bleiben auch kleine transparente Blattlücken stabil.
+  let first=-1,last=-1;
+  for(let sy=0;sy<end;sy++)if(s.alpha[sy*s.sourceW+p.sx]>=24){if(first<0)first=sy;last=sy;}
+  return first>=0&&p.sy>=first&&p.sy<=last;
+}
+function syncMap1LandscapeDepth(){
+  const tree=document.getElementById('apfelbaum'),pond=document.getElementById('teich');
+  if(tree){
+    tree.style.visibility=currentMap===1?'visible':'hidden';
+    const sp=collisionSprites.find(s=>s.el===tree),z=Number(player.style.zIndex)||MAP1_PLAYER_FRONT_Z;
+    tree.style.zIndex=String(currentMap===1&&sp&&map1AppleCrownAt(sp,PLAYER.x,PLAYER.y)?z+1:490);
+  }
+  if(pond){pond.style.visibility=currentMap===1?'visible':'hidden';pond.style.zIndex='490';}
+}
+async function prepareMap1Landscape(){
+  for(const id of ['apfelbaum','teich']){
+    const el=document.getElementById(id);if(!el)continue;
+    await buildAlphaCollision(el);
+  }
+  syncMap1LandscapeDepth();
+}
+
 /* Alpha-genaue Kollision Map 1 */
 const collisionSprites=[];
 async function buildAlphaCollision(el){
@@ -3737,6 +3765,15 @@ async function buildAlphaCollision(el){
 }
 function px(el,prop){return parseFloat(getComputedStyle(el)[prop])||0;}
 function pointHitsSprite(s,x,y){
+  if(s.el.id==='apfelbaum'){
+    if(currentMap!==1)return false;
+    const p=spriteLocalPoint(s,x,y);if(!p||p.alpha<24)return false;
+    return pointInPoly(p.sx/s.sourceW,p.sy/s.sourceH,MAP1_APPLE_TRUNK_POLY);
+  }
+  if(s.el.id==='teich'){
+    if(currentMap!==1)return false;
+    const p=spriteLocalPoint(s,x,y);return !!p&&p.alpha>=24;
+  }
   /* v43: Baum kollidiert NUR am Stamm. Die Effekt-/Tiefenzone bleibt davon unabhängig. */
   if(currentMap===1 && s.el.id==='baum'){
     const p=spriteLocalPoint(s,x,y);
@@ -3809,6 +3846,7 @@ async function preloadMap1BearFrames(){
     'assets/npc/gast-bauer-order-1.png?v=92','assets/npc/gast-bauer-order-2.png?v=92','assets/npc/gast-bauer-order-3.png?v=92',
     'assets/npc/gast-bauer-back-1.png?v=92','assets/npc/gast-bauer-back-2.png?v=92','assets/npc/gast-bauer-back-3.png?v=92',
     'assets/npc/gast-krug-leer.png?v=92',
+    'assets/props/apfelbaum.png?v=106','assets/props/teich.png?v=106',
     'assets/npc/gast-frau-walk-1.png?v=95','assets/npc/gast-frau-walk-2.png?v=95',
     'assets/npc/gast-frau-walk-3.png?v=95','assets/npc/gast-frau-walk-4.png?v=95',
     'assets/npc/gast-frau-order-1.png?v=95','assets/npc/gast-frau-order-2.png?v=95','assets/npc/gast-frau-order-3.png?v=95'
@@ -3893,6 +3931,7 @@ async function start(){
   await preloadPlayerFrames();
   await preloadMap1BearFrames();
   applyMap1LayoutFixes();
+  await prepareMap1Landscape();
   ensureMap1Runner();
   ensureMap1Bear();
   ensureMap1Scribe();
@@ -3916,7 +3955,7 @@ async function start(){
   const collidables=[...document.querySelectorAll('.collidable[data-collision="alpha"]')];
   const baumCollision=document.getElementById('baum');
   if(baumCollision && !collidables.includes(baumCollision))collidables.push(baumCollision);
-  Promise.all(collidables.map(buildAlphaCollision)).catch(console.error);
+  Promise.all(collidables.filter(el=>!collisionSprites.some(s=>s.el===el)).map(buildAlphaCollision)).catch(console.error);
   if(gamePaused&&!document.hidden)resumeAnimationSystem();
 }
 
