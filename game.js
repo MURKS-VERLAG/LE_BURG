@@ -2987,8 +2987,35 @@ function ensureMap1WomanThought(){
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
 }
-function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.52,top+h];} // v101: klarer Halt VOR der linken Tisch-Hitbox; dieser Punkt ist Laufende UND Bestellposition
-function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
+/* v102: Ziel aus der echten Rest-Hitbox, nicht aus transparenten PNG-Rändern.
+   Der Fußkreis berührt den Tisch von links; die Route endet genau dort. */
+function map1WomanDockPoint(){
+  const el=document.getElementById('stehtischLinks'),sp=tableSpriteById('stehtischLinks');
+  if(!el||!sp)return null;
+  const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  if(!w||!h)return null;
+  const supportStart=Math.floor(sp.sourceH*(.68+(1-.68)/3));
+  let bottom=-1;
+  for(let sy=sp.sourceH-1;sy>=supportStart&&bottom<0;sy--){
+    for(let sx=0;sx<sp.sourceW;sx++)if(sp.alpha[sy*sp.sourceW+sx]>=24){bottom=sy;break;}
+  }
+  if(bottom<0)return null;
+  const y=top+(bottom+.5)/sp.sourceH*h,r=12;
+  let freeX=left-r-1;
+  for(let x=freeX+1;x<=left+w+r;x+=1){
+    if(circleHitsSpecificSprite(sp,x,y,r)){
+      // Erste Berührung: letzte freie Position plus höchstens ein Pixel Abstand.
+      return [freeX,y];
+    }
+    freeX=x;
+  }
+  return null;
+}
+function sampleMap1WomanPath(){
+  const dock=map1WomanDockPoint();if(!dock)return [];
+  // Keine festen Zwischenpunkte hinter dem Ziel: ausschließlich nach rechts.
+  return [[Math.min(40,dock[0]),dock[1]],dock];
+}
 const MAP1_WOMAN_SCALE=.88485; // v100: Gastfrau gegenüber v99 exakt 10 % größer
 function setMap1WomanFrame(src,mirror=false){
   const el=ensureMap1Woman();
@@ -2998,13 +3025,13 @@ function setMap1WomanFrame(src,mirror=false){
   el.style.transform=`translate(-50%,-100%) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;
 }
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
-function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
+function showMap1WomanThought(){const b=ensureMap1WomanThought(),x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
 function map1WomanCanTakeOrder(){return false;} // v98: automatische Bestellung beim Andocken; keine Nähe-/Leuchtinteraktion.
 function takeMap1WomanOrder(){return false;}
-function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);const leftOnly=sampleMap1WomanPath().slice(0,-1).filter(p=>p[0]<x-1).reverse();map1WomanPath=[[x,y],...leftOnly];} // v101: erster Rückwegschritt kann ausschließlich nach LINKS gehen; kein Bounce/Rechtsruck möglich
+function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);const leftOnly=[[Math.min(40,x),y]].filter(p=>p[0]<x);map1WomanPath=[[x,y],...leftOnly];} // v101: erster Rückwegschritt kann ausschließlich nach LINKS gehen; kein Bounce/Rechtsruck möglich
 function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
-function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
+function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const path=sampleMap1WomanPath();if(!path.length)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=path;map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
 function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
 function map1WomanBeerServed(table,mug){
@@ -3568,7 +3595,7 @@ function syncMap1NpcPlayerDepth(){
   if(map1GuestEl&&map1GuestActive&&map1GuestEl.style.display!=='none'&&map1GuestEl.style.visibility!=='hidden')
     map1GuestEl.style.zIndex=String(map1GuestOccupiesRightTable()?MAP1_PLAYER_BEHIND_Z-1:(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1));
   if(map1WomanEl&&map1WomanActive&&map1WomanEl.style.display!=='none'&&map1WomanEl.style.visibility!=='hidden')
-    map1WomanEl.style.zIndex=String(map1WomanOccupiesLeftTable()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1);
+    map1WomanEl.style.zIndex=String(MAP1_PLAYER_FRONT_Z-1); // v102: seitlicher Gast bleibt bei Ankunft auf derselben Ebene.
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -3749,7 +3776,10 @@ async function preloadMap1BearFrames(){
     'assets/npc/gast-bauer-front-1.png?v=92','assets/npc/gast-bauer-front-2.png?v=92','assets/npc/gast-bauer-front-3.png?v=92',
     'assets/npc/gast-bauer-order-1.png?v=92','assets/npc/gast-bauer-order-2.png?v=92','assets/npc/gast-bauer-order-3.png?v=92',
     'assets/npc/gast-bauer-back-1.png?v=92','assets/npc/gast-bauer-back-2.png?v=92','assets/npc/gast-bauer-back-3.png?v=92',
-    'assets/npc/gast-krug-leer.png?v=92'
+    'assets/npc/gast-krug-leer.png?v=92',
+    'assets/npc/gast-frau-walk-1.png?v=95','assets/npc/gast-frau-walk-2.png?v=95',
+    'assets/npc/gast-frau-walk-3.png?v=95','assets/npc/gast-frau-walk-4.png?v=95',
+    'assets/npc/gast-frau-order-1.png?v=95','assets/npc/gast-frau-order-2.png?v=95','assets/npc/gast-frau-order-3.png?v=95'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
