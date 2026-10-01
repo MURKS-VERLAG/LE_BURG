@@ -3306,7 +3306,71 @@ function map1CanEscapeStandingTable(fromX,fromY,toX,toY){
   return moveX*awayX + moveY*awayY > 0;
 }
 
+/* v107: Referenzmarkierung – Fußpunktgrenze und gesperrte Stegachse. */
+let map1PierPosition=null,map1PierEntryArmed=true;
+function map1PondGeometry(){
+  const el=document.getElementById('teich');if(!el)return null;
+  const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  return {cx:left+w*.51147,cy:top+h*.48570,rx:w*.40255,ry:h*.28720,angle:.097883,
+    ax:left+w*.184,ay:top+h*.7106,bx:left+w*.425,by:top+h*.493,
+    entryRX:w*.0608,entryRY:h*.0754};
+}
+function map1PondLocal(g,x,y){const dx=x-g.cx,dy=y-g.cy,c=Math.cos(g.angle),s=Math.sin(g.angle);return[(dx*c+dy*s)/g.rx,(-dx*s+dy*c)/g.ry];}
+function map1PondInside(x,y){const g=map1PondGeometry();if(!g)return false;const[u,v]=map1PondLocal(g,x,y);return u*u+v*v<=1;}
+function map1PierEntryContains(g,x,y){return ((x-g.ax)/g.entryRX)**2+((y-g.ay)/g.entryRY)**2<=1;}
+function map1LandscapeStandFree(x,y){
+  if(x<10||y<10||x>WORLD_W-10||y>WORLD_H-10)return false;
+  return !collisionSprites.some(s=>s.el.id!=='teich'&&circleHitsSpecificSprite(s,x,y,PLAYER.radius));
+}
+function moveMap1Pier(dx,dy){
+  if(currentMap!==1){map1PierPosition=null;map1PierEntryArmed=true;return false;}
+  const g=map1PondGeometry();if(!g)return false;
+  const vx=g.bx-g.ax,vy=g.by-g.ay,len=Math.hypot(vx,vy);
+  if(map1PierPosition!==null){
+    const up=keys.has('w')&&keys.has('d')&&!keys.has('a')&&!keys.has('s');
+    const down=keys.has('s')&&keys.has('a')&&!keys.has('w')&&!keys.has('d');
+    if(!up&&!down)return true;
+    const step=Math.hypot(dx,dy)/len,raw=map1PierPosition+(up?step:-step);
+    const t=Math.max(0,Math.min(1,raw)),x=g.ax+vx*t,y=g.ay+vy*t;
+    if(map1LandscapeStandFree(x,y)){map1PierPosition=t;PLAYER.x=x;PLAYER.y=y;}
+    if(down&&raw<0){
+      const x=g.ax+vx*raw,y=g.ay+vy*raw;
+      if(map1LandscapeStandFree(x,y)){PLAYER.x=x;PLAYER.y=y;map1PierPosition=null;map1PierEntryArmed=false;}
+    }
+    return true;
+  }
+  if(!map1PierEntryArmed){if(!map1PierEntryContains(g,PLAYER.x,PLAYER.y))map1PierEntryArmed=true;return false;}
+  // Segmentprüfung verhindert, dass auch bei einem langen Tick der Eintritt übersprungen wird.
+  const ux=(PLAYER.x-g.ax)/g.entryRX,uy=(PLAYER.y-g.ay)/g.entryRY;
+  const sx=dx/g.entryRX,sy=dy/g.entryRY,q=Math.max(0,Math.min(1,-(ux*sx+uy*sy)/(sx*sx+sy*sy||1)));
+  if((ux+sx*q)**2+(uy+sy*q)**2<=1){
+    const t=Math.max(0,Math.min(1,((PLAYER.x+dx-g.ax)*vx+(PLAYER.y+dy-g.ay)*vy)/(len*len)));
+    const x=g.ax+vx*t,y=g.ay+vy*t;
+    if(map1LandscapeStandFree(x,y)){map1PierPosition=t;PLAYER.x=x;PLAYER.y=y;return true;}
+  }
+  return false;
+}
+function slideMap1Pond(dx,dy){
+  if(currentMap!==1)return false;
+  const g=map1PondGeometry();if(!g)return false;
+  const p=map1PondLocal(g,PLAYER.x,PLAYER.y),n=map1PondLocal(g,PLAYER.x+dx,PLAYER.y+dy),vx=n[0]-p[0],vy=n[1]-p[1];
+  const near=Math.max(0,Math.min(1,-(p[0]*vx+p[1]*vy)/(vx*vx+vy*vy||1)));
+  if((p[0]+vx*near)**2+(p[1]+vy*near)**2>1)return false;
+  let lo=0,hi=near;
+  for(let i=0;i<36;i++){const t=(lo+hi)/2,u=p[0]+vx*t,v=p[1]+vy*t;if(u*u+v*v>1)lo=t;else hi=t;}
+  const t=lo,c=Math.cos(g.angle),s=Math.sin(g.angle),u=p[0]+vx*t,v=p[1]+vy*t;
+  const hitX=PLAYER.x+dx*t,hitY=PLAYER.y+dy*t;
+  let nx=c*u/g.rx-s*v/g.ry,ny=s*u/g.rx+c*v/g.ry;const length=Math.hypot(nx,ny)||1;nx/=length;ny/=length;
+  const rx=dx*(1-t),ry=dy*(1-t),inward=Math.min(0,rx*nx+ry*ny);
+  let x=hitX+rx-inward*nx,y=hitY+ry-inward*ny;
+  const local=map1PondLocal(g,x,y),radius=Math.hypot(...local);
+  if(radius<=1.00001){const a=local[0]/(radius||1),b=local[1]/(radius||1);x=g.cx+c*a*g.rx-s*b*g.ry+nx*.05;y=g.cy+s*a*g.rx+c*b*g.ry+ny*.05;}
+  if(map1LandscapeStandFree(x,y)){PLAYER.x=x;PLAYER.y=y;}
+  return true;
+}
+
 function movePlayerAxis(dx,dy){
+  if(moveMap1Pier(dx,dy)||slideMap1Pond(dx,dy))return;
   const nx=PLAYER.x+dx,ny=PLAYER.y+dy;
 
   if(dx){
@@ -3724,6 +3788,9 @@ window.addEventListener('blur',()=>keys.clear());
 /* v106: neue Landschaftsobjekte, unabhängig von den bisherigen Prop-Zonen. */
 const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.59,.72],[.61,.83],[.64,.90],[.73,.97],[.70,1],[.33,1],[.32,.95],[.43,.89],[.46,.82]];
 function map1AppleCrownAt(s,x,y){
+  return map1AppleCrownBaseAt(s,x,y)||map1AppleCrownBaseAt(s,x,y-15);
+}
+function map1AppleCrownBaseAt(s,x,y){
   const p=spriteLocalPoint(s,x,y);if(!p)return false;
   const end=Math.floor(s.sourceH*.72);if(p.sy>=end)return false;
   // Innerhalb der Kronensilhouette bleiben auch kleine transparente Blattlücken stabil.
@@ -3770,10 +3837,7 @@ function pointHitsSprite(s,x,y){
     const p=spriteLocalPoint(s,x,y);if(!p||p.alpha<24)return false;
     return pointInPoly(p.sx/s.sourceW,p.sy/s.sourceH,MAP1_APPLE_TRUNK_POLY);
   }
-  if(s.el.id==='teich'){
-    if(currentMap!==1)return false;
-    const p=spriteLocalPoint(s,x,y);return !!p&&p.alpha>=24;
-  }
+  if(s.el.id==='teich')return currentMap===1&&map1PondInside(x,y);
   /* v43: Baum kollidiert NUR am Stamm. Die Effekt-/Tiefenzone bleibt davon unabhängig. */
   if(currentMap===1 && s.el.id==='baum'){
     const p=spriteLocalPoint(s,x,y);
@@ -3804,7 +3868,7 @@ function circleBlocked(x,y,r=8){
   if(pointBlocked(x,y))return true;
   for(let i=0;i<16;i++){
     const a=i/16*Math.PI*2;
-    if(pointBlocked(x+Math.cos(a)*r,y+Math.sin(a)*r))return true;
+    if(collisionSprites.some(s=>s.el.id!=='teich'&&pointHitsSprite(s,x+Math.cos(a)*r,y+Math.sin(a)*r)))return true;
   }
   return false;
 }
