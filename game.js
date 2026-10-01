@@ -3000,7 +3000,7 @@ function map1WomanDockPoint(){
     for(let sx=0;sx<sp.sourceW;sx++)if(sp.alpha[sy*sp.sourceW+sx]>=24){bottom=sy;break;}
   }
   if(bottom<0)return null;
-  const y=top+(bottom+.5)/sp.sourceH*h,r=12;
+  const y=top+(bottom+.5)/sp.sourceH*h-6,r=12; // v103: Lauflinie 6 Weltpixel höher
   let freeX=left-r-1;
   for(let x=freeX+1;x<=left+w+r;x+=1){
     if(circleHitsSpecificSprite(sp,x,y,r)){
@@ -3595,7 +3595,7 @@ function syncMap1NpcPlayerDepth(){
   if(map1GuestEl&&map1GuestActive&&map1GuestEl.style.display!=='none'&&map1GuestEl.style.visibility!=='hidden')
     map1GuestEl.style.zIndex=String(map1GuestOccupiesRightTable()?MAP1_PLAYER_BEHIND_Z-1:(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1));
   if(map1WomanEl&&map1WomanActive&&map1WomanEl.style.display!=='none'&&map1WomanEl.style.visibility!=='hidden')
-    map1WomanEl.style.zIndex=String(MAP1_PLAYER_FRONT_Z-1); // v102: seitlicher Gast bleibt bei Ankunft auf derselben Ebene.
+    map1WomanEl.style.zIndex=String(MAP1_PLAYER_BEHIND_Z-1); // v103: Tisch bleibt vor der Gastfrau, ohne Ebenenwechsel bei Ankunft.
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
