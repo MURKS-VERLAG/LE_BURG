@@ -872,6 +872,7 @@ function ensureMap1Event3Farmer(){
   if(map1Event3Farmer)return map1Event3Farmer;
   map1Event3Farmer=document.createElement('img');
   map1Event3Farmer.id='map1Event3Farmer';
+  map1Event3Farmer.dataset.npcRole='event3Farmer';
   map1Event3Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
   map1Event3Farmer.alt='';map1Event3Farmer.draggable=false;
   Object.assign(map1Event3Farmer.style,{
@@ -1144,8 +1145,9 @@ function updateMap1Event3(now){
         const frame=seq[Math.floor((now-map1Event3BockStart)/MAP1_EVENT3_BOCK_FRAME_MS)%seq.length];
         const wanted=`assets/npc/bock-reiter-${frame}.png?v=27`;
         if((bock.getAttribute('src')||'')!==wanted)bock.src=wanted;
-      }else if(map1Event3FarmerStarted && map1Event3FarmerState==='walk'){
-        const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0;
+      }else if(map1Event3FarmerStarted && map1Event3FarmerState==='walk' && farmer===map1Event3Farmer && farmer.dataset.npcRole==='event3Farmer'){
+        // Ausschließlich DER Event-3-Bauer ist Trefferziel. Normale Gäste werden komplett ignoriert.
+        const fx=parseFloat(map1Event3Farmer.style.left)||0,fy=parseFloat(map1Event3Farmer.style.top)||0;
         const d=Math.hypot(x-fx,y-fy);
 
         if(d<=MAP1_EVENT3_HIT_DISTANCE){
@@ -1314,6 +1316,7 @@ function clearMap1Event5Timers(){for(const id of map1Event5Timers)clearTimeout(i
 function ensureMap1Event5Farmer(){
   if(map1Event5Farmer)return map1Event5Farmer;
   map1Event5Farmer=document.createElement('img');map1Event5Farmer.id='map1Event5Farmer';map1Event5Farmer.alt='';map1Event5Farmer.draggable=false;
+  map1Event5Farmer.dataset.npcRole='event5Farmer';
   map1Event5Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
   Object.assign(map1Event5Farmer.style,{position:'absolute',left:'0',top:'0',width:'176.4px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'13000',willChange:'left,top,transform'});
   world.appendChild(map1Event5Farmer);return map1Event5Farmer;
@@ -1437,8 +1440,9 @@ function updateMap1Event5(now){
       }else{
         const post=Math.floor((se-MAP1_EVENT5_KALIF_FRAME_MS*2)/MAP1_EVENT5_KALIF_FRAME_MS)%2;
         src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';
-        if(map1Event5FireStage==='none'&&map1Event5FarmerStarted&&map1Event5FarmerState==='walk'){
-          const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
+        if(map1Event5FireStage==='none'&&map1Event5FarmerStarted&&map1Event5FarmerState==='walk'&&farmer===map1Event5Farmer&&farmer.dataset.npcRole==='event5Farmer'){
+          // Feuer-Nähe ausschließlich gegen den ORIGINALEN Event-5-Bauern prüfen.
+          const fx=parseFloat(map1Event5Farmer.style.left)||0,fy=parseFloat(map1Event5Farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
           // Erst nachdem kalif-8 tatsächlich sichtbar war, darf beim nächsten Nähe-Check das Feuerbild kommen.
           const current=(kalif.getAttribute('src')||'');
           if(d<=MAP1_EVENT5_FIRE_DISTANCE&&current.includes('kalif-8.png')&&map1Event5FirePendingAt<0)map1Event5FirePendingAt=now+1000;
@@ -1454,8 +1458,8 @@ function updateMap1Event5(now){
     }else if(map1Event5FireStage==='afterFire'){
       const post=Math.floor((now-map1Event5FireStart-(MAP1_EVENT5_KALIF_FRAME_MS+300))/MAP1_EVENT5_KALIF_FRAME_MS)%2;
       src=post===0?'assets/npc/kalif-7.png?v=82':'assets/npc/kalif-8.png?v=82';mirror=false;
-      if(map1Event5FarmerStarted&&map1Event5FarmerState==='walk'){
-        const fx=parseFloat(farmer.style.left)||0,fy=parseFloat(farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
+      if(map1Event5FarmerStarted&&map1Event5FarmerState==='walk'&&farmer===map1Event5Farmer&&farmer.dataset.npcRole==='event5Farmer'){
+        const fx=parseFloat(map1Event5Farmer.style.left)||0,fy=parseFloat(map1Event5Farmer.style.top)||0,d=Math.hypot(kx-fx,ky-fy);
         if(d<=MAP1_EVENT5_HIT_DISTANCE)map1Event5FarmerHit(now,farmerT);
       }
     }
@@ -2660,8 +2664,12 @@ function ensureTableMug(tableSprite){
   }
   // Jeder neue Ausschank ist wieder ein VOLLER Krug; ein eventuell vom Gast
   // zurückgelassener leerer Krug wird dadurch am selben Platz ersetzt.
+  // Wiederverwendeter Tischkrug: alte Pickup-/Fade-Animationen des vorigen Gasts
+  // vollständig lösen, damit der volle Krug beim nächsten Servieren sicher sichtbar ist.
+  try{mug.getAnimations().forEach(a=>a.cancel());}catch(_){}
   mug.src='assets/npc/bock-wunsch.png?v=38';
   mug.dataset.guestEmpty='0';mug.dataset.picked='0';mug.style.filter='none';mug.style.opacity='1';
+  mug.style.transform='translate(-50%,-100%)';
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // v59: Krug der LANGEN TAFEL exakt mittig auf der Tafel.
   // z=750 liegt vor Tafel/Stuhl/Props (500), aber hinter dem Charakter (1000).
@@ -2719,6 +2727,8 @@ const MAP1_GUEST_INTERACT_DISTANCE=92;
 function ensureMap1Guest(){
   if(map1GuestEl)return map1GuestEl;
   map1GuestEl=document.createElement('img');map1GuestEl.id='map1GuestFarmer';
+  // Normaler Schankgast ist KEIN Event-Bauer und darf niemals Event-3/5-Kollisionen auslösen.
+  map1GuestEl.dataset.npcRole='normalGuest';
   map1GuestEl.src='assets/npc/gast-bauer-front-1.png?v=92';map1GuestEl.alt='';map1GuestEl.draggable=false;
   Object.assign(map1GuestEl.style,{position:'absolute',left:'0',top:'0',width:`${MAP1_GUEST_WIDTH}px`,height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'12500',willChange:'left,top,transform,filter'});
   const syncGuestSize=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||MAP1_GUEST_WIDTH;map1GuestEl.style.width=`${w}px`;};syncGuestSize();requestAnimationFrame(syncGuestSize);
@@ -2795,10 +2805,22 @@ function spawnMap1Guest(variant){
   el.style.display='block';el.style.visibility='visible';el.style.filter='none';const [x,y]=map1GuestPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;return true;
 }
 function trySpawnMap1Guest(variant){if(map1GuestActive||map1Popularity<50||map1GameOverStarted)return;if(Math.random()<.5)spawnMap1Guest(variant);}
+function scheduleMap1GuestSpawnAttempt(variant){
+  const windowMs=variant==='fast'?30000:60000;
+  // Versuch liegt jedes Mal ZUFÄLLIG innerhalb des neuen 30-/60-s-Fensters,
+  // statt starr exakt auf Sekunde 30 bzw. 60 zu feuern. Die bestehende 50-%-Chance bleibt.
+  const delay=1+Math.floor(Math.random()*windowMs);
+  const id=setTimeout(()=>{
+    if(variant==='fast')map1GuestFastInterval=0;else map1GuestSlowInterval=0;
+    trySpawnMap1Guest(variant);
+    scheduleMap1GuestSpawnAttempt(variant);
+  },delay);
+  if(variant==='fast')map1GuestFastInterval=id;else map1GuestSlowInterval=id;
+}
 function initMap1Guests(){
   ensureMap1Guest();ensureMap1GuestThought();
-  if(!map1GuestFastInterval)map1GuestFastInterval=setInterval(()=>trySpawnMap1Guest('fast'),30000);
-  if(!map1GuestSlowInterval)map1GuestSlowInterval=setInterval(()=>trySpawnMap1Guest('slow'),60000);
+  if(!map1GuestFastInterval)scheduleMap1GuestSpawnAttempt('fast');
+  if(!map1GuestSlowInterval)scheduleMap1GuestSpawnAttempt('slow');
 }
 function map1GuestBeerServed(table,mug){
   if(!map1GuestActive||map1GuestStage!=='waitingBeer'||table?.el?.id!=='stehtischRechts')return false;
@@ -2833,15 +2855,19 @@ function updateMap1Guest(now){
     const t=Math.min(1,(now-map1GuestStart)/map1GuestDuration),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);
     el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
-      const phase=Math.floor((now-map1GuestStart)/MAP1_GUEST_FAST_FRAME_MS)%4;
-      const seq=[[1,false],[3,false],[3,true],[1,true]],f=seq[phase];setMap1GuestFrame(`assets/npc/gast-bauer-front-${f[0]}.png?v=92`,f[1],scale);
+      // Schnell vorwärts: nur die beiden schnellen Laufbilder im Wechsel – KEINE Spiegelvarianten.
+      const seq=[1,3],frame=seq[Math.floor((now-map1GuestStart)/MAP1_GUEST_FAST_FRAME_MS)%seq.length];
+      setMap1GuestFrame(`assets/npc/gast-bauer-front-${frame}.png?v=92`,false,scale);
     }else setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',false,scale);
     if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);}
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
-      const phase=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%4;const seq=[[1,false],[1,true],[3,false],[3,true]],f=seq[phase];setMap1GuestFrame(`assets/npc/gast-bauer-back-${f[0]}.png?v=92`,f[1],scale);
+      // Schnell zurück: ebenfalls nur zwei Rücklaufbilder im Wechsel – KEINE Spiegelvarianten.
+      const seq=[1,3],frame=seq[Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%seq.length];
+      setMap1GuestFrame(`assets/npc/gast-bauer-back-${frame}.png?v=92`,false,scale);
     }else{
+      // Langsamer Rückweg behält ausdrücklich den bisherigen Spiegelwechsel.
       const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
     }
     if(t>=1)finishMap1Guest();
