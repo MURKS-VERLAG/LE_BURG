@@ -242,6 +242,13 @@ function syncMap1Scribe(force=false){
   },150);
 }
 function setMap1GuestCount(n){map1GuestCount=Math.max(0,Math.round(n));renderMap1ScribeNumbers();}
+/* v96 – Besucherzahl ist immer der echte additive Kartenstand: normale Gäste + Event-3/5-Bauer. */
+function syncMap1RealGuestCount(){
+  const regular=(typeof map1GuestActive!=='undefined'&&map1GuestActive?1:0)+(typeof map1WomanActive!=='undefined'&&map1WomanActive?1:0);
+  const event3=(typeof map1Event3Active!=='undefined'&&map1Event3Active&&map1Event3FarmerStarted&&map1Event3AttackStage!=='hit')?1:0;
+  const event5=(typeof map1Event5Active!=='undefined'&&map1Event5Active&&map1Event5FarmerStarted&&map1Event5FireStage==='none')?1:0;
+  setMap1GuestCount(regular+event3+event5);
+}
 function ensureMap1GameOverFX(){
   if(map1GameOverOverlay)return;
   const st=document.createElement('style');st.id='map1GameOverStyle';st.textContent=`
@@ -959,7 +966,7 @@ function growMap1Event3Blood(x,y,z){
 function map1Event3FarmerHit(){
   if(!map1Event3Active||map1Event3AttackStage==='hit')return;
   map1Event3AttackStage='hit';
-  setMap1GuestCount(0);
+  syncMap1RealGuestCount();
   changeMap1Popularity(-20);
 
   const farmer=ensureMap1Event3Farmer();
@@ -1048,6 +1055,7 @@ function finishMap1Event3(){
   map1Event3SlashSound.pause();map1Event3SlashSound.currentTime=0;map1Event3SlashSound.onended=null;
   map1Event3BockSpawnSound.pause();map1Event3BockSpawnSound.currentTime=0;
   map1Event3BockRunSound.pause();map1Event3BockRunSound.currentTime=0;
+  syncMap1RealGuestCount();
   resumeMap1AmbientMusic();
 }
 function startMap1Event3(){
@@ -1055,15 +1063,14 @@ function startMap1Event3(){
   map1Event3Active=true;
   pauseMap1Popularity90Song(false);
   map1Event3ScribeHit=false;
-  setMap1GuestCount(0);
-  syncMap1Scribe();
-  clearMap1Event3Timers();
-  resetMap1Event3Visuals();
-
   map1Event3FarmerStarted=false;
   map1Event3BockStarted=false;
   map1Event3AttackStage='none';
   map1Event3FarmerState='walk';
+  syncMap1RealGuestCount();
+  syncMap1Scribe();
+  clearMap1Event3Timers();
+  resetMap1Event3Visuals();
 
   // Taste 3: Pfeif-Song SOFORT.
   if(bgMusic)bgMusic.pause();
@@ -1077,7 +1084,7 @@ function startMap1Event3(){
     if(!map1Event3Active)return;
     const farmer=ensureMap1Event3Farmer();
     map1Event3FarmerStarted=true;
-    setMap1GuestCount(1);
+    syncMap1RealGuestCount();
     map1Event3FarmerStart=performance.now();
     map1Event3FarmerState='walk';
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';
@@ -1359,13 +1366,14 @@ function finishMap1Event5(){
   stopMap1Event5BurnSounds();
   map1Event5Music.pause();map1Event5Music.currentTime=0;
   if(map1Event5Farmer)map1Event5Farmer.style.display='none';if(map1Event5Kalif)map1Event5Kalif.style.display='none';
+  syncMap1RealGuestCount();
   resumeMap1AmbientMusic();
 }
 function startMap1Event5(){
   if(currentMap!==1||mapTransitioning||map1Event5Active)return;
   map1Event5Active=true;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;map1Event5FarmerState='walk';map1Event5FireStage='none';map1Event5FirePendingAt=-1;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
   pauseMap1Popularity90Song(false);
-  setMap1GuestCount(0);
+  syncMap1RealGuestCount();
   clearMap1Event5Timers();stopMap1Event5BurnSounds();
   const farmer=ensureMap1Event5Farmer(),kalif=ensureMap1Event5Kalif();farmer.style.display='none';kalif.style.display='none';
   if(bgMusic)bgMusic.pause();
@@ -1374,7 +1382,7 @@ function startMap1Event5(){
   map1Event5Later(()=>{
     if(!map1Event5Active)return;
     map1Event5FarmerStarted=true;map1Event5FarmerStart=performance.now();map1Event5FarmerState='walk';
-    setMap1GuestCount(1);
+    syncMap1RealGuestCount();
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';farmer.style.width='176.4px';farmer.style.display='block';farmer.style.visibility='visible';farmer.style.opacity='1';
     beginMap1Event5Kalif();
   },MAP1_EVENT5_FARMER_DELAY);
@@ -1382,7 +1390,7 @@ function startMap1Event5(){
 function map1Event5Ignite(now){
   if(map1Event5FireStage!=='none')return;
   const kalif=ensureMap1Event5Kalif();map1Event5FireStage='fire';map1Event5FireStart=now;map1Event5FirePendingAt=-1;
-  setMap1GuestCount(0);
+  syncMap1RealGuestCount();
   changeMap1Popularity(-1);
   changeMap1Popularity(10);
   // Flammenbild zwingend NACH bereits gezeigtem kalif-8.
@@ -2402,7 +2410,7 @@ function furnitureTopPassage(s,x,y){
     // mittigen Stütze und bleibt darunter alpha-genau bis zum Fuß erhalten.
     // Beim verwendeten Stehtisch-PNG endet die Platte bei ca. 68 % der Bildhöhe;
     // darunter liegt ausschließlich Stütze/Fuß.
-    const supportStart=Math.floor(s.sourceH*.68);
+    const supportStart=Math.floor(s.sourceH*(.68+(1-.68)/3)); // v96: Rest-Hitbox von oben um 1/3 gekürzt; Tiefeneffekt folgt exakt derselben Linie
     return sy<supportStart;
   }
   return sy<=Math.min(s.sourceH-1,first+extraSource);
@@ -2732,7 +2740,7 @@ let map1GuestEl=null,map1GuestThought=null;
 let map1GuestActive=false,map1GuestVariant='fast',map1GuestStage='idle';
 let map1GuestPath=[],map1GuestStart=0,map1GuestDuration=0,map1GuestReturnStart=0,map1GuestReturnDuration=0;
 let map1GuestFastInterval=0,map1GuestSlowInterval=0,map1GuestDrinkTimer=0,map1GuestMugTimer=0;
-const MAP1_GUEST_WIDTH=96;
+const MAP1_GUEST_WIDTH=100.8; // v96: Bauer generell +5 %
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
 const MAP1_GUEST_FAST_FRAME_MS=285;
@@ -2746,7 +2754,7 @@ function ensureMap1Guest(){
   map1GuestEl.dataset.npcRole='normalGuest';
   map1GuestEl.src='assets/npc/gast-bauer-front-1.png?v=92';map1GuestEl.alt='';map1GuestEl.draggable=false;
   Object.assign(map1GuestEl.style,{position:'absolute',left:'0',top:'0',width:`${MAP1_GUEST_WIDTH}px`,height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'12500',willChange:'left,top,transform,filter'});
-  const syncGuestSize=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||MAP1_GUEST_WIDTH;map1GuestEl.style.width=`${w}px`;};syncGuestSize();requestAnimationFrame(syncGuestSize);
+  const syncGuestSize=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||MAP1_GUEST_WIDTH;map1GuestEl.style.width=`${w*1.05}px`;};syncGuestSize();requestAnimationFrame(syncGuestSize);
   world.appendChild(map1GuestEl);return map1GuestEl;
 }
 function ensureMap1GuestThought(){
@@ -2763,7 +2771,7 @@ function map1GuestDockPoint(){
   if(!el)return [1130,470];
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // Gast kommt von OBEN und steht hinter der Tischplatte. Die Fußlinie liegt knapp in der oberen Tischzone.
-  return [left+w*.50,top+h*.36]; // v95: Bauer dockt noch einen Tick weiter unten an, bleibt aber hinter dem Tisch
+  return [left+w*.50,top+h*(.68+(1-.68)/3)]; // v96: Fußlinie dockt exakt an die neue obere Rest-Hitboxkante an; Bauer bleibt hinter dem Tisch
 }
 function sampleMap1GuestArrivalPath(){
   const dock=map1GuestDockPoint();
@@ -2782,7 +2790,7 @@ function map1GuestPointOnPath(pts,t){
   for(let i=0;i<lens.length;i++){if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}d-=lens[i];}
   return pts[pts.length-1];
 }
-function map1GuestPerspective(y){return 1.10;}
+function map1GuestPerspective(y){return 1.10;} // Breite bereits +5 %; bestehende Perspektive bleibt unverändert
 function setMap1GuestFrame(src,mirror=false,scale=1){
   const el=ensureMap1Guest();if((el.getAttribute('src')||'')!==src)el.src=src;
   el.style.transform=`translate(-50%,-100%) scale(${scale})${mirror?' rotateY(180deg)':''}`;
@@ -2812,12 +2820,12 @@ function beginMap1GuestReturn(){
   const frac=Math.max(.28,map1GuestPath.length/full.length);map1GuestReturnDuration=(map1GuestVariant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION)*frac;
 }
 function finishMap1Guest(){
-  map1GuestActive=false;map1GuestStage='idle';hideMap1GuestThought();clearMap1GuestTimers();if(map1GuestEl){map1GuestEl.style.display='none';map1GuestEl.style.filter='none';}
+  map1GuestActive=false;map1GuestStage='idle';hideMap1GuestThought();clearMap1GuestTimers();if(map1GuestEl){map1GuestEl.style.display='none';map1GuestEl.style.filter='none';}syncMap1RealGuestCount();
 }
 function spawnMap1Guest(variant){
   if(map1GuestActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;
   const el=ensureMap1Guest();map1GuestActive=true;map1GuestVariant=variant;map1GuestStage='arriving';map1GuestPath=sampleMap1GuestArrivalPath();map1GuestStart=performance.now();map1GuestDuration=variant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION;
-  el.style.display='block';el.style.visibility='visible';el.style.filter='none';const [x,y]=map1GuestPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;return true;
+  el.style.display='block';el.style.visibility='visible';el.style.filter='none';const [x,y]=map1GuestPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;syncMap1RealGuestCount();return true;
 }
 function trySpawnMap1Guest(variant){if(map1GuestActive||map1Popularity<50||map1GameOverStarted)return;if(Math.random()<.5)spawnMap1Guest(variant);}
 function scheduleMap1GuestSpawnAttempt(variant){
@@ -2857,7 +2865,6 @@ function map1GuestBeerServed(table,mug){
         mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';
         mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);
       }
-      setMap1GuestCount(map1GuestCount+1);
       beginMap1GuestReturn();
     },3000);
   },2000);
@@ -2883,9 +2890,9 @@ function updateMap1Guest(now){
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
-      // Schnell zurück: ebenfalls nur zwei Rücklaufbilder im Wechsel – KEINE Spiegelvarianten.
-      const seq=[1,3],frame=seq[Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%seq.length];
-      setMap1GuestFrame(`assets/npc/gast-bauer-back-${frame}.png?v=92`,false,scale);
+      // v96: schneller Rücklauf ohne vertikales Hin-und-her-Springen: ein identisch verankerter Rücklauf-Sprite, Schrittwechsel per Spiegelung.
+      const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%2===1;
+      setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
     }else{
       // Langsamer Rückweg behält ausdrücklich den bisherigen Spiegelwechsel.
       const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
@@ -2919,23 +2926,23 @@ function ensureMap1WomanThought(){
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
 }
-function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h*.44];}
-function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[-70,dock[1]+10],[20,dock[1]+8],[110,dock[1]+5],[210,dock[1]+3],[310,dock[1]+1],dock];}
-function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;el.style.transform=`translate(-50%,-100%) scale(1.10)${mirror?' rotateY(180deg)':''}`;}
+function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h];} // v96: Füße exakt auf Höhe der unteren Tisch-Hitboxkante
+function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
+function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;const order=src.includes('gast-frau-order-');const scale=order?1.041:1.10;el.style.transform=`translate(-50%,-100%) scale(${scale})${mirror?' rotateY(180deg)':''}`;} // v96: Bestellen/Warten/Trinken optisch exakt auf Laufbild-Höhe normalisiert
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
 function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
 function map1WomanCanTakeOrder(){return currentMap===1&&!mapTransitioning&&map1WomanActive&&map1WomanStage==='ordering'&&Math.hypot(PLAYER.x-parseFloat(map1WomanEl.style.left),PLAYER.y-parseFloat(map1WomanEl.style.top))<=MAP1_WOMAN_INTERACT_DISTANCE;}
 function takeMap1WomanOrder(){if(!map1WomanCanTakeOrder())return false;map1WomanStage='waitingBeer';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');showMap1WomanThought();return true;}
 function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];}
-function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}}
-function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';return true;}
+function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
+function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
 function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
 function map1WomanBeerServed(table,mug){
   if(!map1WomanActive||map1WomanStage!=='waitingBeer'||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
   map1WomanMugTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='beerOnTable')return;if(mug?.isConnected)mug.style.display='none';map1WomanStage='drinking';setMap1WomanFrame('assets/npc/gast-frau-order-2.png?v=95');
-    map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}setMap1GuestCount(map1GuestCount+1);beginMap1WomanReturn();},3000);
+    map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}beginMap1WomanReturn();},3000);
   },2000);return true;
 }
 function updateMap1Woman(now){
