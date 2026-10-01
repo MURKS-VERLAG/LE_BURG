@@ -615,6 +615,32 @@ function showMap1MugPlusOne(mug){
   plus.animate([{transform:'translate(-50%,8px)',opacity:1},{transform:'translate(-50%,-30px)',opacity:1,offset:.55},{transform:'translate(-50%,-48px)',opacity:0}],{duration:1500,easing:'ease-out',fill:'forwards'});
   setTimeout(()=>plus.remove(),1550);
 }
+function map1GuestNearbyEmptyMug(){
+  if(currentMap!==1||mapTransitioning)return null;
+  let best=null,bestD=Infinity;
+  for(const mug of map1TableMugs.values()){
+    if(!mug?.isConnected||mug.dataset.guestEmpty!=='1'||mug.dataset.picked==='1'||mug.style.display==='none')continue;
+    const x=parseFloat(mug.style.left)||+mug.dataset.x||0,y=parseFloat(mug.style.top)||+mug.dataset.y||0;
+    const d=Math.hypot(PLAYER.x-x,PLAYER.y-y);
+    if(d<=42&&d<bestD){best=mug;bestD=d;}
+  }
+  return best;
+}
+function updateMap1GuestEmptyMugCue(){
+  const near=map1GuestNearbyEmptyMug();
+  for(const mug of map1TableMugs.values()){
+    if(!mug?.isConnected||mug.dataset.guestEmpty!=='1'||mug.dataset.picked==='1')continue;
+    mug.style.filter=mug===near?'brightness(1.35) drop-shadow(0 0 5px rgba(255,225,110,.98)) drop-shadow(0 0 10px rgba(255,190,55,.72))':'none';
+  }
+}
+function pickupMap1GuestEmptyMug(){
+  const mug=map1GuestNearbyEmptyMug();if(!mug)return false;
+  mug.dataset.picked='1';mug.dataset.guestEmpty='0';mug.style.filter='none';
+  const x=parseFloat(mug.style.left)||0,y=parseFloat(mug.style.top)||0;mug.dataset.x=String(x);mug.dataset.y=String(y);showMap1MugPlusOne(mug);
+  mug.animate([{opacity:1,transform:'translate(-50%,-100%) scale(1)'},{opacity:0,transform:'translate(-50%,-115%) scale(.72)'}],{duration:180,easing:'ease-out',fill:'forwards'});
+  setTimeout(()=>{mug.style.display='none';mug.style.opacity='1';mug.style.transform='translate(-50%,-100%)';},190);return true;
+}
+
 function pickupMap1BockMug(){
   const mug=map1BockNearbyMug(); if(!mug)return false;
   mug.dataset.picked='1'; mug.style.filter='none'; showMap1MugPlusOne(mug);
@@ -2171,6 +2197,7 @@ function draw(now){
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
   updateMap1BockMugCue();
+  updateMap1GuestEmptyMugCue();
   syncMap1EventVisibility();
   syncMap1Scribe();
   syncEventAudioForCurrentMap();
@@ -2634,6 +2661,7 @@ function ensureTableMug(tableSprite){
   // Jeder neue Ausschank ist wieder ein VOLLER Krug; ein eventuell vom Gast
   // zurückgelassener leerer Krug wird dadurch am selben Platz ersetzt.
   mug.src='assets/npc/bock-wunsch.png?v=38';
+  mug.dataset.guestEmpty='0';mug.dataset.picked='0';mug.style.filter='none';mug.style.opacity='1';
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // v59: Krug der LANGEN TAFEL exakt mittig auf der Tafel.
   // z=750 liegt vor Tafel/Stuhl/Props (500), aber hinter dem Charakter (1000).
@@ -2673,7 +2701,7 @@ function startMap1TableServe(){
 
 
 
-/* MAP 1 – ERSTE ECHTE GÄSTE v92: Bauer am rechten Stehtisch.
+/* MAP 1 – ERSTE ECHTE GÄSTE v93: Bauer am rechten Stehtisch.
    Zwei Varianten teilen sich denselben Slot und können NIEMALS gleichzeitig existieren:
    SCHNELL: 50 % Versuch alle 30 s. LANGSAM: 50 % Versuch alle 60 s.
    Normale Gäste nur ab 50 Beliebtheit; fällt sie darunter, kehrt ein aktiver Bauer um. */
@@ -2681,11 +2709,11 @@ let map1GuestEl=null,map1GuestThought=null;
 let map1GuestActive=false,map1GuestVariant='fast',map1GuestStage='idle';
 let map1GuestPath=[],map1GuestStart=0,map1GuestDuration=0,map1GuestReturnStart=0,map1GuestReturnDuration=0;
 let map1GuestFastInterval=0,map1GuestSlowInterval=0,map1GuestDrinkTimer=0,map1GuestMugTimer=0;
-const MAP1_GUEST_WIDTH=176.4;
+const MAP1_GUEST_WIDTH=96;
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
-const MAP1_GUEST_FAST_FRAME_MS=170;
-const MAP1_GUEST_SLOW_FRAME_MS=620;
+const MAP1_GUEST_FAST_FRAME_MS=285;
+const MAP1_GUEST_SLOW_FRAME_MS=760;
 const MAP1_GUEST_INTERACT_DISTANCE=92;
 
 function ensureMap1Guest(){
@@ -2693,6 +2721,7 @@ function ensureMap1Guest(){
   map1GuestEl=document.createElement('img');map1GuestEl.id='map1GuestFarmer';
   map1GuestEl.src='assets/npc/gast-bauer-front-1.png?v=92';map1GuestEl.alt='';map1GuestEl.draggable=false;
   Object.assign(map1GuestEl.style,{position:'absolute',left:'0',top:'0',width:`${MAP1_GUEST_WIDTH}px`,height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'12500',willChange:'left,top,transform,filter'});
+  const syncGuestSize=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||MAP1_GUEST_WIDTH;map1GuestEl.style.width=`${w}px`;};syncGuestSize();requestAnimationFrame(syncGuestSize);
   world.appendChild(map1GuestEl);return map1GuestEl;
 }
 function ensureMap1GuestThought(){
@@ -2709,7 +2738,7 @@ function map1GuestDockPoint(){
   if(!el)return [1130,470];
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // Gast kommt von OBEN und steht hinter der Tischplatte. Die Fußlinie liegt knapp in der oberen Tischzone.
-  return [left+w*.50,top+h*.18];
+  return [left+w*.50,top+h*.30];
 }
 function sampleMap1GuestArrivalPath(){
   const dock=map1GuestDockPoint();
@@ -2728,12 +2757,12 @@ function map1GuestPointOnPath(pts,t){
   for(let i=0;i<lens.length;i++){if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}d-=lens[i];}
   return pts[pts.length-1];
 }
-function map1GuestPerspective(y){return Math.max(.68,Math.min(1.06,.70+(y/1024)*.36));}
+function map1GuestPerspective(y){return 1.10;}
 function setMap1GuestFrame(src,mirror=false,scale=1){
   const el=ensureMap1Guest();if((el.getAttribute('src')||'')!==src)el.src=src;
-  el.style.transform=`translate(-50%,-100%) scale(${mirror?-scale:scale},${scale})`;
+  el.style.transform=`translate(-50%,-100%) scale(${scale})${mirror?' rotateY(180deg)':''}`;
 }
-function map1GuestOccupiesRightTable(){return map1GuestActive&&['ordering','waitingBeer','drinking'].includes(map1GuestStage);}
+function map1GuestOccupiesRightTable(){return map1GuestActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1GuestStage);}
 function showMap1GuestThought(){
   const b=ensureMap1GuestThought(),[x,y]=map1GuestDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1GuestStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));
 }
@@ -2773,16 +2802,27 @@ function initMap1Guests(){
 }
 function map1GuestBeerServed(table,mug){
   if(!map1GuestActive||map1GuestStage!=='waitingBeer'||table?.el?.id!=='stehtischRechts')return false;
-  hideMap1GuestThought();map1GuestStage='drinking';const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];setMap1GuestFrame('assets/npc/gast-bauer-order-2.png?v=92',false,map1GuestPerspective(y));
-  // Voller Krug bleibt exakt 2 Sekunden sichtbar.
-  map1GuestMugTimer=setTimeout(()=>{if(mug?.isConnected)mug.style.display='none';},2000);
-  // Trinkbild exakt 3 Sekunden; dann leerer Krug an EXAKT gleicher Stelle/Größe und Rückweg.
-  map1GuestDrinkTimer=setTimeout(()=>{
-    if(!map1GuestActive||map1GuestStage!=='drinking')return;
-    if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';}
-    setMap1GuestCount(map1GuestCount+1);
-    beginMap1GuestReturn();
-  },3000);
+  hideMap1GuestThought();map1GuestStage='beerOnTable';
+  const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];
+  // Solange der VOLLE Krug sichtbar auf dem Tisch steht, bleibt der Bauer in seiner Wartepose.
+  setMap1GuestFrame('assets/npc/gast-bauer-order-3.png?v=92',false,map1GuestPerspective(y));
+  map1GuestMugTimer=setTimeout(()=>{
+    if(!map1GuestActive||map1GuestStage!=='beerOnTable')return;
+    if(mug?.isConnected)mug.style.display='none';
+    // ERST JETZT – exakt mit dem Verschwinden des vollen Krugs – beginnt das Trinkbild.
+    map1GuestStage='drinking';
+    setMap1GuestFrame('assets/npc/gast-bauer-order-2.png?v=92',false,map1GuestPerspective(y));
+    map1GuestDrinkTimer=setTimeout(()=>{
+      if(!map1GuestActive||map1GuestStage!=='drinking')return;
+      if(mug?.isConnected){
+        mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';
+        mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';
+        mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);
+      }
+      setMap1GuestCount(map1GuestCount+1);
+      beginMap1GuestReturn();
+    },3000);
+  },2000);
   return true;
 }
 function updateMap1Guest(now){
@@ -3305,6 +3345,13 @@ function checkMapTransition(){
 /* v78 – einheitliche Fußlinien-Tiefe NUR für Event-NPCs + Blut.
    Spieler unterhalb der NPC-Fußlinie = Spieler davor; oberhalb = Spieler dahinter.
    Props, Stehtische, Bierkrüge und deren bestehende Ebenenlogik bleiben unangetastet. */
+function map1GuestBehindProps(){
+  if(!map1GuestEl||!map1GuestActive)return false;
+  const x=parseFloat(map1GuestEl.style.left),y=parseFloat(map1GuestEl.style.top);if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
+  for(const id of ids){const el=document.getElementById(id),sprite=el?collisionSprites.find(s=>s.el===el):null;if(sprite&&(furnitureTopPassage(sprite,x,y)||propRatioPassage(sprite,x,y)))return true;}
+  return false;
+}
 function syncMap1NpcPlayerDepth(){
   if(currentMap!==1||!player)return;
   const playerZ=Number(player.style.zIndex)||10000;
@@ -3323,7 +3370,8 @@ function syncMap1NpcPlayerDepth(){
   else apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
   apply(map1Event4Kalif,parseFloat(map1Event4Kalif?.style.top));
-  apply(map1GuestEl,parseFloat(map1GuestEl?.style.top));
+  if(map1GuestEl&&map1GuestActive&&map1GuestEl.style.display!=='none'&&map1GuestEl.style.visibility!=='hidden')
+    map1GuestEl.style.zIndex=String(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1);
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -3403,7 +3451,7 @@ window.addEventListener('keydown',e=>{
   if(k==='5' && !e.repeat){e.preventDefault();startMap1Event5();}
 });
 window.addEventListener('keydown',e=>{
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){ if(!toggleMap1TreeHide() && !takeMap1GuestOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
