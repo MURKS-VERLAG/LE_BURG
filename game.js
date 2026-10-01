@@ -2766,8 +2766,8 @@ let map1GuestWaitStart=0,map1GuestServiceWaitMs=0;
 const MAP1_GUEST_WIDTH=100.8; // v96: Bauer generell +5 %
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
-const MAP1_GUEST_FAST_FRAME_MS=170; // v99: schneller Vorwärtsgang wieder flüssig; KEINE Spiegelbilder hinzugefügt
-const MAP1_GUEST_SLOW_FRAME_MS=MAP1_GUEST_FAST_FRAME_MS; // Bildwechsel gleich schnell; nur Laufgeschwindigkeit bleibt langsam
+const MAP1_GUEST_FAST_FRAME_MS=285; // v101: nur Bildwechsel verlangsamt; Laufgeschwindigkeit bleibt unverändert
+const MAP1_GUEST_SLOW_FRAME_MS=285; // v101: langsamer Bauer ebenfalls ruhigerer Bildwechsel; Bewegung bleibt 19 s langsam
 const MAP1_GUEST_INTERACT_DISTANCE=92;
 
 function ensureMap1Guest(){
@@ -2814,11 +2814,35 @@ function map1GuestPointOnPath(pts,t){
   return pts[pts.length-1];
 }
 function map1GuestPerspective(y){return 1.10;} // Breite bereits +5 %; bestehende Perspektive bleibt unverändert
+const map1GuestFootAnchorCache=new Map();
+function map1GuestAlphaFootAnchor(img){
+  const key=img.currentSrc||img.src;if(map1GuestFootAnchorCache.has(key))return map1GuestFootAnchorCache.get(key);
+  let anchor={x:.5,y:1};
+  try{
+    const c=document.createElement('canvas'),w=img.naturalWidth,h=img.naturalHeight;if(!w||!h)return anchor;
+    c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);
+    const d=ctx.getImageData(0,0,w,h).data;let bottom=-1;
+    for(let y=h-1;y>=0&&bottom<0;y--)for(let x=0;x<w;x++)if(d[(y*w+x)*4+3]>24){bottom=y;break;}
+    if(bottom>=0){
+      const bandTop=Math.max(0,bottom-Math.max(2,Math.round(h*.035)));let minX=w,maxX=-1;
+      for(let y=bandTop;y<=bottom;y++)for(let x=0;x<w;x++)if(d[(y*w+x)*4+3]>24){if(x<minX)minX=x;if(x>maxX)maxX=x;}
+      if(maxX>=minX)anchor={x:((minX+maxX)/2)/w,y:bottom/h};
+    }
+  }catch(_){ }
+  map1GuestFootAnchorCache.set(key,anchor);return anchor;
+}
 function setMap1GuestFrame(src,mirror=false,scale=1){
-  const el=ensureMap1Guest();if((el.getAttribute('src')||'')!==src)el.src=src;
-  // v98: Nur Bestell-/Warte-/Trinkbilder des Bauern weitere 5 % größer; Laufbilder unverändert.
-  const poseScale=src.includes('gast-bauer-order-')?scale*1.05:scale;
-  el.style.transform=`translate(-50%,-100%) scale(${poseScale})${mirror?' rotateY(180deg)':''}`;
+  const el=ensureMap1Guest();
+  const apply=()=>{
+    // v101: Jeder Lauf-PNG wird an seinem echten Alpha-Fußpunkt verankert. Dadurch liegen die Füße
+    // frameübergreifend auf derselben Weltposition statt dass unterschiedlich beschnittene PNGs links/rechts springen.
+    const a=map1GuestAlphaFootAnchor(el),ax=mirror?1-a.x:a.x;
+    const poseScale=src.includes('gast-bauer-order-')?scale*1.05:scale;
+    el.style.transformOrigin=`${ax*100}% ${a.y*100}%`;
+    el.style.transform=`translate(${-ax*100}%,${-a.y*100}%) scale(${poseScale})${mirror?' rotateY(180deg)':''}`;
+  };
+  if((el.getAttribute('src')||'')!==src){el.onload=()=>{el.onload=null;apply();};el.src=src;if(el.complete&&el.naturalWidth){el.onload=null;apply();}}
+  else apply();
 }
 function map1GuestOccupiesRightTable(){return map1GuestActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1GuestStage);}
 function showMap1GuestThought(){
@@ -2924,9 +2948,9 @@ function updateMap1Guest(now){
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
-      // v96: schneller Rücklauf ohne vertikales Hin-und-her-Springen: ein identisch verankerter Rücklauf-Sprite, Schrittwechsel per Spiegelung.
-      const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%2===1;
-      setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
+      // v101: echte Rücklaufbilder 1/3, aber per Alpha-Fußanker exakt lagegleich – KEIN Spiegel-Trick.
+      const seq=[1,3],frame=seq[Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%seq.length];
+      setMap1GuestFrame(`assets/npc/gast-bauer-back-${frame}.png?v=92`,false,scale);
     }else{
       // Langsamer Rückweg behält ausdrücklich den bisherigen Spiegelwechsel.
       const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
@@ -2963,7 +2987,7 @@ function ensureMap1WomanThought(){
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
 }
-function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.28,top+h];} // v100: Lauf endet bewusst VOR der Tisch-Hitbox – exakt dort bleibt sie zum Bestellen stehen
+function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.52,top+h];} // v101: klarer Halt VOR der linken Tisch-Hitbox; dieser Punkt ist Laufende UND Bestellposition
 function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
 const MAP1_WOMAN_SCALE=.88485; // v100: Gastfrau gegenüber v99 exakt 10 % größer
 function setMap1WomanFrame(src,mirror=false){
@@ -2978,7 +3002,7 @@ function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1Woman
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
 function map1WomanCanTakeOrder(){return false;} // v98: automatische Bestellung beim Andocken; keine Nähe-/Leuchtinteraktion.
 function takeMap1WomanOrder(){return false;}
-function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];} // v100: Rückweg startet exakt an der aktuellen Standposition – kein vorgeschalteter Rechtsruck
+function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);const leftOnly=sampleMap1WomanPath().slice(0,-1).filter(p=>p[0]<x-1).reverse();map1WomanPath=[[x,y],...leftOnly];} // v101: erster Rückwegschritt kann ausschließlich nach LINKS gehen; kein Bounce/Rechtsruck möglich
 function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
 function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
