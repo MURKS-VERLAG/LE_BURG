@@ -2162,6 +2162,8 @@ function syncMap1EventVisibility(){
   for(const mug of map1TableMugs.values()){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
   if(map1GuestEl)map1GuestEl.style.visibility=onMap1&&map1GuestActive?'visible':'hidden';
   if(map1GuestThought&&map1GuestThought.style.display!=='none')map1GuestThought.style.visibility=onMap1?'visible':'hidden';
+  if(map1WomanEl)map1WomanEl.style.visibility=onMap1&&map1WomanActive?'visible':'hidden';
+  if(map1WomanThought&&map1WomanThought.style.display!=='none')map1WomanThought.style.visibility=onMap1?'visible':'hidden';
   if(map1BockPuff)map1BockPuff.style.visibility=onMap1?'visible':'hidden';
   const fx=ensureMap1BockFX();
   if(!onMap1){fx.dark.style.visibility='hidden';fx.fog.style.visibility='hidden';}
@@ -2196,6 +2198,7 @@ function draw(now){
   updateMap1Event4(now);
   updateMap1Event5(now);
   updateMap1Guest(now);
+  updateMap1Woman(now);
   syncMap1NpcPlayerDepth();
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -2620,6 +2623,16 @@ function map1InteractiveTable(){
     }
   }
 
+  // Frau am LINKEN Stehtisch: Bedienung von links mit D/right ist gesperrt.
+  // W, S und A bleiben wie bisher möglich, sobald sie dort wartet.
+  if(map1WomanOccupiesLeftTable()){
+    const s=tableSpriteById('stehtischLinks');
+    if(map1WomanStage==='waitingBeer'){
+      if(PLAYER.direction==='right')return null;
+      return s&&tableTouchesInFacingDirection(s,PLAYER.direction)?s:null;
+    }
+  }
+
   // Lange Tafel hat eine eigene, strikt W-only Zone von unten.
   const tafel=map1InteractiveTafel();
   if(tafel)return tafel;
@@ -2628,6 +2641,7 @@ function map1InteractiveTable(){
   for(const id of STANDING_TABLE_IDS){
     const s=tableSpriteById(id); if(!s)continue;
     if(map1GuestOccupiesRightTable()&&id==='stehtischRechts'&&PLAYER.direction==='front')continue;
+    if(map1WomanOccupiesLeftTable()&&id==='stehtischLinks'&&PLAYER.direction==='right')continue;
     // Die Blickrichtung definiert eindeutig die erlaubte Tischseite. Keine Diagonal-/Fernaktivierung.
     if(tableTouchesInFacingDirection(s,PLAYER.direction))return s;
   }
@@ -2696,6 +2710,7 @@ function startMap1TableServe(){
   map1TableServeTimer=setTimeout(()=>{
     const servedMug=ensureTableMug(table);
     map1GuestBeerServed(table,servedMug);
+    map1WomanBeerServed(table,servedMug);
     map1TableServing=false;
     playerHasBeer=false;
     PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence(PLAYER.direction)[0];
@@ -2721,7 +2736,7 @@ const MAP1_GUEST_WIDTH=96;
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
 const MAP1_GUEST_FAST_FRAME_MS=285;
-const MAP1_GUEST_SLOW_FRAME_MS=760;
+const MAP1_GUEST_SLOW_FRAME_MS=MAP1_GUEST_FAST_FRAME_MS; // Bildwechsel gleich schnell; nur Laufgeschwindigkeit bleibt langsam
 const MAP1_GUEST_INTERACT_DISTANCE=92;
 
 function ensureMap1Guest(){
@@ -2748,7 +2763,7 @@ function map1GuestDockPoint(){
   if(!el)return [1130,470];
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // Gast kommt von OBEN und steht hinter der Tischplatte. Die Fußlinie liegt knapp in der oberen Tischzone.
-  return [left+w*.50,top+h*.30];
+  return [left+w*.50,top+h*.36]; // v95: Bauer dockt noch einen Tick weiter unten an, bleibt aber hinter dem Tisch
 }
 function sampleMap1GuestArrivalPath(){
   const dock=map1GuestDockPoint();
@@ -2821,6 +2836,7 @@ function initMap1Guests(){
   ensureMap1Guest();ensureMap1GuestThought();
   if(!map1GuestFastInterval)scheduleMap1GuestSpawnAttempt('fast');
   if(!map1GuestSlowInterval)scheduleMap1GuestSpawnAttempt('slow');
+  initMap1Woman();
 }
 function map1GuestBeerServed(table,mug){
   if(!map1GuestActive||map1GuestStage!=='waitingBeer'||table?.el?.id!=='stehtischRechts')return false;
@@ -2858,7 +2874,11 @@ function updateMap1Guest(now){
       // Schnell vorwärts: nur die beiden schnellen Laufbilder im Wechsel – KEINE Spiegelvarianten.
       const seq=[1,3],frame=seq[Math.floor((now-map1GuestStart)/MAP1_GUEST_FAST_FRAME_MS)%seq.length];
       setMap1GuestFrame(`assets/npc/gast-bauer-front-${frame}.png?v=92`,false,scale);
-    }else setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',false,scale);
+    }else{
+      // Langsame Variante: gleiche Bildwechselgeschwindigkeit wie alle anderen, Bewegung bleibt 19 s langsam.
+      const mirror=Math.floor((now-map1GuestStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;
+      setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',mirror,scale);
+    }
     if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);}
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
@@ -2876,6 +2896,54 @@ function updateMap1Guest(now){
     const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1GuestThought.style.left=`${x+18}px`;map1GuestThought.style.top=`${y-204}px`;
   }
   updateMap1GuestCue();
+}
+
+/* MAP 1 – GASTFRAU v95: linker Stehtisch, eigener Slot, unabhängig vom Bauern. */
+let map1WomanEl=null,map1WomanThought=null;
+let map1WomanActive=false,map1WomanStage='idle',map1WomanPath=[],map1WomanStart=0,map1WomanReturnStart=0;
+let map1WomanSpawnTimer=0,map1WomanDrinkTimer=0,map1WomanMugTimer=0;
+const MAP1_WOMAN_DURATION=11000;
+const MAP1_WOMAN_FRAME_MS=MAP1_GUEST_FAST_FRAME_MS;
+const MAP1_WOMAN_INTERACT_DISTANCE=92;
+function ensureMap1Woman(){
+  if(map1WomanEl)return map1WomanEl;
+  map1WomanEl=document.createElement('img');map1WomanEl.id='map1GuestWoman';map1WomanEl.dataset.npcRole='normalGuest';
+  map1WomanEl.src='assets/npc/gast-frau-walk-1.png?v=95';map1WomanEl.alt='';map1WomanEl.draggable=false;
+  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'96px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
+  const sync=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||96;map1WomanEl.style.width=`${w}px`;};sync();requestAnimationFrame(sync);world.appendChild(map1WomanEl);return map1WomanEl;
+}
+function ensureMap1WomanThought(){
+  if(map1WomanThought)return map1WomanThought;
+  map1WomanThought=document.createElement('div');Object.assign(map1WomanThought.style,{position:'absolute',width:'92.4px',height:'75.6px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
+  const cloud=document.createElement('div');Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
+  const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
+  const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
+}
+function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h*.44];}
+function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[-70,dock[1]+10],[20,dock[1]+8],[110,dock[1]+5],[210,dock[1]+3],[310,dock[1]+1],dock];}
+function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;el.style.transform=`translate(-50%,-100%) scale(1.10)${mirror?' rotateY(180deg)':''}`;}
+function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
+function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
+function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
+function map1WomanCanTakeOrder(){return currentMap===1&&!mapTransitioning&&map1WomanActive&&map1WomanStage==='ordering'&&Math.hypot(PLAYER.x-parseFloat(map1WomanEl.style.left),PLAYER.y-parseFloat(map1WomanEl.style.top))<=MAP1_WOMAN_INTERACT_DISTANCE;}
+function takeMap1WomanOrder(){if(!map1WomanCanTakeOrder())return false;map1WomanStage='waitingBeer';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');showMap1WomanThought();return true;}
+function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);map1WomanPath=[[x,y],...sampleMap1WomanPath().slice(0,-1).reverse()];}
+function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}}
+function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=sampleMap1WomanPath();map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';return true;}
+function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
+function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
+function map1WomanBeerServed(table,mug){
+  if(!map1WomanActive||map1WomanStage!=='waitingBeer'||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
+  map1WomanMugTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='beerOnTable')return;if(mug?.isConnected)mug.style.display='none';map1WomanStage='drinking';setMap1WomanFrame('assets/npc/gast-frau-order-2.png?v=95');
+    map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}setMap1GuestCount(map1GuestCount+1);beginMap1WomanReturn();},3000);
+  },2000);return true;
+}
+function updateMap1Woman(now){
+  if(!map1WomanActive)return;if(map1Popularity<50&&map1WomanStage!=='returning')beginMap1WomanReturn();const el=ensureMap1Woman();
+  if(map1WomanStage==='arriving'){const t=Math.min(1,(now-map1WomanStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);if(t>=1){map1WomanStage='ordering';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');}}
+  else if(map1WomanStage==='returning'){const t=Math.min(1,(now-map1WomanReturnStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanReturnStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,true);if(t>=1)finishMap1Woman();}
+  if(map1WomanThought&&map1WomanThought.style.display!=='none'){const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1WomanThought.style.left=`${x+18}px`;map1WomanThought.style.top=`${y-204}px`;}
+  el.style.filter=map1WomanCanTakeOrder()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';
 }
 
 /* MAP 1 – BAUM-VERSTECK v62.
@@ -3397,7 +3465,9 @@ function syncMap1NpcPlayerDepth(){
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
   apply(map1Event4Kalif,parseFloat(map1Event4Kalif?.style.top));
   if(map1GuestEl&&map1GuestActive&&map1GuestEl.style.display!=='none'&&map1GuestEl.style.visibility!=='hidden')
-    map1GuestEl.style.zIndex=String(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1);
+    map1GuestEl.style.zIndex=String(map1GuestOccupiesRightTable()?MAP1_PLAYER_BEHIND_Z-1:(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1));
+  if(map1WomanEl&&map1WomanActive&&map1WomanEl.style.display!=='none'&&map1WomanEl.style.visibility!=='hidden')
+    map1WomanEl.style.zIndex=String(map1WomanOccupiesLeftTable()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1);
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -3480,7 +3550,7 @@ window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!toggleMap1TreeHide() && !takeMap1GuestOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){ if(!toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
