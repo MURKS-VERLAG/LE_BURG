@@ -2477,6 +2477,27 @@ function standingTablePlatePassage(s,x,y){
 
 /* Breitere Fußprobe statt nur eines einzigen Pixels. Dadurch bleibt die Figur beim
    Richtungswechsel stabil auf derselben Vorder-/Hinterebene und "clippt" am Baum nicht. */
+/* v109: nur die Spielfigur erhält vier zusätzliche Weltpixel Tischdurchgang.
+   Die gemeinsame Prop-/NPC-Hitbox bleibt unverändert; unten bleibt eine feste Kante. */
+function map1PlayerTablePassage(s,x,y){
+  if(currentMap!==1||!STANDING_TABLE_IDS.has(s.el.id))return furnitureTopPassage(s,x,y);
+  const p=spriteLocalPoint(s,x,y);if(!p)return false;
+  const start=Math.floor(s.sourceH*(.68+(1-.68)/3));
+  const edge=Math.min(p.top+p.dh-1,p.top+start/s.sourceH*p.dh+4);
+  return y<edge;
+}
+function map1PlayerPointBlocked(x,y,skipPond=false){
+  return collisionSprites.some(s=>{
+    if(skipPond&&s.el.id==='teich')return false;
+    if(map1PlayerTablePassage(s,x,y))return false;
+    return pointHitsSprite(s,x,y);
+  });
+}
+function map1PlayerCircleBlocked(x,y,r){
+  if(map1PlayerPointBlocked(x,y))return true;
+  for(let i=0;i<16;i++){const a=i/16*Math.PI*2;if(map1PlayerPointBlocked(x+Math.cos(a)*r,y+Math.sin(a)*r,true))return true;}
+  return false;
+}
 function playerBehindSprite(sprite){
   /* v57 Baum-Minifix:
      Der Baum darf den Ebenenwechsel nur EINMAL auslösen. Die bisherige breite
@@ -2491,7 +2512,7 @@ function playerBehindSprite(sprite){
   const r=Math.max(5,PLAYER.radius*.72);
   const probes=[[0,0],[-r,0],[r,0],[-r*.55,-2],[r*.55,-2]];
   return probes.some(([ox,oy])=>
-    furnitureTopPassage(sprite,PLAYER.x+ox,PLAYER.y+oy) ||
+    map1PlayerTablePassage(sprite,PLAYER.x+ox,PLAYER.y+oy) ||
     propRatioPassage(sprite,PLAYER.x+ox,PLAYER.y+oy)
   );
 }
@@ -2590,7 +2611,7 @@ function tableTouchesInFacingDirection(s,dir){
     const scanStep=1;
     for(const x of xs){
       for(let y=top;y<=bottom;y+=scanStep){
-        if(rawSpriteOpaqueAt(s,x,y) && !standingTablePlatePassage(s,x,y)){
+        if(rawSpriteOpaqueAt(s,x,y) && !map1PlayerTablePassage(s,x,y)){
           hitboxTop=Math.min(hitboxTop,y);
           break;
         }
@@ -2599,7 +2620,7 @@ function tableTouchesInFacingDirection(s,dir){
     if(!Number.isFinite(hitboxTop))return false;
     // Mini-Toleranz NACH OBEN: sobald der Fußkreis direkt an der echten Hitbox anliegt.
     const playerBottom=PLAYER.y+r;
-    const topTolerance=10;
+    const topTolerance=2; // v109: nur direkter S-Kontakt von oben
     return PLAYER.x>=left-r && PLAYER.x<=right+r &&
            playerBottom<=hitboxTop+2 && hitboxTop-playerBottom<=topTolerance;
   }
@@ -3231,7 +3252,7 @@ function playerCanStand(x,y){
   const margin=10;
   if(x<margin||y<margin||x>WORLD_W-margin||y>WORLD_H-margin)return false;
   if(currentMap===2)return map2CanStand(x,y);
-  return !window.BurgCollision?.circleBlocked(x,y,PLAYER.radius);
+  return !map1PlayerCircleBlocked(x,y,PLAYER.radius);
 }
 function map1CanWEnterTableSupport(x,y){
   if(currentMap!==1 || PLAYER.direction!=='back')return false;
@@ -3311,10 +3332,11 @@ let map1PierPosition=null,map1PierEntryArmed=true;
 function map1PondGeometry(){
   const el=document.getElementById('teich');if(!el)return null;
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  const ax=left+w*.184,ay=top+h*.7106+9;
+  const vx=w*(.425-.184),vy=h*(.493-.7106),len=Math.hypot(vx,vy);
   return {cx:left+w*.51147,cy:top+h*.48570,rx:w*.40255,ry:h*.28720,angle:.097883,
-    ax:left+w*.184,ay:top+h*.7106+5,bx:left+w*.425,by:top+h*.493+5,
-    entryAX:left+w*.184,entryAY:top+h*.7106,
-    entryRX:w*.0608,entryRY:h*.0754};
+    ax,ay,bx:ax+vx-vx/len*3,by:ay+vy-vy/len*3,
+    entryAX:ax,entryAY:ay,entryRX:w*.0608,entryRY:h*.0754};
 }
 function map1PondLocal(g,x,y){const dx=x-g.cx,dy=y-g.cy,c=Math.cos(g.angle),s=Math.sin(g.angle);return[(dx*c+dy*s)/g.rx,(-dx*s+dy*c)/g.ry];}
 function map1PondInside(x,y){const g=map1PondGeometry();if(!g)return false;const[u,v]=map1PondLocal(g,x,y);return u*u+v*v<=1;}
