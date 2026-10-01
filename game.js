@@ -2219,7 +2219,7 @@ function syncEventAudioForCurrentMap(){
 /* v110: Eigenständiges Krötenevent; keine Kollision oder Änderung der Teichregeln. */
 const MAP1_TOAD_SOURCES=[1,2,3,4].map(n=>`assets/npc/kroete-${n}.png?v=110`);
 const MAP1_TOAD_SPLASH='assets/npc/kroete-splash.png?v=110';
-let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1;
+let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1,map1ToadSide=1;
 const map1ToadSound=new Audio('assets/audio/kroete-plop.mp3?v=110');
 map1ToadSound.preload='auto';
 function ensureMap1Toad(){
@@ -2240,8 +2240,8 @@ function map1ToadPose(age){
 }
 function map1ToadPoint(u){
   const pond=document.getElementById('teich');
-  const x=px(pond,'left')+pond.offsetWidth*.72,y=px(pond,'top')+pond.offsetHeight*.51;
-  return {x:x+105*u,y:y+18*u-48*Math.sin(Math.PI*u),groundY:y+18*u};
+  const x=px(pond,'left')+pond.offsetWidth*(map1ToadSide===1?.72:.30),y=px(pond,'top')+pond.offsetHeight*.51;
+  return {x:x+map1ToadSide*105*u,y:y+18*u-48*Math.sin(Math.PI*u),groundY:y+18*u};
 }
 function playMap1ToadSound(){
   if(currentMap!==1||gamePaused)return;
@@ -2253,7 +2253,7 @@ function updateMap1Toad(now){
   const elapsed=now-map1ToadEpoch;
   if(elapsed<20000){map1Toad.style.display='none';return;}
   const cycle=Math.floor(elapsed/20000),age=elapsed-cycle*20000;
-  if(cycle!==map1ToadCycle){map1ToadCycle=cycle;map1ToadLastAge=-1;}
+  if(cycle!==map1ToadCycle){map1ToadCycle=cycle;map1ToadLastAge=-1;map1ToadSide=Math.random()<.5?-1:1;}
   if(map1ToadLastAge<0&&age<180)playMap1ToadSound();
   if(map1ToadLastAge<4060&&age>=4060&&age<4660)playMap1ToadSound();
   map1ToadLastAge=age;
@@ -2263,9 +2263,133 @@ function updateMap1Toad(now){
   const src=pose.splash?MAP1_TOAD_SPLASH:MAP1_TOAD_SOURCES[pose.frame-1];
   if(map1Toad.getAttribute('src')!==src)map1Toad.src=src;
   Object.assign(map1Toad.style,{display:'block',left:`${point.x}px`,top:`${point.y}px`,width:pose.splash?'46px':'58px',height:pose.splash?'20.5px':'46.4px',
-    transform:`translate(-50%, -100%) scaleX(${pose.mirror?-1:1})`,
+    transform:`translate(-50%, -100%) scaleX(${(pose.mirror?-1:1)*map1ToadSide})`,
     zIndex:String(PLAYER.y>point.groundY?(Number(player.style.zIndex)||10000)-1:(Number(player.style.zIndex)||10000)+1),
     filter:pose.ground&&Math.hypot(PLAYER.x-point.x,PLAYER.y-point.groundY)<=48?MAP1_LANDSCAPE_GLOW:'none'});
+}
+
+/* v111: Apfelbaumaktion und Früchte auf der pausierbaren Weltzeit. */
+const MAP1_APPLE_SHAKE_IMAGE='assets/player/apfelbaum-ruetteln.png?v=111';
+const MAP1_APPLE_IMAGE='assets/props/apfel.png?v=111';
+let map1AppleShake=null,map1AppleShakeEl=null;
+const map1Apples=[];
+let map1ApplesCollected=0;
+function map1AppleSprite(){return collisionSprites.find(s=>s.el.id==='apfelbaum');}
+function startMap1AppleShake(){
+  if(map1AppleShake)return true; // Leertaste während der Aktion verbrauchen.
+  if(gamePaused||mapTransitioning||map1GameOverStarted||map1TableServing||map2BarServing||map1TreeHiding||map1TreeTransitioning)return false;
+  const sp=map1AppleSprite();
+  if(!map1AppleDockedFromBelow(sp))return false;
+  const tree=sp.el;
+  if(!map1AppleShakeEl){
+    map1AppleShakeEl=document.createElement('img');map1AppleShakeEl.src=MAP1_APPLE_SHAKE_IMAGE;
+    map1AppleShakeEl.alt='';map1AppleShakeEl.draggable=false;
+    Object.assign(map1AppleShakeEl.style,{position:'absolute',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 100%'});
+    world.appendChild(map1AppleShakeEl);
+  }
+  // Sichtbare Höhe des aktuellen W-Sprites, nicht die Breite des neuen Bildes, bestimmt die Größe.
+  const cached=PLAYER_IMAGE_CACHE.get(playerSpritePath('back',PLAYER.frame));
+  let visibleRatio=1;
+  if(cached&&cached.naturalWidth&&cached.naturalHeight){
+    try{
+      const canvas=document.createElement('canvas');canvas.width=cached.naturalWidth;canvas.height=cached.naturalHeight;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(cached,0,0);
+      const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+      let first=-1,last=-1;
+      for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++)if(data[(y*canvas.width+x)*4+3]>=24){if(first<0)first=y;last=y;break;}
+      if(first>=0)visibleRatio=(last-first+1)/canvas.height;
+    }catch(_){}
+  }
+  const height=playerWorldHeight()*visibleRatio;
+  map1AppleShake={start:gameNow(),tree,treeTransform:tree.style.transform,playerVisibility:player.style.visibility,x:PLAYER.x,y:PLAYER.y};
+  Object.assign(map1AppleShakeEl.style,{display:'block',height:`${height}px`,width:'auto',left:`${PLAYER.x}px`,top:`${PLAYER.y}px`});
+  PLAYER.moving=false;PLAYER.frameClock=0;player.style.visibility='hidden';
+  updateMap1AppleShake(gameNow());return true;
+}
+function updateMap1AppleShake(now){
+  const state=map1AppleShake;if(!state)return;
+  if(now-state.start>=3000){
+    state.tree.style.transform=state.treeTransform;
+    player.style.visibility=state.playerVisibility;
+    map1AppleShakeEl.style.display='none';map1AppleShake=null;
+    showPlayerFrame(true);playerLastTime=now;
+    if(Math.random()<.5)dropMap1Apple(now);
+    return;
+  }
+  const shift=Math.sin((now-state.start)/1000*Math.PI*2*7)*1.5;
+  state.tree.style.transform=`${state.treeTransform&&state.treeTransform!=='none'?state.treeTransform+' ':''}translateX(${shift}px)`;
+  Object.assign(map1AppleShakeEl.style,{left:`${state.x+shift}px`,top:`${state.y}px`,transform:'translate(-50%,-100%)',zIndex:player.style.zIndex,visibility:currentMap===1?'visible':'hidden'});
+}
+function map1AppleCrownDropPoint(sp){
+  // Nur deckende Kronenpixel oberhalb des Stamms, einschließlich der Nachbarpixel.
+  const candidates=[];
+  const step=Math.max(1,Math.floor(Math.min(sp.sourceW,sp.sourceH)/80));
+  const pad=Math.max(1,Math.round(sp.sourceW*.015));
+  for(let sy=Math.floor(sp.sourceH*.12);sy<sp.sourceH*.62;sy+=step){
+    for(let sx=Math.floor(sp.sourceW*.12);sx<sp.sourceW*.88;sx+=step){
+      if([[0,0],[pad,0],[-pad,0],[0,pad],[0,-pad]].every(([dx,dy])=>sp.alpha[(sy+dy)*sp.sourceW+sx+dx]>=24))candidates.push([sx,sy]);
+    }
+  }
+  if(!candidates.length)return null;
+  const [sx,sy]=candidates[Math.floor(Math.random()*candidates.length)];
+  return {x:px(sp.el,'left')+(sx+.5)/sp.sourceW*sp.el.offsetWidth,y:px(sp.el,'top')+(sy+.5)/sp.sourceH*sp.el.offsetHeight};
+}
+function dropMap1Apple(now){
+  const sp=map1AppleSprite();if(!sp)return;
+  const from=map1AppleCrownDropPoint(sp);if(!from)return;
+  const landY=px(sp.el,'top')+sp.el.offsetHeight+PLAYER.radius+8;
+  const distance=3+Math.random()*3;
+  let angle=Math.random()*Math.PI*2,dx=0,dy=0;
+  // Rollbahn bleibt gerade und nutzt dieselben festen Weltkonturen wie der Spieler.
+  for(let attempt=0;attempt<32;attempt++){
+    const tx=Math.cos(angle)*distance,ty=Math.sin(angle)*distance;
+    if([0,.25,.5,.75,1].every(t=>{const x=from.x+tx*t,y=landY+ty*t;return x>=6&&x<=WORLD_W-6&&y>=6&&y<=WORLD_H-6&&!collisionSprites.some(s=>circleHitsSpecificSprite(s,x,y,6));})){dx=tx;dy=ty;break;}
+    angle+=Math.PI*2/32;
+  }
+  if(!dx&&!dy)return;
+  const el=document.createElement('img');el.src=MAP1_APPLE_IMAGE;el.alt='';el.draggable=false;
+  Object.assign(el.style,{position:'absolute',width:'13px',height:'auto',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 75%'});
+  el.dataset.picked='0';el.dataset.landed='0';world.appendChild(el);
+  map1Apples.push({el,start:now,from,landY,dx,dy,distance,x:from.x,y:landY,rotation:0});
+}
+function map1NearbyApple(){
+  if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake)return null;
+  let best=null,bestD=Infinity;
+  for(const a of map1Apples){if(a.el.dataset.picked==='1'||a.el.dataset.landed!=='1')continue;const d=Math.hypot(PLAYER.x-a.x,PLAYER.y-a.y);if(d<=42&&d<bestD){best=a;bestD=d;}}
+  return best;
+}
+function pickupMap1Apple(){
+  const a=map1NearbyApple();if(!a)return false;
+  a.el.dataset.picked='1';a.el.dataset.x=String(a.x);a.el.dataset.y=String(a.y);
+  map1ApplesCollected++;showMap1MugPlusOne(a.el);a.el.remove();
+  map1Apples.splice(map1Apples.indexOf(a),1);return true;
+}
+function map1AppleDepth(a){
+  // Dieselben Prop-Effektzonen wie beim Wirt; dessen Fußlinie hat bei Gleichstand Vorrang.
+  let behind=false;
+  for(const s of collisionSprites){if(s.el.id==='apfelbaum'||s.el.id==='teich')continue;if(playerBehindSprite(s,a.x,a.y))behind=true;}
+  const playerBehind=Number(player.style.zIndex)<=MAP1_PLAYER_BEHIND_Z;
+  let z=behind?MAP1_PLAYER_BEHIND_Z-2:MAP1_PLAYER_FRONT_Z-2;
+  if(behind===playerBehind)z=(Number(player.style.zIndex)||MAP1_PLAYER_FRONT_Z)+(PLAYER.y>=a.y?-1:1);
+  const sp=map1AppleSprite();
+  if(sp&&map1AppleCrownAt(sp,a.x,a.y))z=Math.min(z,Number(sp.el.style.zIndex)-1);
+  a.el.style.zIndex=String(z);
+}
+function updateMap1Apples(now){
+  updateMap1AppleShake(now);
+  for(const a of map1Apples){
+    const age=Math.max(0,now-a.start);
+    let visualY;
+    if(age<550){const t=age/550;a.x=a.from.x;a.y=a.landY;visualY=a.from.y+(a.landY-a.from.y)*t*t;}
+    else if(age<750){const t=(age-550)/200;a.x=a.from.x;a.y=a.landY;visualY=a.landY-4*Math.sin(Math.PI*t);}
+    else{const t=Math.min(1,(age-750)/450),ease=t*t*(3-2*t);a.x=a.from.x+a.dx*ease;a.y=a.landY+a.dy*ease;visualY=a.y;a.rotation=360*a.distance/(Math.PI*13)*ease;if(t===1)a.el.dataset.landed='1';}
+    a.el.dataset.x=String(a.x);a.el.dataset.y=String(a.y);
+    Object.assign(a.el.style,{left:`${a.x}px`,top:`${visualY}px`,transform:`translate(-50%,-100%) rotate(${a.rotation}deg)`,visibility:currentMap===1?'visible':'hidden'});
+    map1AppleDepth(a);
+    // Pendant zu playerBehindSprite mit eigenen Koordinaten, Baum bleibt vorm Kronenobjekt.
+    if(age<550){const sp=map1AppleSprite();if(sp)a.el.style.zIndex=String(Number(sp.el.style.zIndex)+1);}
+  }
+  const near=map1NearbyApple();for(const a of map1Apples)a.el.style.filter=a===near?MAP1_LANDSCAPE_GLOW:'none';
 }
 
 function draw(now){
@@ -2290,6 +2414,7 @@ function draw(now){
   syncMap1NpcPlayerDepth();
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
+  updateMap1Apples(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
@@ -2551,7 +2676,7 @@ function map1PlayerCircleBlocked(x,y,r){
   for(let i=0;i<16;i++){const a=i/16*Math.PI*2;if(map1PlayerPointBlocked(x+Math.cos(a)*r,y+Math.sin(a)*r,true))return true;}
   return false;
 }
-function playerBehindSprite(sprite){
+function playerBehindSprite(sprite,x=PLAYER.x,y=PLAYER.y){
   /* v57 Baum-Minifix:
      Der Baum darf den Ebenenwechsel nur EINMAL auslösen. Die bisherige breite
      5-Punkt-Fußprobe konnte an der Baumkontur mehrere Probes nacheinander
@@ -2559,14 +2684,14 @@ function playerBehindSprite(sprite){
      Für den Baum deshalb exakt EIN stabiler Fußpunkt. Effektgrenze, Baumposition
      und Stamm-Hitbox bleiben unverändert. */
   if(sprite?.el?.id==='baum'){
-    return propRatioPassage(sprite,PLAYER.x,PLAYER.y);
+    return propRatioPassage(sprite,x,y);
   }
 
   const r=Math.max(5,PLAYER.radius*.72);
   const probes=[[0,0],[-r,0],[r,0],[-r*.55,-2],[r*.55,-2]];
   return probes.some(([ox,oy])=>
-    map1PlayerTablePassage(sprite,PLAYER.x+ox,PLAYER.y+oy) ||
-    propRatioPassage(sprite,PLAYER.x+ox,PLAYER.y+oy)
+    map1PlayerTablePassage(sprite,x+ox,y+oy) ||
+    propRatioPassage(sprite,x+ox,y+oy)
   );
 }
 
@@ -3766,10 +3891,25 @@ function syncMap1NpcPlayerDepth(){
   else apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
   apply(map1Event4Kalif,parseFloat(map1Event4Kalif?.style.top));
-  if(map1GuestEl&&map1GuestActive&&map1GuestEl.style.display!=='none'&&map1GuestEl.style.visibility!=='hidden')
-    map1GuestEl.style.zIndex=String(map1GuestOccupiesRightTable()?MAP1_PLAYER_BEHIND_Z-1:(map1GuestBehindProps()?MAP1_PLAYER_BEHIND_Z-1:MAP1_PLAYER_FRONT_Z-1));
-  if(map1WomanEl&&map1WomanActive&&map1WomanEl.style.display!=='none'&&map1WomanEl.style.visibility!=='hidden')
-    map1WomanEl.style.zIndex=String(MAP1_PLAYER_BEHIND_Z-1); // v103: Tisch bleibt vor der Gastfrau, ohne Ebenenwechsel bei Ankunft.
+  // v111: Fußlinien statt fixer Gästeebenen, für beide Bauernvarianten und alle Frauenposen.
+  const guests=[
+    {el:map1GuestEl,active:map1GuestActive,behind:map1GuestOccupiesRightTable()||map1GuestBehindProps()},
+    {el:map1WomanEl,active:map1WomanActive,behind:true}
+  ].filter(g=>g.active&&g.el&&g.el.style.display!=='none'&&g.el.style.visibility!=='hidden');
+  // Bei sichtbarer Überlappung hinter einem angedockten Gast bleibt auch der Tisch davor.
+  // Außerhalb der Sprites ändern sich die bisherigen Prop-Effektzonen des Wirts nicht.
+  for(const g of guests){
+    const foot=parseFloat(g.el.style.top),x=parseFloat(g.el.style.left);
+    const overlapX=Math.abs(PLAYER.x-x)<(player.offsetWidth*playerVisualScale()+g.el.offsetWidth)/2;
+    const overlapY=PLAYER.y>foot-g.el.offsetHeight&&PLAYER.y-playerWorldHeight()<foot;
+    if(g.behind&&PLAYER.y<foot&&overlapX&&overlapY&&Number(player.style.zIndex)>=MAP1_PLAYER_BEHIND_Z)
+      player.style.zIndex=String(MAP1_PLAYER_BEHIND_Z-2);
+  }
+  const guestPlayerZ=Number(player.style.zIndex)||playerZ;
+  for(const g of guests){
+    const foot=parseFloat(g.el.style.top);
+    g.el.style.zIndex=String(g.behind?Math.min(MAP1_PLAYER_BEHIND_Z-1,guestPlayerZ+(PLAYER.y>=foot?-1:1)):guestPlayerZ+(PLAYER.y>=foot?-1:1));
+  }
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -3779,7 +3919,7 @@ function syncMap1NpcPlayerDepth(){
 
 function updatePlayer(now){
   if(!player)return;
-  if(map1GameOverStarted || mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
+  if(map1GameOverStarted || map1AppleShake || mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
   playerLastTime=now;
@@ -3854,10 +3994,10 @@ window.addEventListener('keydown',e=>{
   if(k==='5' && !e.repeat){e.preventDefault();startMap1Event5();}
 });
 window.addEventListener('keydown',e=>{
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){ if(!startMap1AppleShake() && !toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
@@ -3884,7 +4024,7 @@ const MAP1_LANDSCAPE_GLOW='brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110
 function map1AppleDockedFromBelow(sp){
   if(currentMap!==1||PLAYER.direction!=='back'||!sp)return false;
   const el=sp.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
-  if(PLAYER.x<left+w*.44||PLAYER.x>=left+w*.61)return false;
+  if(PLAYER.x<left+w*.44||PLAYER.x>=left+w*.61-3)return false;
   const sx=Math.max(0,Math.min(sp.sourceW-1,Math.floor((PLAYER.x-left)/w*sp.sourceW)));
   let bottom=-1;
   for(let sy=sp.sourceH-1;sy>=sp.sourceH*.72;sy--)if(sp.alpha[sy*sp.sourceW+sx]>=24){bottom=sy;break;}
@@ -3992,7 +4132,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
-    ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,
+    ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,MAP1_APPLE_SHAKE_IMAGE,MAP1_APPLE_IMAGE,
     'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
     'assets/npc/baer-run-1.png?v=22','assets/npc/baer-run-2.png?v=22','assets/npc/baer-run-3.png?v=22',
     'assets/npc/bock-reiter-1.png?v=27','assets/npc/bock-reiter-2.png?v=27','assets/npc/bock-reiter-3.png?v=27',
