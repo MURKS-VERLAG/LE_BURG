@@ -2617,40 +2617,23 @@ function map1InteractiveTafel(){
     ? s : null;
 }
 
+function map1TableHasFullBeer(id){
+  const mug=map1TableMugs.get(id);
+  return !!(mug?.isConnected&&mug.style.display!=='none'&&mug.dataset.guestEmpty!=='1'&&mug.dataset.picked!=='1');
+}
 function map1InteractiveTable(){
   if(currentMap!==1||mapTransitioning||map1TableServing||!playerHasBeer)return null;
 
-  // Erster echter Gast am rechten Stehtisch: er belegt die OBERSEITE.
-  // Solange er auf sein bestelltes Bier wartet, ist S/front an diesem Tisch gesperrt;
-  // von unten (W) und von den Seiten (A/D) bleibt die bestehende Bedienung möglich.
-  if(map1GuestOccupiesRightTable()){
-    const s=tableSpriteById('stehtischRechts');
-    if(map1GuestStage==='waitingBeer'){
-      if(PLAYER.direction==='front')return null;
-      return s&&tableTouchesInFacingDirection(s,PLAYER.direction)?s:null;
-    }
-  }
-
-  // Frau am LINKEN Stehtisch: Bedienung von links mit D/right ist gesperrt.
-  // W, S und A bleiben wie bisher möglich, sobald sie dort wartet.
-  if(map1WomanOccupiesLeftTable()){
-    const s=tableSpriteById('stehtischLinks');
-    if(map1WomanStage==='waitingBeer'){
-      if(PLAYER.direction==='right')return null;
-      return s&&tableTouchesInFacingDirection(s,PLAYER.direction)?s:null;
-    }
-  }
-
-  // Lange Tafel hat eine eigene, strikt W-only Zone von unten.
+  // v97: Freie Bedienreihenfolge. Ein Gast sperrt NUR exakt seine eigene Tischseite;
+  // alle anderen Seiten und alle anderen Tische bleiben jederzeit zum Vorab-Abstellen frei.
   const tafel=map1InteractiveTafel();
-  if(tafel)return tafel;
+  if(tafel&&!map1TableHasFullBeer('tafel'))return tafel;
 
-  // Bestehende Stehtischlogik unverändert.
   for(const id of STANDING_TABLE_IDS){
     const s=tableSpriteById(id); if(!s)continue;
+    if(map1TableHasFullBeer(id))continue; // pro Tisch steht maximal ein voller Krug bereit
     if(map1GuestOccupiesRightTable()&&id==='stehtischRechts'&&PLAYER.direction==='front')continue;
     if(map1WomanOccupiesLeftTable()&&id==='stehtischLinks'&&PLAYER.direction==='right')continue;
-    // Die Blickrichtung definiert eindeutig die erlaubte Tischseite. Keine Diagonal-/Fernaktivierung.
     if(tableTouchesInFacingDirection(s,PLAYER.direction))return s;
   }
   return null;
@@ -2846,8 +2829,12 @@ function initMap1Guests(){
   if(!map1GuestSlowInterval)scheduleMap1GuestSpawnAttempt('slow');
   initMap1Woman();
 }
+function map1ExistingFullTableMug(id){
+  const mug=map1TableMugs.get(id);
+  return map1TableHasFullBeer(id)?mug:null;
+}
 function map1GuestBeerServed(table,mug){
-  if(!map1GuestActive||map1GuestStage!=='waitingBeer'||table?.el?.id!=='stehtischRechts')return false;
+  if(!map1GuestActive||!['ordering','waitingBeer'].includes(map1GuestStage)||table?.el?.id!=='stehtischRechts')return false;
   hideMap1GuestThought();map1GuestStage='beerOnTable';
   const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];
   // Solange der VOLLE Krug sichtbar auf dem Tisch steht, bleibt der Bauer in seiner Wartepose.
@@ -2886,7 +2873,7 @@ function updateMap1Guest(now){
       const mirror=Math.floor((now-map1GuestStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;
       setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',mirror,scale);
     }
-    if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);}
+    if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);const mug=map1ExistingFullTableMug('stehtischRechts');if(mug)map1GuestBeerServed(tableSpriteById('stehtischRechts'),mug);}
   }else if(map1GuestStage==='returning'){
     const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
     if(map1GuestVariant==='fast'){
@@ -2905,7 +2892,7 @@ function updateMap1Guest(now){
   updateMap1GuestCue();
 }
 
-/* MAP 1 – GASTFRAU v95: linker Stehtisch, eigener Slot, unabhängig vom Bauern. */
+/* MAP 1 – GASTFRAU v97: linker Stehtisch, eigener Slot, unabhängig vom Bauern. */
 let map1WomanEl=null,map1WomanThought=null;
 let map1WomanActive=false,map1WomanStage='idle',map1WomanPath=[],map1WomanStart=0,map1WomanReturnStart=0;
 let map1WomanSpawnTimer=0,map1WomanDrinkTimer=0,map1WomanMugTimer=0;
@@ -2928,7 +2915,8 @@ function ensureMap1WomanThought(){
 }
 function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h];} // v96: Füße exakt auf Höhe der unteren Tisch-Hitboxkante
 function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
-function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;const order=src.includes('gast-frau-order-');const scale=order?1.041:1.10;el.style.transform=`translate(-50%,-100%) scale(${scale})${mirror?' rotateY(180deg)':''}`;} // v96: Bestellen/Warten/Trinken optisch exakt auf Laufbild-Höhe normalisiert
+const MAP1_WOMAN_SCALE=.88485; // v97: Tischbilder weitere 15 % kleiner; ALLE Frauenbilder exakt dieselbe Größe
+function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;el.style.transform=`translate(-50%,-100%) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;}
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
 function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
@@ -2940,14 +2928,14 @@ function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularit
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
 function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
 function map1WomanBeerServed(table,mug){
-  if(!map1WomanActive||map1WomanStage!=='waitingBeer'||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
+  if(!map1WomanActive||!['ordering','waitingBeer'].includes(map1WomanStage)||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
   map1WomanMugTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='beerOnTable')return;if(mug?.isConnected)mug.style.display='none';map1WomanStage='drinking';setMap1WomanFrame('assets/npc/gast-frau-order-2.png?v=95');
     map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}beginMap1WomanReturn();},3000);
   },2000);return true;
 }
 function updateMap1Woman(now){
   if(!map1WomanActive)return;if(map1Popularity<50&&map1WomanStage!=='returning')beginMap1WomanReturn();const el=ensureMap1Woman();
-  if(map1WomanStage==='arriving'){const t=Math.min(1,(now-map1WomanStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);if(t>=1){map1WomanStage='ordering';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');}}
+  if(map1WomanStage==='arriving'){const t=Math.min(1,(now-map1WomanStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);if(t>=1){map1WomanStage='ordering';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');const mug=map1ExistingFullTableMug('stehtischLinks');if(mug)map1WomanBeerServed(tableSpriteById('stehtischLinks'),mug);}}
   else if(map1WomanStage==='returning'){const t=Math.min(1,(now-map1WomanReturnStart)/MAP1_WOMAN_DURATION),[x,y]=map1GuestPointOnPath(map1WomanPath,t);el.style.left=`${x}px`;el.style.top=`${y}px`;const seq=[1,2,3,4],frame=seq[Math.floor((now-map1WomanReturnStart)/MAP1_WOMAN_FRAME_MS)%4];setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,true);if(t>=1)finishMap1Woman();}
   if(map1WomanThought&&map1WomanThought.style.display!=='none'){const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1WomanThought.style.left=`${x+18}px`;map1WomanThought.style.top=`${y-204}px`;}
   el.style.filter=map1WomanCanTakeOrder()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';
