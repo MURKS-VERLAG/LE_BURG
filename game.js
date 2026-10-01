@@ -1,5 +1,32 @@
 'use strict';
 
+/* v104: Eine pausierbare Spielzeit für Laufwege, Timer und alle RAF-Abläufe. */
+const gameNativeTimeout=window.setTimeout.bind(window),gameNativeClear=window.clearTimeout.bind(window);
+const gameNativeRAF=window.requestAnimationFrame.bind(window),gameNativeCancel=window.cancelAnimationFrame.bind(window);
+let gamePaused=false,gamePauseAt=0,gamePausedTotal=0,gameResumeTask=null,gameScheduleId=0;
+const gameTimers=new Map(),gameFrames=new Map(),gameAudio=new Set(),gamePausedAudio=new Set(),gamePausedAnimations=new Set();
+function gameNow(){return (gamePaused?gamePauseAt:performance.now())-gamePausedTotal;}
+const Audio=class extends window.Audio{constructor(...args){super(...args);gameAudio.add(this);}};
+function gameArmTimer(id,item){
+  item.native=gameNativeTimeout(()=>{if(gamePaused)return;gameTimers.delete(id);item.fn(...item.args);},Math.max(0,item.due-gameNow()));
+}
+function setTimeout(fn,delay=0,...args){const id=++gameScheduleId,item={fn,args,due:gameNow()+Math.max(0,Number(delay)||0),native:null};gameTimers.set(id,item);if(!gamePaused)gameArmTimer(id,item);return id;}
+function clearTimeout(id){const item=gameTimers.get(id);if(item){gameNativeClear(item.native);gameTimers.delete(id);}}
+function gameArmFrame(id,item){item.native=gameNativeRAF(()=>{if(gamePaused)return;gameFrames.delete(id);item.fn(gameNow());});}
+function requestAnimationFrame(fn){const id=++gameScheduleId,item={fn,native:null};gameFrames.set(id,item);if(!gamePaused)gameArmFrame(id,item);return id;}
+function cancelAnimationFrame(id){const item=gameFrames.get(id);if(item){gameNativeCancel(item.native);gameFrames.delete(id);}}
+function pauseAnimationSystem(){
+  if(gamePaused)return;
+  gamePauseAt=performance.now();gamePaused=true;
+  keys.clear();
+  for(const item of gameTimers.values())gameNativeClear(item.native);
+  for(const item of gameFrames.values())gameNativeCancel(item.native);
+  gameAudio.add(bgMusic);
+  for(const a of gameAudio)if(a&&!a.paused&&!a.ended){gamePausedAudio.add(a);a.pause();}
+  for(const a of document.getAnimations())if(a.playState==='running'){gamePausedAnimations.add(a);a.pause();}
+}
+
+
 const game = document.getElementById('game');
 const world = document.getElementById('world');
 const map = document.getElementById('map');
@@ -508,7 +535,7 @@ function startMap1BockEvent(){
     if(!map1BockActive)return;
     const woman=ensureMap1Runner();
     map1RunnerActive=true;
-    map1RunnerStart=performance.now();
+    map1RunnerStart=gameNow();
     woman.style.display='block';
     woman.style.opacity='1';
   },500);
@@ -522,7 +549,7 @@ function startMap1BockEvent(){
   map1BockSpawnTimer=setTimeout(()=>{
     if(!map1BockActive)return;
     map1BockStage='riding';
-    map1BockStart=performance.now();
+    map1BockStart=gameNow();
     rider.style.display='block';
     rider.style.opacity='1';
     rider.style.filter='none';
@@ -673,7 +700,7 @@ function beginMap1BockDeparture(){
     rider.src='assets/npc/bock-dismount.png?v=30';map1BockStage='departMount';
     map1BockExitTimer=setTimeout(()=>{
       rider.src='assets/npc/bock-stop.png?v=30';map1BockStage='departStand';
-      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=performance.now();map1BockDepartureSound.pause();map1BockDepartureSound.currentTime=0;if(currentMap===1&&!mapTransitioning)map1BockDepartureSound.play().catch(()=>{});},1500);
+      map1BockExitTimer=setTimeout(()=>{map1BockStage='departRide';map1BockExitStart=gameNow();map1BockDepartureSound.pause();map1BockDepartureSound.currentTime=0;if(currentMap===1&&!mapTransitioning)map1BockDepartureSound.play().catch(()=>{});},1500);
     },500);
   },540);
 }
@@ -728,7 +755,7 @@ function ensureMap1BockFinal(){
   sync();requestAnimationFrame(sync);return map1BockFinal;
 }
 function bockFadeAudio(audio,target,duration,done){
-  const from=audio.volume,start=performance.now();
+  const from=audio.volume,start=gameNow();
   const step=now=>{const t=Math.min(1,(now-start)/duration);audio.volume=from+(target-from)*t;if(t<1)requestAnimationFrame(step);else done?.();};
   requestAnimationFrame(step);
 }
@@ -1085,7 +1112,7 @@ function startMap1Event3(){
     const farmer=ensureMap1Event3Farmer();
     map1Event3FarmerStarted=true;
     syncMap1RealGuestCount();
-    map1Event3FarmerStart=performance.now();
+    map1Event3FarmerStart=gameNow();
     map1Event3FarmerState='walk';
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';
     farmer.style.width='176.4px';
@@ -1099,7 +1126,7 @@ function startMap1Event3(){
     if(!map1Event3Active)return;
     const bock=ensureMap1Event3Bock();
     map1Event3BockStarted=true;
-    map1Event3BockStart=performance.now();
+    map1Event3BockStart=gameNow();
     map1Event3AttackStage='none';
     bock.src='assets/npc/bock-reiter-1.png?v=27';
     bock.style.width='103.075px';
@@ -1233,7 +1260,7 @@ function startMap1Event4(){
   map1Event4Intro.onended=()=>{
     if(!map1Event4Active)return;
     // Musik läuft bereits seit Tastendruck; nach Intro erscheint der Kalif.
-    map1Event4Start=performance.now();map1Event4Walking=true;
+    map1Event4Start=gameNow();map1Event4Walking=true;
     kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   };
   map1Event4Intro.play().catch(()=>{});
@@ -1351,7 +1378,7 @@ function beginMap1Event5Kalif(){
   const kalif=ensureMap1Event5Kalif();
   // Event 5: Kalif läuft bereits in exakt demselben Moment los, in dem Intro-Sound + Crusader-Song starten.
   // Dadurch bleibt die Fackel-Anzünd-Wegstelle an seiner Laufroute unverändert, die Begegnung mit dem Bauern liegt aber weiter unten.
-  map1Event5KalifStart=performance.now();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
+  map1Event5KalifStart=gameNow();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
   kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.width='112px';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   map1Event5Music.pause();map1Event5Music.currentTime=0;map1Event5Music.play().catch(()=>{});
   map1Event5Intro.pause();map1Event5Intro.currentTime=0;map1Event5Intro.onended=null;map1Event5Intro.play().catch(()=>{});
@@ -1381,7 +1408,7 @@ function startMap1Event5(){
   // Exakt wie Event 3: Pfeifen zuerst, Bauer nach 3 s. In genau diesem Moment startet Event-4-Kalif (Musik + Intro).
   map1Event5Later(()=>{
     if(!map1Event5Active)return;
-    map1Event5FarmerStarted=true;map1Event5FarmerStart=performance.now();map1Event5FarmerState='walk';
+    map1Event5FarmerStarted=true;map1Event5FarmerStart=gameNow();map1Event5FarmerState='walk';
     syncMap1RealGuestCount();
     farmer.src='assets/npc/event3-bauer-walk.png?v=71';farmer.style.width='176.4px';farmer.style.display='block';farmer.style.visibility='visible';farmer.style.opacity='1';
     beginMap1Event5Kalif();
@@ -1626,7 +1653,7 @@ function startMap2BarServe(){
   progress.style.display='block';
   player.style.transition='opacity 220ms ease';
   player.style.opacity='0';
-  const start=performance.now();
+  const start=gameNow();
   const tick=now=>{
     if(!map2BarServing)return;
     const t=Math.min(1,(now-start)/MAP2_BAR_INTERACT.duration);
@@ -1984,14 +2011,14 @@ function startMap1Runner(){
   // Frau rennt weiterhin erst 0,5 s nach Beginn des Schreis los.
   map1RunnerTimer=setTimeout(()=>{
     map1RunnerActive=true;
-    map1RunnerStart=performance.now();
+    map1RunnerStart=gameNow();
     el.style.display='block';
     el.style.opacity='1';
   },500);
 
   // Bär + Bärensounds weiterhin erst nach komplettem Frauenschrei.
   map1RunnerSound.onended=()=>{
-    startMap1Bear(performance.now()-MAP1_BEAR_DELAY);
+    startMap1Bear(gameNow()-MAP1_BEAR_DELAY);
     startMap1BearAudioLoop();
   };
 }
@@ -2064,7 +2091,7 @@ function ensureMap1Bear(){
   return map1Bear;
 }
 
-function startMap1Bear(startTime=performance.now()){
+function startMap1Bear(startTime=gameNow()){
   if(currentMap!==1 || mapTransitioning)return;
 
   const el=ensureMap1Bear();
@@ -2289,7 +2316,7 @@ function activePlayerSequence(direction){
 }
 
 const keys=new Set();
-let playerLastTime=performance.now();
+let playerLastTime=gameNow();
 
 /* Richtungswechsel: alle Player-Sprites bleiben als bereits decodierte Image-Objekte im RAM.
    Beim Wechsel wird das neue Richtungsbild im selben Tick gesetzt; zusätzlich sperrt ein
@@ -2855,7 +2882,7 @@ function updateMap1GuestCue(){if(map1GuestEl)map1GuestEl.style.filter='none';}
 function clearMap1GuestTimers(){clearTimeout(map1GuestDrinkTimer);clearTimeout(map1GuestMugTimer);map1GuestDrinkTimer=map1GuestMugTimer=0;}
 function beginMap1GuestReturn(){
   if(!map1GuestActive||map1GuestStage==='returning')return;
-  hideMap1GuestThought();clearMap1GuestTimers();map1GuestStage='returning';map1GuestReturnStart=performance.now();
+  hideMap1GuestThought();clearMap1GuestTimers();map1GuestStage='returning';map1GuestReturnStart=gameNow();
   const full=sampleMap1GuestArrivalPath();const x=parseFloat(map1GuestEl.style.left),y=parseFloat(map1GuestEl.style.top);
   // Bei Beliebtheitsabfall auch vom aktuellen Platz aus sauber auf denselben Weg zurück.
   let nearest=full.length-1,best=Infinity;for(let i=0;i<full.length;i++){const d=Math.hypot(full[i][0]-x,full[i][1]-y);if(d<best){best=d;nearest=i;}}
@@ -2867,7 +2894,7 @@ function finishMap1Guest(){
 }
 function spawnMap1Guest(variant){
   if(map1GuestActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;
-  const el=ensureMap1Guest();map1GuestActive=true;map1GuestVariant=variant;map1GuestStage='arriving';map1GuestPath=sampleMap1GuestArrivalPath();map1GuestStart=performance.now();map1GuestDuration=variant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION;
+  const el=ensureMap1Guest();map1GuestActive=true;map1GuestVariant=variant;map1GuestStage='arriving';map1GuestPath=sampleMap1GuestArrivalPath();map1GuestStart=gameNow();map1GuestDuration=variant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION;
   el.style.display='block';el.style.visibility='visible';el.style.filter='none';const [x,y]=map1GuestPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;syncMap1RealGuestCount();return true;
 }
 function trySpawnMap1Guest(variant){if(map1GuestActive||map1Popularity<50||map1GameOverStarted)return;if(Math.random()<.5)spawnMap1Guest(variant);}
@@ -2895,7 +2922,7 @@ function map1ExistingFullTableMug(id){
 }
 function map1GuestBeerServed(table,mug){
   if(!map1GuestActive||!['ordering','waitingBeer'].includes(map1GuestStage)||table?.el?.id!=='stehtischRechts')return false;
-  hideMap1GuestThought();map1GuestServiceWaitMs=Math.max(0,performance.now()-map1GuestWaitStart);map1GuestStage='beerOnTable';
+  hideMap1GuestThought();map1GuestServiceWaitMs=Math.max(0,gameNow()-map1GuestWaitStart);map1GuestStage='beerOnTable';
   const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];
   // Solange der VOLLE Krug sichtbar auf dem Tisch steht, bleibt der Bauer in seiner Wartepose.
   setMap1GuestFrame('assets/npc/gast-bauer-order-3.png?v=92',false,map1GuestPerspective(y));
@@ -2939,7 +2966,7 @@ function updateMap1Guest(now){
     }
     if(t>=1){
       // v98: Beim Andocken sofort Bestellgeste + Bier-Gedankenblase, ganz ohne Spieler-Nähe.
-      map1GuestWaitStart=performance.now();map1GuestServiceWaitMs=0;
+      map1GuestWaitStart=gameNow();map1GuestServiceWaitMs=0;
       map1GuestStage='waitingBeer';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);
       const mug=map1ExistingFullTableMug('stehtischRechts');
       if(mug)map1GuestBeerServed(tableSpriteById('stehtischRechts'),mug);
@@ -3005,7 +3032,7 @@ function map1WomanDockPoint(){
   for(let x=freeX+1;x<=left+w+r;x+=1){
     if(circleHitsSpecificSprite(sp,x,y,r)){
       // Erste Berührung: letzte freie Position plus höchstens ein Pixel Abstand.
-      return [freeX,y];
+      return [freeX-10,y]; // v104: zehn Weltpixel links vor dem bisherigen Andockpunkt
     }
     freeX=x;
   }
@@ -3029,13 +3056,13 @@ function showMap1WomanThought(){const b=ensureMap1WomanThought(),x=parseFloat(ma
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
 function map1WomanCanTakeOrder(){return false;} // v98: automatische Bestellung beim Andocken; keine Nähe-/Leuchtinteraktion.
 function takeMap1WomanOrder(){return false;}
-function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=performance.now();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);const leftOnly=[[Math.min(40,x),y]].filter(p=>p[0]<x);map1WomanPath=[[x,y],...leftOnly];} // v101: erster Rückwegschritt kann ausschließlich nach LINKS gehen; kein Bounce/Rechtsruck möglich
+function beginMap1WomanReturn(){if(!map1WomanActive||map1WomanStage==='returning')return;hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);map1WomanStage='returning';map1WomanReturnStart=gameNow();const x=parseFloat(map1WomanEl.style.left),y=parseFloat(map1WomanEl.style.top);const leftOnly=[[Math.min(40,x),y]].filter(p=>p[0]<x);map1WomanPath=[[x,y],...leftOnly];} // v101: erster Rückwegschritt kann ausschließlich nach LINKS gehen; kein Bounce/Rechtsruck möglich
 function finishMap1Woman(){map1WomanActive=false;map1WomanStage='idle';hideMap1WomanThought();clearTimeout(map1WomanDrinkTimer);clearTimeout(map1WomanMugTimer);if(map1WomanEl){map1WomanEl.style.display='none';map1WomanEl.style.filter='none';}syncMap1RealGuestCount();}
-function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const path=sampleMap1WomanPath();if(!path.length)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=path;map1WomanStart=performance.now();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
+function spawnMap1Woman(){if(map1WomanActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;const path=sampleMap1WomanPath();if(!path.length)return false;const el=ensureMap1Woman();map1WomanActive=true;map1WomanStage='arriving';map1WomanPath=path;map1WomanStart=gameNow();const[x,y]=map1WomanPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;el.style.display='block';el.style.visibility='visible';syncMap1RealGuestCount();return true;}
 function scheduleMap1WomanSpawn(){const delay=1+Math.floor(Math.random()*30000);map1WomanSpawnTimer=setTimeout(()=>{map1WomanSpawnTimer=0;if(!map1WomanActive&&map1Popularity>=50&&!map1GameOverStarted&&Math.random()<.5)spawnMap1Woman();scheduleMap1WomanSpawn();},delay);}
 function initMap1Woman(){ensureMap1Woman();ensureMap1WomanThought();if(!map1WomanSpawnTimer)scheduleMap1WomanSpawn();}
 function map1WomanBeerServed(table,mug){
-  if(!map1WomanActive||!['ordering','waitingBeer'].includes(map1WomanStage)||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanServiceWaitMs=Math.max(0,performance.now()-map1WomanWaitStart);map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
+  if(!map1WomanActive||!['ordering','waitingBeer'].includes(map1WomanStage)||table?.el?.id!=='stehtischLinks')return false;hideMap1WomanThought();map1WomanServiceWaitMs=Math.max(0,gameNow()-map1WomanWaitStart);map1WomanStage='beerOnTable';setMap1WomanFrame('assets/npc/gast-frau-order-3.png?v=95');
   map1WomanMugTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='beerOnTable')return;if(mug?.isConnected)mug.style.display='none';map1WomanStage='drinking';setMap1WomanFrame('assets/npc/gast-frau-order-2.png?v=95');
     map1WomanDrinkTimer=setTimeout(()=>{if(!map1WomanActive||map1WomanStage!=='drinking')return;if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);}resolveMap1GuestSatisfaction('stehtischLinks',map1WomanServiceWaitMs,false);beginMap1WomanReturn();},3000);
   },2000);return true;
@@ -3054,7 +3081,7 @@ function updateMap1Woman(now){
     setMap1WomanFrame(`assets/npc/gast-frau-walk-${frame}.png?v=95`,false);
     if(t>=1){
       // v98: KEIN Positionsreset. Exakt am letzten Laufpunkt stehen bleiben und dort direkt bestellen.
-      map1WomanWaitStart=performance.now();map1WomanServiceWaitMs=0;
+      map1WomanWaitStart=gameNow();map1WomanServiceWaitMs=0;
       map1WomanStage='waitingBeer';setMap1WomanFrame('assets/npc/gast-frau-order-1.png?v=95');
       const mug=map1ExistingFullTableMug('stehtischLinks');
       if(mug)map1WomanBeerServed(tableSpriteById('stehtischLinks'),mug);
@@ -3189,7 +3216,7 @@ function leaveMap1TreeHide(){
   PLAYER.x=d.x;PLAYER.y=d.y;setPlayerDirection('front');PLAYER.sequenceIndex=0;PLAYER.frameClock=0;PLAYER.frame=activePlayerSequence('front')[0];showPlayerFrame(true);
   player.style.left=`${PLAYER.x}px`;player.style.top=`${PLAYER.y}px`;player.style.visibility='visible';player.style.opacity='0';player.style.transition='opacity 360ms ease';
   requestAnimationFrame(()=>requestAnimationFrame(()=>{player.style.opacity='1';}));
-  setTimeout(()=>{fx.image.style.display='none';map1TreeTransitioning=false;player.style.transition='';playerLastTime=performance.now();updateMap1TreeInteractionCue();},390);
+  setTimeout(()=>{fx.image.style.display='none';map1TreeTransitioning=false;player.style.transition='';playerLastTime=gameNow();updateMap1TreeInteractionCue();},390);
   return true;
 }
 function toggleMap1TreeHide(){
@@ -3329,7 +3356,7 @@ function setIrisRadius(percent){
 function animateIris(from,to,duration){
   return new Promise(resolve=>{
     setIrisRadius(from);
-    const start=performance.now();
+    const start=gameNow();
 
     const step=now=>{
       const t=Math.min(1,(now-start)/duration);
@@ -3476,7 +3503,7 @@ async function enterWirtschaft(){
   finishIrisOpen();
 
   mapTransitioning=false;
-  playerLastTime=performance.now();
+  playerLastTime=gameNow();
 }
 
 async function leaveWirtschaft(){
@@ -3501,7 +3528,7 @@ async function leaveWirtschaft(){
   showPlayerFrame(true);
   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
   await animateIris(0,150,700); finishIrisOpen();
-  mapTransitioning=false; playerLastTime=performance.now();
+  mapTransitioning=false; playerLastTime=gameNow();
 }
 
 function updateMap2RoomAndTransitions(){
@@ -3570,6 +3597,10 @@ function checkMapTransition(){
 function map1GuestBehindProps(){
   if(!map1GuestEl||!map1GuestActive)return false;
   const x=parseFloat(map1GuestEl.style.left),y=parseFloat(map1GuestEl.style.top);if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  // Auch vor dem Posewechsel: der rechte Tisch liegt immer vor dem ankommenden Bauern.
+  const table=document.getElementById('stehtischRechts');
+  if(table){const left=px(table,'left'),top=px(table,'top'),w=table.offsetWidth,h=table.offsetHeight;
+    if(x>=left-w*.5&&x<=left+w*1.5&&y>=top-40&&y<=top+h+40)return true;}
   const ids=[...STANDING_TABLE_IDS,...TOP_PASSAGE_IDS,'wirtschaft','baum'];
   for(const id of ids){const el=document.getElementById(id),sprite=el?collisionSprites.find(s=>s.el===el):null;if(sprite&&(furnitureTopPassage(sprite,x,y)||propRatioPassage(sprite,x,y)))return true;}
   return false;
@@ -3815,16 +3846,40 @@ async function preloadPlayerFrames(){
   })));
 }
 
-function resumeAnimationSystem(){
-  /* v74: Browser dürfen requestAnimationFrame/Decoding bei inaktiven Tabs drosseln.
-     Beim Zurückkehren Zeitbasis und aktuellen Player-Frame sauber neu synchronisieren,
-     ohne Eventinhalte, Timings, Sounds oder Positionen zu verändern. */
-  playerLastTime=performance.now();
-  if(player)showPlayerFrame(true);
-  cancelAnimationFrame(rafId);
-  rafId=requestAnimationFrame(draw);
+const GAME_RECOVERY_IMAGE_SOURCES=['assets/maps/terrasse.jpg', 'assets/maps/wirtschaft-innen.jpg?v=18', 'assets/npc/baer-run-1.png?v=22', 'assets/npc/baer-run-2.png?v=22', 'assets/npc/baer-run-3.png?v=22', 'assets/npc/baum-versteck.png?v=01', 'assets/npc/bock-bier.png?v=38', 'assets/npc/bock-dismount.png?v=29', 'assets/npc/bock-dismount.png?v=30', 'assets/npc/bock-final.png?v=30', 'assets/npc/bock-krug-leer.png?v=38', 'assets/npc/bock-reiter-1.png?v=27', 'assets/npc/bock-reiter-2.png?v=27', 'assets/npc/bock-reiter-3.png?v=27', 'assets/npc/bock-stop.png?v=30', 'assets/npc/bock-trinkt.png?v=38', 'assets/npc/bock-wunsch.png?v=38', 'assets/npc/event3-bauer-dead.png?v=71', 'assets/npc/event3-bauer-kneel.png?v=71', 'assets/npc/event3-bauer-walk.png?v=71', 'assets/npc/event3-bock-attack-ready.png?v=71', 'assets/npc/event3-bock-slash.png?v=71', 'assets/npc/event5-bauer-fire.png?v=87', 'assets/npc/event5-kalif-fire.png?v=87', 'assets/npc/frau-run-1.png?v=02', 'assets/npc/frau-run-2.png?v=02', 'assets/npc/gast-bauer-back-1.png?v=92', 'assets/npc/gast-bauer-back-2.png?v=92', 'assets/npc/gast-bauer-back-3.png?v=92', 'assets/npc/gast-bauer-front-1.png?v=92', 'assets/npc/gast-bauer-front-2.png?v=92', 'assets/npc/gast-bauer-front-3.png?v=92', 'assets/npc/gast-bauer-order-1.png?v=92', 'assets/npc/gast-bauer-order-2.png?v=92', 'assets/npc/gast-bauer-order-3.png?v=92', 'assets/npc/gast-emotion-gelb.png?v=98', 'assets/npc/gast-emotion-gruen.png?v=98', 'assets/npc/gast-emotion-rot.png?v=98', 'assets/npc/gast-frau-order-1.png?v=95', 'assets/npc/gast-frau-order-2.png?v=95', 'assets/npc/gast-frau-order-3.png?v=95', 'assets/npc/gast-frau-walk-1.png?v=95', 'assets/npc/gast-frau-walk-2.png?v=95', 'assets/npc/gast-frau-walk-3.png?v=95', 'assets/npc/gast-frau-walk-4.png?v=95', 'assets/npc/gast-krug-leer.png?v=92', 'assets/npc/kalif-1.png?v=82', 'assets/npc/kalif-2.png?v=82', 'assets/npc/kalif-3.png?v=82', 'assets/npc/kalif-7.png?v=82', 'assets/npc/kalif-8.png?v=82', 'assets/npc/schreiber-1.png?v=76', 'assets/npc/schreiber-2.png?v=76', 'assets/npc/schreiber-3.png?v=76', 'assets/npc/schreiber-4.png?v=77', 'assets/npc/schreiber-5.png?v=77', 'assets/npc/schreiber-6.png?v=79', 'assets/npc/schreiber-gameover.png?v=79', 'assets/npc/schreiber-gameover.png?v=81', 'assets/player/back-1.png', 'assets/player/back-2.png', 'assets/player/back-3.png', 'assets/player/back-4.png', 'assets/player/front-1.png?v=12', 'assets/player/front-2.png?v=12', 'assets/player/front-3.png?v=12', 'assets/player/front-4.png?v=12', 'assets/player/nobier-back-1.png?v=69', 'assets/player/nobier-back-2.png?v=69', 'assets/player/nobier-back-3.png?v=69', 'assets/player/nobier-back-4.png?v=69', 'assets/player/nobier-front-1.png?v=69', 'assets/player/nobier-front-2.png?v=69', 'assets/player/nobier-front-3.png?v=69', 'assets/player/nobier-front-4.png?v=69', 'assets/player/nobier-side-1.png?v=69', 'assets/player/nobier-side-2.png?v=69', 'assets/player/nobier-side-3.png?v=69', 'assets/player/side-1.png?v=12', 'assets/player/side-2.png?v=12', 'assets/player/side-3.png?v=12', 'assets/player/side-4.png?v=12', 'assets/player/tisch-a.png?v=46', 'assets/player/tisch-d.png?v=46', 'assets/player/tisch-s.png?v=47', 'assets/player/tisch-w.png?v=47', 'assets/props/theke-ausschank.png?v=01', 'assets/props/theke.png?v=03'];
+async function rewarmGameImages(){
+  const images=new Set([...PLAYER_IMAGE_CACHE.values(),...EVENT_IMAGE_CACHE.values(),...MAP_IMAGE_CACHE.values(),...document.querySelectorAll('img')]);
+  for(const src of GAME_RECOVERY_IMAGE_SOURCES){
+    if(!EVENT_IMAGE_CACHE.has(src)){const img=new Image();img.src=src;EVENT_IMAGE_CACHE.set(src,img);}
+    images.add(EVENT_IMAGE_CACHE.get(src));
+  }
+  await Promise.all([...images].map(img=>new Promise(resolve=>{
+    const timeout=gameNativeTimeout(resolve,8000);
+    const ready=img.decode?img.decode():Promise.resolve();
+    Promise.resolve(ready).catch(()=>{}).then(()=>{gameNativeClear(timeout);resolve();});
+  })));
 }
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeAnimationSystem();});
+async function resumeAnimationSystem(){
+  if(document.hidden||!document.body.classList.contains('game-ready'))return;
+  if(gameResumeTask)return gameResumeTask;
+  if(!gamePaused)return;
+  gameResumeTask=(async()=>{
+    await rewarmGameImages();
+    if(document.hidden||!document.hasFocus())return;
+    gamePausedTotal+=performance.now()-gamePauseAt;gamePaused=false;
+    playerLastTime=gameNow();showPlayerFrame(true);
+    for(const a of gamePausedAnimations)if(a.playState==='paused')a.play();
+    gamePausedAnimations.clear();
+    for(const a of gamePausedAudio)a.play().catch(()=>{});
+    gamePausedAudio.clear();
+    for(const [id,item] of gameTimers)gameArmTimer(id,item);
+    for(const [id,item] of gameFrames)gameArmFrame(id,item);
+    cancelAnimationFrame(rafId);rafId=requestAnimationFrame(draw);
+  })().finally(()=>{gameResumeTask=null;});
+  return gameResumeTask;
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseAnimationSystem();else resumeAnimationSystem();});
+window.addEventListener('blur',pauseAnimationSystem);
 window.addEventListener('focus',resumeAnimationSystem);
 window.addEventListener('pageshow',resumeAnimationSystem);
 
@@ -3852,14 +3907,16 @@ async function start(){
   }
 
   document.body.classList.add('game-ready');
+  if(document.hidden)pauseAnimationSystem();
   cancelAnimationFrame(rafId);
-  playerLastTime=performance.now();
+  playerLastTime=gameNow();
   rafId=requestAnimationFrame(draw);
 
   const collidables=[...document.querySelectorAll('.collidable[data-collision="alpha"]')];
   const baumCollision=document.getElementById('baum');
   if(baumCollision && !collidables.includes(baumCollision))collidables.push(baumCollision);
   Promise.all(collidables.map(buildAlphaCollision)).catch(console.error);
+  if(gamePaused&&!document.hidden)resumeAnimationSystem();
 }
 
 if(map.complete&&map.naturalWidth>0){
