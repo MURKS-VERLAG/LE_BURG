@@ -2130,6 +2130,8 @@ function syncMap1EventVisibility(){
   if(map1BockThought && map1BockThought.style.display!=='none') map1BockThought.style.visibility=onMap1?'visible':'hidden';
   for(const mug of map1BockMugs){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
   for(const mug of map1TableMugs.values()){if(mug?.isConnected)mug.style.visibility=onMap1?'visible':'hidden';}
+  if(map1GuestEl)map1GuestEl.style.visibility=onMap1&&map1GuestActive?'visible':'hidden';
+  if(map1GuestThought&&map1GuestThought.style.display!=='none')map1GuestThought.style.visibility=onMap1?'visible':'hidden';
   if(map1BockPuff)map1BockPuff.style.visibility=onMap1?'visible':'hidden';
   const fx=ensureMap1BockFX();
   if(!onMap1){fx.dark.style.visibility='hidden';fx.fog.style.visibility='hidden';}
@@ -2163,6 +2165,7 @@ function draw(now){
   updateMap1Event3(now);
   updateMap1Event4(now);
   updateMap1Event5(now);
+  updateMap1Guest(now);
   syncMap1NpcPlayerDepth();
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -2575,6 +2578,17 @@ function map1InteractiveTafel(){
 function map1InteractiveTable(){
   if(currentMap!==1||mapTransitioning||map1TableServing||!playerHasBeer)return null;
 
+  // Erster echter Gast am rechten Stehtisch: er belegt die OBERSEITE.
+  // Solange er auf sein bestelltes Bier wartet, ist S/front an diesem Tisch gesperrt;
+  // von unten (W) und von den Seiten (A/D) bleibt die bestehende Bedienung möglich.
+  if(map1GuestOccupiesRightTable()){
+    const s=tableSpriteById('stehtischRechts');
+    if(map1GuestStage==='waitingBeer'){
+      if(PLAYER.direction==='front')return null;
+      return s&&tableTouchesInFacingDirection(s,PLAYER.direction)?s:null;
+    }
+  }
+
   // Lange Tafel hat eine eigene, strikt W-only Zone von unten.
   const tafel=map1InteractiveTafel();
   if(tafel)return tafel;
@@ -2582,6 +2596,7 @@ function map1InteractiveTable(){
   // Bestehende Stehtischlogik unverändert.
   for(const id of STANDING_TABLE_IDS){
     const s=tableSpriteById(id); if(!s)continue;
+    if(map1GuestOccupiesRightTable()&&id==='stehtischRechts'&&PLAYER.direction==='front')continue;
     // Die Blickrichtung definiert eindeutig die erlaubte Tischseite. Keine Diagonal-/Fernaktivierung.
     if(tableTouchesInFacingDirection(s,PLAYER.direction))return s;
   }
@@ -2616,6 +2631,9 @@ function ensureTableMug(tableSprite){
     Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'750',transform:'translate(-50%,-100%)'});
     world.appendChild(mug); map1TableMugs.set(id,mug);
   }
+  // Jeder neue Ausschank ist wieder ein VOLLER Krug; ein eventuell vom Gast
+  // zurückgelassener leerer Krug wird dadurch am selben Platz ersetzt.
+  mug.src='assets/npc/bock-wunsch.png?v=38';
   const el=tableSprite.el,left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   // v59: Krug der LANGEN TAFEL exakt mittig auf der Tafel.
   // z=750 liegt vor Tafel/Stuhl/Props (500), aber hinter dem Charakter (1000).
@@ -2640,7 +2658,8 @@ function startMap1TableServe(){
   player.style.transform=`translate(-50%,-100%) scale(${scale})`;
   clearTimeout(map1TableServeTimer);
   map1TableServeTimer=setTimeout(()=>{
-    ensureTableMug(table);
+    const servedMug=ensureTableMug(table);
+    map1GuestBeerServed(table,servedMug);
     map1TableServing=false;
     playerHasBeer=false;
     PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence(PLAYER.direction)[0];
@@ -2652,6 +2671,146 @@ function startMap1TableServe(){
 }
 
 
+
+
+/* MAP 1 – ERSTE ECHTE GÄSTE v92: Bauer am rechten Stehtisch.
+   Zwei Varianten teilen sich denselben Slot und können NIEMALS gleichzeitig existieren:
+   SCHNELL: 50 % Versuch alle 30 s. LANGSAM: 50 % Versuch alle 60 s.
+   Normale Gäste nur ab 50 Beliebtheit; fällt sie darunter, kehrt ein aktiver Bauer um. */
+let map1GuestEl=null,map1GuestThought=null;
+let map1GuestActive=false,map1GuestVariant='fast',map1GuestStage='idle';
+let map1GuestPath=[],map1GuestStart=0,map1GuestDuration=0,map1GuestReturnStart=0,map1GuestReturnDuration=0;
+let map1GuestFastInterval=0,map1GuestSlowInterval=0,map1GuestDrinkTimer=0,map1GuestMugTimer=0;
+const MAP1_GUEST_WIDTH=176.4;
+const MAP1_GUEST_FAST_DURATION=7600;
+const MAP1_GUEST_SLOW_DURATION=19000;
+const MAP1_GUEST_FAST_FRAME_MS=170;
+const MAP1_GUEST_SLOW_FRAME_MS=620;
+const MAP1_GUEST_INTERACT_DISTANCE=92;
+
+function ensureMap1Guest(){
+  if(map1GuestEl)return map1GuestEl;
+  map1GuestEl=document.createElement('img');map1GuestEl.id='map1GuestFarmer';
+  map1GuestEl.src='assets/npc/gast-bauer-front-1.png?v=92';map1GuestEl.alt='';map1GuestEl.draggable=false;
+  Object.assign(map1GuestEl.style,{position:'absolute',left:'0',top:'0',width:`${MAP1_GUEST_WIDTH}px`,height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'12500',willChange:'left,top,transform,filter'});
+  world.appendChild(map1GuestEl);return map1GuestEl;
+}
+function ensureMap1GuestThought(){
+  if(map1GuestThought)return map1GuestThought;
+  map1GuestThought=document.createElement('div');
+  Object.assign(map1GuestThought.style,{position:'absolute',width:'92.4px',height:'75.6px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
+  const cloud=document.createElement('div');Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
+  const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
+  const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
+  map1GuestThought.append(c1,c2,cloud);world.appendChild(map1GuestThought);return map1GuestThought;
+}
+function map1GuestDockPoint(){
+  const el=document.getElementById('stehtischRechts');
+  if(!el)return [1130,470];
+  const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
+  // Gast kommt von OBEN und steht hinter der Tischplatte. Die Fußlinie liegt knapp in der oberen Tischzone.
+  return [left+w*.50,top+h*.18];
+}
+function sampleMap1GuestArrivalPath(){
+  const dock=map1GuestDockPoint();
+  // Zunächst EXAKT die bestehende obere Laufroute, dann ein weicher kubischer Bogen zum rechten Stehtisch.
+  const pts=MAP1_RUNNER_PATH.slice(0,5).map(p=>[p[0],p[1]]);
+  const a=pts[pts.length-1],c1=[a[0]-18,a[1]+48],c2=[dock[0]-10,dock[1]-95];
+  for(let i=1;i<=12;i++){
+    const t=i/12,u=1-t;
+    pts.push([u*u*u*a[0]+3*u*u*t*c1[0]+3*u*t*t*c2[0]+t*t*t*dock[0],u*u*u*a[1]+3*u*u*t*c1[1]+3*u*t*t*c2[1]+t*t*t*dock[1]]);
+  }
+  return pts;
+}
+function map1GuestPointOnPath(pts,t){
+  const lens=[];let total=0;for(let i=0;i<pts.length-1;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);total+=l;}
+  let d=Math.max(0,Math.min(1,t))*total;
+  for(let i=0;i<lens.length;i++){if(d<=lens[i]||i===lens.length-1){const q=lens[i]?d/lens[i]:0;return[pts[i][0]+(pts[i+1][0]-pts[i][0])*q,pts[i][1]+(pts[i+1][1]-pts[i][1])*q];}d-=lens[i];}
+  return pts[pts.length-1];
+}
+function map1GuestPerspective(y){return Math.max(.68,Math.min(1.06,.70+(y/1024)*.36));}
+function setMap1GuestFrame(src,mirror=false,scale=1){
+  const el=ensureMap1Guest();if((el.getAttribute('src')||'')!==src)el.src=src;
+  el.style.transform=`translate(-50%,-100%) scale(${mirror?-scale:scale},${scale})`;
+}
+function map1GuestOccupiesRightTable(){return map1GuestActive&&['ordering','waitingBeer','drinking'].includes(map1GuestStage);}
+function showMap1GuestThought(){
+  const b=ensureMap1GuestThought(),[x,y]=map1GuestDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1GuestStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));
+}
+function hideMap1GuestThought(){if(map1GuestThought){map1GuestThought.style.opacity='0';map1GuestThought.style.transform='scale(.84)';setTimeout(()=>{if(map1GuestThought&&map1GuestThought.style.opacity==='0')map1GuestThought.style.display='none';},280);}}
+function map1GuestCanTakeOrder(){return currentMap===1&&!mapTransitioning&&map1GuestActive&&map1GuestStage==='ordering'&&Math.hypot(PLAYER.x-parseFloat(map1GuestEl.style.left),PLAYER.y-parseFloat(map1GuestEl.style.top))<=MAP1_GUEST_INTERACT_DISTANCE;}
+function takeMap1GuestOrder(){
+  if(!map1GuestCanTakeOrder())return false;
+  map1GuestStage='waitingBeer';setMap1GuestFrame('assets/npc/gast-bauer-order-3.png?v=92',false,map1GuestPerspective(parseFloat(map1GuestEl.style.top)||470));showMap1GuestThought();updateMap1GuestCue();return true;
+}
+function updateMap1GuestCue(){
+  if(!map1GuestEl)return;
+  map1GuestEl.style.filter=map1GuestCanTakeOrder()?'brightness(1.18) drop-shadow(0 0 6px rgba(255,225,110,.98)) drop-shadow(0 0 12px rgba(255,190,55,.75))':'none';
+}
+function clearMap1GuestTimers(){clearTimeout(map1GuestDrinkTimer);clearTimeout(map1GuestMugTimer);map1GuestDrinkTimer=map1GuestMugTimer=0;}
+function beginMap1GuestReturn(){
+  if(!map1GuestActive||map1GuestStage==='returning')return;
+  hideMap1GuestThought();clearMap1GuestTimers();map1GuestStage='returning';map1GuestReturnStart=performance.now();
+  const full=sampleMap1GuestArrivalPath();const x=parseFloat(map1GuestEl.style.left),y=parseFloat(map1GuestEl.style.top);
+  // Bei Beliebtheitsabfall auch vom aktuellen Platz aus sauber auf denselben Weg zurück.
+  let nearest=full.length-1,best=Infinity;for(let i=0;i<full.length;i++){const d=Math.hypot(full[i][0]-x,full[i][1]-y);if(d<best){best=d;nearest=i;}}
+  map1GuestPath=[[x,y],...full.slice(0,nearest+1).reverse()];
+  const frac=Math.max(.28,map1GuestPath.length/full.length);map1GuestReturnDuration=(map1GuestVariant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION)*frac;
+}
+function finishMap1Guest(){
+  map1GuestActive=false;map1GuestStage='idle';hideMap1GuestThought();clearMap1GuestTimers();if(map1GuestEl){map1GuestEl.style.display='none';map1GuestEl.style.filter='none';}
+}
+function spawnMap1Guest(variant){
+  if(map1GuestActive||map1GameOverStarted||map1Popularity<50||currentMap!==1)return false;
+  const el=ensureMap1Guest();map1GuestActive=true;map1GuestVariant=variant;map1GuestStage='arriving';map1GuestPath=sampleMap1GuestArrivalPath();map1GuestStart=performance.now();map1GuestDuration=variant==='fast'?MAP1_GUEST_FAST_DURATION:MAP1_GUEST_SLOW_DURATION;
+  el.style.display='block';el.style.visibility='visible';el.style.filter='none';const [x,y]=map1GuestPath[0];el.style.left=`${x}px`;el.style.top=`${y}px`;return true;
+}
+function trySpawnMap1Guest(variant){if(map1GuestActive||map1Popularity<50||map1GameOverStarted)return;if(Math.random()<.5)spawnMap1Guest(variant);}
+function initMap1Guests(){
+  ensureMap1Guest();ensureMap1GuestThought();
+  if(!map1GuestFastInterval)map1GuestFastInterval=setInterval(()=>trySpawnMap1Guest('fast'),30000);
+  if(!map1GuestSlowInterval)map1GuestSlowInterval=setInterval(()=>trySpawnMap1Guest('slow'),60000);
+}
+function map1GuestBeerServed(table,mug){
+  if(!map1GuestActive||map1GuestStage!=='waitingBeer'||table?.el?.id!=='stehtischRechts')return false;
+  hideMap1GuestThought();map1GuestStage='drinking';const y=parseFloat(map1GuestEl.style.top)||map1GuestDockPoint()[1];setMap1GuestFrame('assets/npc/gast-bauer-order-2.png?v=92',false,map1GuestPerspective(y));
+  // Voller Krug bleibt exakt 2 Sekunden sichtbar.
+  map1GuestMugTimer=setTimeout(()=>{if(mug?.isConnected)mug.style.display='none';},2000);
+  // Trinkbild exakt 3 Sekunden; dann leerer Krug an EXAKT gleicher Stelle/Größe und Rückweg.
+  map1GuestDrinkTimer=setTimeout(()=>{
+    if(!map1GuestActive||map1GuestStage!=='drinking')return;
+    if(mug?.isConnected){mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';}
+    setMap1GuestCount(map1GuestCount+1);
+    beginMap1GuestReturn();
+  },3000);
+  return true;
+}
+function updateMap1Guest(now){
+  if(!map1GuestActive){updateMap1GuestCue();return;}
+  if(map1Popularity<50&&!['returning'].includes(map1GuestStage))beginMap1GuestReturn();
+  const el=ensureMap1Guest();
+  if(map1GuestStage==='arriving'){
+    const t=Math.min(1,(now-map1GuestStart)/map1GuestDuration),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);
+    el.style.left=`${x}px`;el.style.top=`${y}px`;
+    if(map1GuestVariant==='fast'){
+      const phase=Math.floor((now-map1GuestStart)/MAP1_GUEST_FAST_FRAME_MS)%4;
+      const seq=[[1,false],[3,false],[3,true],[1,true]],f=seq[phase];setMap1GuestFrame(`assets/npc/gast-bauer-front-${f[0]}.png?v=92`,f[1],scale);
+    }else setMap1GuestFrame('assets/npc/gast-bauer-front-2.png?v=92',false,scale);
+    if(t>=1){map1GuestStage='ordering';setMap1GuestFrame('assets/npc/gast-bauer-order-1.png?v=92',false,scale);}
+  }else if(map1GuestStage==='returning'){
+    const t=Math.min(1,(now-map1GuestReturnStart)/Math.max(1,map1GuestReturnDuration)),[x,y]=map1GuestPointOnPath(map1GuestPath,t),scale=map1GuestPerspective(y);el.style.left=`${x}px`;el.style.top=`${y}px`;
+    if(map1GuestVariant==='fast'){
+      const phase=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_FAST_FRAME_MS)%4;const seq=[[1,false],[1,true],[3,false],[3,true]],f=seq[phase];setMap1GuestFrame(`assets/npc/gast-bauer-back-${f[0]}.png?v=92`,f[1],scale);
+    }else{
+      const mirror=Math.floor((now-map1GuestReturnStart)/MAP1_GUEST_SLOW_FRAME_MS)%2===1;setMap1GuestFrame('assets/npc/gast-bauer-back-2.png?v=92',mirror,scale);
+    }
+    if(t>=1)finishMap1Guest();
+  }
+  if(map1GuestThought&&map1GuestThought.style.display!=='none'){
+    const x=parseFloat(el.style.left)||0,y=parseFloat(el.style.top)||0;map1GuestThought.style.left=`${x+18}px`;map1GuestThought.style.top=`${y-204}px`;
+  }
+  updateMap1GuestCue();
+}
 
 /* MAP 1 – BAUM-VERSTECK v62.
    Ausschließlich additiv: Bock-Event bleibt vollständig unangetastet.
@@ -3164,6 +3323,7 @@ function syncMap1NpcPlayerDepth(){
   else apply(map1Event3Farmer,parseFloat(map1Event3Farmer?.style.top));
   apply(map1Event3Bock,parseFloat(map1Event3Bock?.style.top));
   apply(map1Event4Kalif,parseFloat(map1Event4Kalif?.style.top));
+  apply(map1GuestEl,parseFloat(map1GuestEl?.style.top));
   // Blut: KEINE Fußlinie. Immer eine Ebene hinter dem Bauern, somit ebenfalls hinter dem Spieler.
   if(map1Event3Blood&&map1Event3Blood.style.display!=='none'&&map1Event3Blood.style.visibility!=='hidden'&&map1Event3Farmer){
     const farmerZ=Number(map1Event3Farmer.style.zIndex);
@@ -3246,7 +3406,7 @@ window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!toggleMap1TreeHide() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){ if(!toggleMap1TreeHide() && !takeMap1GuestOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
   }
 });
 
@@ -3340,7 +3500,11 @@ async function preloadMap1BearFrames(){
     'assets/npc/event3-bauer-walk.png?v=71','assets/npc/event3-bauer-kneel.png?v=71','assets/npc/event3-bauer-dead.png?v=71',
     'assets/npc/baum-versteck.png?v=01',
     'assets/npc/kalif-1.png?v=82','assets/npc/kalif-2.png?v=82','assets/npc/kalif-3.png?v=82','assets/npc/kalif-7.png?v=82','assets/npc/kalif-8.png?v=82',
-    'assets/npc/schreiber-6.png?v=79','assets/npc/schreiber-gameover.png?v=79'
+    'assets/npc/schreiber-6.png?v=79','assets/npc/schreiber-gameover.png?v=79',
+    'assets/npc/gast-bauer-front-1.png?v=92','assets/npc/gast-bauer-front-2.png?v=92','assets/npc/gast-bauer-front-3.png?v=92',
+    'assets/npc/gast-bauer-order-1.png?v=92','assets/npc/gast-bauer-order-2.png?v=92','assets/npc/gast-bauer-order-3.png?v=92',
+    'assets/npc/gast-bauer-back-1.png?v=92','assets/npc/gast-bauer-back-2.png?v=92','assets/npc/gast-bauer-back-3.png?v=92',
+    'assets/npc/gast-krug-leer.png?v=92'
   ];
   await Promise.all(paths.map(src=>new Promise(resolve=>{
     const img=new Image();
@@ -3402,6 +3566,7 @@ async function start(){
   ensureMap1Bear();
   ensureMap1Scribe();
   syncMap1Scribe(true);
+  initMap1Guests();
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
