@@ -2216,6 +2216,58 @@ function syncEventAudioForCurrentMap(){
   }
 }
 
+/* v110: Eigenständiges Krötenevent; keine Kollision oder Änderung der Teichregeln. */
+const MAP1_TOAD_SOURCES=[1,2,3,4].map(n=>`assets/npc/kroete-${n}.png?v=110`);
+const MAP1_TOAD_SPLASH='assets/npc/kroete-splash.png?v=110';
+let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1;
+const map1ToadSound=new Audio('assets/audio/kroete-plop.mp3?v=110');
+map1ToadSound.preload='auto';
+function ensureMap1Toad(){
+  if(map1Toad)return;
+  map1Toad=document.createElement('img');
+  map1Toad.id='map1Toad';map1Toad.alt='';map1Toad.draggable=false;
+  Object.assign(map1Toad.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',display:'none',transformOrigin:'50% 100%'});
+  world.appendChild(map1Toad);
+}
+function map1ToadPose(age){
+  // Frame 1: 180 ms; beide Flugbilder je 220 ms; Boden: 2000 + 1000 ms.
+  if(age<180)return {frame:1,u:0,ground:false,mirror:false};
+  if(age<620)return {frame:age<400?2:3,u:(age-180)/440,ground:false,mirror:false};
+  if(age<3620)return {frame:4,u:1,ground:true,mirror:age>=2620};
+  if(age<4060)return {frame:age<3840?2:3,u:1-(age-3620)/440,ground:false,mirror:true};
+  if(age<4660)return {splash:true,u:0,ground:false,mirror:false};
+  return null;
+}
+function map1ToadPoint(u){
+  const pond=document.getElementById('teich');
+  const x=px(pond,'left')+pond.offsetWidth*.72,y=px(pond,'top')+pond.offsetHeight*.51;
+  return {x:x+105*u,y:y+18*u-48*Math.sin(Math.PI*u),groundY:y+18*u};
+}
+function playMap1ToadSound(){
+  if(currentMap!==1||gamePaused)return;
+  try{map1ToadSound.currentTime=0;const p=map1ToadSound.play();if(p&&p.catch)p.catch(()=>{});}catch(_){}
+}
+function updateMap1Toad(now){
+  if(map1ToadEpoch===null)return;
+  ensureMap1Toad();
+  const elapsed=now-map1ToadEpoch;
+  if(elapsed<20000){map1Toad.style.display='none';return;}
+  const cycle=Math.floor(elapsed/20000),age=elapsed-cycle*20000;
+  if(cycle!==map1ToadCycle){map1ToadCycle=cycle;map1ToadLastAge=-1;}
+  if(map1ToadLastAge<0&&age<180)playMap1ToadSound();
+  if(map1ToadLastAge<4060&&age>=4060&&age<4660)playMap1ToadSound();
+  map1ToadLastAge=age;
+  const pose=map1ToadPose(age);
+  if(!pose||currentMap!==1){map1Toad.style.display='none';return;}
+  const point=map1ToadPoint(pose.u);
+  const src=pose.splash?MAP1_TOAD_SPLASH:MAP1_TOAD_SOURCES[pose.frame-1];
+  if(map1Toad.getAttribute('src')!==src)map1Toad.src=src;
+  Object.assign(map1Toad.style,{display:'block',left:`${point.x}px`,top:`${point.y}px`,width:pose.splash?'46px':'58px',height:pose.splash?'20.5px':'46.4px',
+    transform:`translate(-50%, -100%) scaleX(${pose.mirror?-1:1})`,
+    zIndex:String(PLAYER.y>point.groundY?(Number(player.style.zIndex)||10000)-1:(Number(player.style.zIndex)||10000)+1),
+    filter:pose.ground&&Math.hypot(PLAYER.x-point.x,PLAYER.y-point.groundY)<=48?MAP1_LANDSCAPE_GLOW:'none'});
+}
+
 function draw(now){
   const z=ZOOM_LEVELS[zoomIndex];
   currentX+=(targetX-currentX)*.055;
@@ -2237,6 +2289,7 @@ function draw(now){
   updateMap1Woman(now);
   syncMap1NpcPlayerDepth();
   syncMap1LandscapeDepth();
+  updateMap1Toad(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
@@ -3939,6 +3992,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,
     'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
     'assets/npc/baer-run-1.png?v=22','assets/npc/baer-run-2.png?v=22','assets/npc/baer-run-3.png?v=22',
     'assets/npc/bock-reiter-1.png?v=27','assets/npc/bock-reiter-2.png?v=27','assets/npc/bock-reiter-3.png?v=27',
@@ -4045,6 +4099,8 @@ async function start(){
   ensureMap1Scribe();
   syncMap1Scribe(true);
   initMap1Guests();
+  ensureMap1Toad();
+  map1ToadEpoch=gameNow();
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
