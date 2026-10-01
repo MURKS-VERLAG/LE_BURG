@@ -2159,7 +2159,7 @@ function clampPosition(){
   targetY=Math.max(-maxY,Math.min(maxY,targetY));
 }
 function syncMap1EventVisibility(){
-  const onMap1=currentMap===1 && !mapTransitioning;
+  const onMap1=currentMap===1; // v99: wie Spieler – bis zum echten Map-Swap sichtbar, beim Rückswap sofort sichtbar
   // Nur die VISUALS von Map-1-Events verstecken. Zustände/Zeitachsen laufen weiter.
   if(map1Runner) map1Runner.style.visibility=onMap1 ? (map1RunnerActive?'visible':'hidden') : 'hidden';
   if(map1Bear) map1Bear.style.visibility=onMap1 ? (map1BearActive?'visible':'hidden') : 'hidden';
@@ -2725,17 +2725,22 @@ const MAP1_GUEST_EMOTION_IMAGES={
 function showMap1GuestEmotion(tableId,kind){
   const table=document.getElementById(tableId),src=MAP1_GUEST_EMOTION_IMAGES[kind];
   if(!table||!src)return;
-  const left=px(table,'left'),top=px(table,'top'),w=table.offsetWidth,h=table.offsetHeight;
+  // v99: Effekt in GAME statt WORLD. Dadurch bleibt eine bereits gestartete Maske auch
+  // während/nach einem Türwechsel sichtbar und wird nicht mit Map-1-Visuals ausgeblendet.
+  const tr=table.getBoundingClientRect(),gr=game.getBoundingClientRect();
+  const sx=table.offsetWidth?tr.width/table.offsetWidth:1;
+  const sy=table.offsetHeight?tr.height/table.offsetHeight:sx;
   const fx=document.createElement('img');fx.src=src;fx.alt='';fx.draggable=false;
   Object.assign(fx.style,{
-    position:'absolute',left:`${left+w/2}px`,top:`${top+h*.23}px`,width:'48px',height:'auto',
-    transform:'translate(-50%,-50%)',pointerEvents:'none',userSelect:'none',zIndex:'30000',opacity:'1'
+    position:'absolute',left:`${tr.left-gr.left+tr.width/2}px`,top:`${tr.top-gr.top}px`,
+    width:`${28.8*sx}px`,height:'auto', // exakt 40 % kleiner als bisherige 48 Weltpixel
+    transform:'translate(-50%,0)',pointerEvents:'none',userSelect:'none',zIndex:'80000',opacity:'1'
   });
-  world.appendChild(fx);
+  game.appendChild(fx);
   fx.animate([
-    {transform:'translate(-50%,8px) scale(.82)',opacity:1},
-    {transform:'translate(-50%,-72px) scale(1)',opacity:1,offset:.62},
-    {transform:'translate(-50%,-128px) scale(.92)',opacity:0}
+    {transform:'translate(-50%,0) scale(.82)',opacity:1},
+    {transform:`translate(-50%,${-72*sy}px) scale(1)`,opacity:1,offset:.62},
+    {transform:`translate(-50%,${-128*sy}px) scale(.92)`,opacity:0}
   ],{duration:2800,easing:'ease-out',fill:'forwards'});
   setTimeout(()=>fx.remove(),2850);
 }
@@ -2760,7 +2765,7 @@ let map1GuestWaitStart=0,map1GuestServiceWaitMs=0;
 const MAP1_GUEST_WIDTH=100.8; // v96: Bauer generell +5 %
 const MAP1_GUEST_FAST_DURATION=7600;
 const MAP1_GUEST_SLOW_DURATION=19000;
-const MAP1_GUEST_FAST_FRAME_MS=285;
+const MAP1_GUEST_FAST_FRAME_MS=170; // v99: schneller Vorwärtsgang wieder flüssig; KEINE Spiegelbilder hinzugefügt
 const MAP1_GUEST_SLOW_FRAME_MS=MAP1_GUEST_FAST_FRAME_MS; // Bildwechsel gleich schnell; nur Laufgeschwindigkeit bleibt langsam
 const MAP1_GUEST_INTERACT_DISTANCE=92;
 
@@ -2947,7 +2952,7 @@ function ensureMap1Woman(){
   map1WomanEl.src='assets/npc/gast-frau-walk-1.png?v=95';map1WomanEl.alt='';map1WomanEl.draggable=false;
   // v98: feste BILDHÖHE statt feste Breite. Dadurch haben Walk + Order trotz unterschiedlicher
   // Quell-Seitenverhältnisse exakt dieselbe sichtbare Höhe und derselbe Fußanker bleibt stehen.
-  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'177.82px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
+  Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'106.692px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
   world.appendChild(map1WomanEl);return map1WomanEl;
 }
 function ensureMap1WomanThought(){
@@ -2959,8 +2964,43 @@ function ensureMap1WomanThought(){
 }
 function map1WomanDockPoint(){const el=document.getElementById('stehtischLinks');if(!el)return[430,610];const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;return[left-w*.08,top+h];} // v96: Füße exakt auf Höhe der unteren Tisch-Hitboxkante
 function sampleMap1WomanPath(){const dock=map1WomanDockPoint();return[[40,dock[1]],[105,dock[1]],[175,dock[1]],[250,dock[1]],[330,dock[1]],dock];} // v96: Spawn weiter rechts; komplette Lauflinie auf stabiler Fußhöhe
-const MAP1_WOMAN_SCALE=.88485; // v97: Tischbilder weitere 15 % kleiner; ALLE Frauenbilder exakt dieselbe Größe
-function setMap1WomanFrame(src,mirror=false){const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;el.style.transform=`translate(-50%,-100%) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;}
+const MAP1_WOMAN_SCALE=.88485; // v99: Größenverhältnis bleibt; Elementhöhe selbst ist exakt 40 % kleiner
+const MAP1_WOMAN_ANCHORS=new Map();
+function calibrateMap1WomanAnchor(src){
+  if(MAP1_WOMAN_ANCHORS.has(src))return;
+  MAP1_WOMAN_ANCHORS.set(src,null);
+  const img=new Image();img.decoding='async';img.src=src;
+  const scan=()=>{
+    try{
+      const w=img.naturalWidth,h=img.naturalHeight;if(!w||!h)return;
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);
+      const d=ctx.getImageData(0,0,w,h).data;let minX=w,maxX=-1,maxY=-1;
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(d[(y*w+x)*4+3]>=24){if(x<minX)minX=x;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}
+      if(maxX>=minX&&maxY>=0)MAP1_WOMAN_ANCHORS.set(src,{w,h,cx:(minX+maxX)/2,bottom:maxY+1});
+    }catch(_){MAP1_WOMAN_ANCHORS.set(src,false);}
+  };
+  if(img.complete)scan();else img.onload=scan;
+}
+[
+ 'assets/npc/gast-frau-walk-1.png?v=95','assets/npc/gast-frau-walk-2.png?v=95',
+ 'assets/npc/gast-frau-walk-3.png?v=95','assets/npc/gast-frau-walk-4.png?v=95',
+ 'assets/npc/gast-frau-order-1.png?v=95','assets/npc/gast-frau-order-2.png?v=95','assets/npc/gast-frau-order-3.png?v=95'
+].forEach(calibrateMap1WomanAnchor);
+function setMap1WomanFrame(src,mirror=false){
+  const el=ensureMap1Woman();if((el.getAttribute('src')||'')!==src)el.src=src;
+  const a=MAP1_WOMAN_ANCHORS.get(src),boxH=parseFloat(el.style.height)||106.692;
+  let dx=0,dy=0;
+  if(a&&a.w&&a.h){
+    const boxW=boxH*a.w/a.h;
+    dx=boxW*(.5-a.cx/a.w);
+    dy=boxH*(1-a.bottom/a.h);
+    if(mirror)dx=-dx;
+  }
+  // Sichtbare Fußunterkante + sichtbare Körpermitte bleiben bei JEDEM Walk-/Orderbild
+  // auf demselben logischen Pfad-/Andockpunkt. Kein Positionsreset beim Bildwechsel.
+  el.style.transform=`translate(calc(-50% + ${dx}px),calc(-100% + ${dy}px)) scale(${MAP1_WOMAN_SCALE})${mirror?' rotateY(180deg)':''}`;
+}
 function map1WomanOccupiesLeftTable(){return map1WomanActive&&['ordering','waitingBeer','beerOnTable','drinking'].includes(map1WomanStage);}
 function showMap1WomanThought(){const b=ensureMap1WomanThought(),[x,y]=map1WomanDockPoint();b.style.left=`${x+18}px`;b.style.top=`${y-204}px`;b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';requestAnimationFrame(()=>requestAnimationFrame(()=>{if(map1WomanStage==='waitingBeer'){b.style.opacity='1';b.style.transform='scale(1)';}}));}
 function hideMap1WomanThought(){if(map1WomanThought){map1WomanThought.style.opacity='0';map1WomanThought.style.transform='scale(.84)';setTimeout(()=>{if(map1WomanThought&&map1WomanThought.style.opacity==='0')map1WomanThought.style.display='none';},280);}}
