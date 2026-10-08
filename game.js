@@ -4362,8 +4362,8 @@ function startPlayerFight(){
   if(playerFight||gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||playerFightBlockedByGlow())return false;
   const dir=PLAYER.direction==='left'?'right':PLAYER.direction;
   const normal=PLAYER_IMAGE_CACHE.get(`assets/player/nobier-${dir==='right'?'side':dir}-1.png?v=69`);
-  // Gleiche No-Beer-Referenzgröße für beide Bierzustände; zusätzlich 5 % kleiner.
-  const baseHeight=.875*.95*1.035*(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
+  // Gemeinsame Kampfgröße für beide Bierzustände; zuletzt zusätzlich 5 % größer.
+  const baseHeight=.875*.95*1.035*1.05*(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
   playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,transition:player.style.transition,baseHeight,scale:1.10*(currentMap===2?1.15:1),frame:-2};
   player.style.transition='none';
   PLAYER.moving=false;PLAYER.frameClock=0;
@@ -4392,15 +4392,31 @@ function playerFightVisibleRatio(img){
 }
 function playerFightMugX(){
   const state=playerFight,dir=state.direction==='left'?'right':state.direction;
-  let half=0,extra=0;
+  let edge=0,extra=0;
+  const side=state.direction==='right'?-1:1;
   for(const src of [...PLAYER_FIGHT_IMAGES[dir],...PLAYER_FIGHT_REST_IMAGES[dir]]){
     const img=EVENT_IMAGE_CACHE.get(src);if(!img?.naturalWidth||!img?.naturalHeight)continue;
-    const height=state.baseHeight/playerFightVisibleRatio(img);
-    half=Math.max(half,height*img.naturalWidth/img.naturalHeight*state.scale/2);
+    // S-Krug exakt auf der bisherigen Position lassen, trotz größerer Kampfpose.
+    const height=state.baseHeight/(dir==='front'?1.05:1)/playerFightVisibleRatio(img);
+    const width=height*img.naturalWidth/img.naturalHeight;
+    let reach=width*state.scale/2;
+    if(dir!=='front'){
+      try{
+        const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;
+        const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);
+        const data=ctx.getImageData(0,0,c.width,c.height).data;
+        let left=c.width,right=-1;
+        for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(data[(y*c.width+x)*4+3]>=24){left=Math.min(left,x);right=Math.max(right,x);}
+        const mirrored=state.direction==='left'||src.includes('fight-back-3.png');
+        const imageSide=side*(mirrored?-1:1);
+        if(right>=left)reach=(imageSide>0?right+1-c.width/2:c.width/2-left)*height/c.height*state.scale;
+      }catch(_){}
+    }
+    edge=Math.max(edge,reach);
     if(src.includes('fight-front-4.png'))extra=Math.max(extra,height*(18.5/665)*state.scale);
   }
-  const offset=dir==='front'?-3:dir==='back'?3:0,side=state.direction==='right'?-1:1;
-  return PLAYER.x+offset+side*(half+extra+14+6);
+  const offset=dir==='front'?-3:dir==='back'?3:0;
+  return PLAYER.x+offset+side*(edge+extra+14+(dir==='front'?6:2));
 }
 function updatePlayerFight(){
   if(!playerFight)return;
