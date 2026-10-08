@@ -2512,6 +2512,7 @@ function draw(now){
   if(map1TreeHideImage && map1TreeHiding)syncMap1TreeHideImagePosition();
   updateMap1BockMugCue();
   updateMap1GuestEmptyMugCue();
+  updateMap1MoneyCue();
   syncMap1EventVisibility();
   syncMap1Scribe();
   syncEventAudioForCurrentMap();
@@ -3042,6 +3043,65 @@ const MAP1_GUEST_EMOTION_IMAGES={
   yellow:'assets/npc/gast-emotion-gelb.png?v=98',
   red:'assets/npc/gast-emotion-rot.png?v=98'
 };
+/* v114: Zahlungen übernehmen exakt die Emotionswertung des bedienten Gasts. */
+const MAP1_COIN_IMAGES=[1,2,3].map(n=>`assets/props/kupfer-${n}.png?v=114`);
+const MAP1_COIN_WIDTHS=[11.0, 15.076, 16.9572]; // gemeinsamer Maßstab für die ausgeschnittenen Münzen
+const MAP1_MONEY_BAG_IMAGE='assets/props/geldsack.png?v=114';
+const map1MoneySounds=[1,2,3].map(n=>new Audio(`assets/audio/geld-${n}.mp3?v=114`));
+map1MoneySounds.forEach(a=>{a.preload='auto';a.volume=1;});
+const map1GuestMoney=[];
+let map1MoneyBag=null,map1MoneyTotal=0;
+function ensureMap1MoneyBag(){
+  if(map1MoneyBag)return map1MoneyBag;
+  map1MoneyBag=document.createElement('div');map1MoneyBag.id='map1MoneyBag';
+  Object.assign(map1MoneyBag.style,{position:'absolute',right:'0',bottom:'0',width:'clamp(105px, 11.97vw, 180.6px)',aspectRatio:'1277 / 1109',pointerEvents:'none',userSelect:'none',overflow:'visible',zIndex:'70000'});
+  const img=document.createElement('img');img.src=MAP1_MONEY_BAG_IMAGE;img.alt='';img.draggable=false;
+  Object.assign(img.style,{position:'absolute',inset:'0',width:'100%',height:'100%',maxWidth:'none',objectFit:'contain',transform:'scaleX(-1)',zIndex:'1',pointerEvents:'none'});
+  map1MoneyBag.appendChild(img);game.appendChild(map1MoneyBag);return map1MoneyBag;
+}
+function dropMap1GuestMoney(tableId,kind){
+  const table=document.getElementById(tableId),mug=map1TableMugs.get(tableId);
+  if(!table||!mug?.isConnected||mug.dataset.guestEmpty!=='1')return;
+  const count=kind==='green'?3:kind==='yellow'?2:1;
+  const el=document.createElement('img');el.src=MAP1_COIN_IMAGES[count-1];el.alt='';el.draggable=false;
+  const x=px(table,'left')+table.offsetWidth*.5,y=(parseFloat(mug.style.top)||px(table,'top')+table.offsetHeight*.23)+10;
+  Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
+  el.dataset.x=String(x);el.dataset.y=String(y);el.dataset.picked='0';
+  world.appendChild(el);map1GuestMoney.push({el,count,x,y,tableId,mug});
+}
+function map1NearbyMoney(){
+  if(currentMap!==1||mapTransitioning||gamePaused)return null;
+  let best=null,bestD=Infinity;
+  for(const money of map1GuestMoney){const d=Math.hypot(PLAYER.x-money.x,PLAYER.y-money.y);if(money.el.isConnected&&money.el.dataset.picked!=='1'&&d<=42&&d<bestD){best=money;bestD=d;}}
+  return best;
+}
+function updateMap1MoneyCue(){
+  const near=map1NearbyMoney();
+  for(const money of map1GuestMoney){money.el.style.visibility=currentMap===1?'visible':'hidden';money.el.style.filter=money===near?MAP1_LANDSCAPE_GLOW:'none';money.el.style.zIndex=String((Number(money.mug.style.zIndex)||750)+1);}
+}
+function animateMap1MoneyToBag(count){
+  const bag=ensureMap1MoneyBag(),coin=document.createElement('img');coin.src=MAP1_COIN_IMAGES[count-1];coin.alt='';coin.draggable=false;
+  const startY=-10*baseScale*ZOOM_LEVELS[zoomIndex];
+  Object.assign(coin.style,{position:'absolute',left:'49%',top:`${startY}px`,width:`${MAP1_COIN_WIDTHS[count-1]*baseScale*ZOOM_LEVELS[zoomIndex]}px`,height:'auto',maxWidth:'none',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:'2'});
+  bag.appendChild(coin);
+  const fall=coin.animate([{top:`${startY}px`},{top:'32%'}],{duration:480,easing:'cubic-bezier(.42,0,1,1)',fill:'forwards'});
+  // Die pausierbare Spielzeit bleibt auch dann maßgeblich, wenn Web Animations onfinish verzögert wird.
+  gameSetTimeout(()=>{
+    fall.cancel();coin.remove();map1MoneyTotal+=count;
+    const plus=document.createElement('div');plus.textContent=`+${count}`;
+    Object.assign(plus.style,{position:'absolute',left:'49%',top:'-6px',font:'700 22px/1 sans-serif',color:'#b87333',textShadow:'0 2px 3px rgba(0,0,0,.8)',transform:'translate(-50%,-100%)',pointerEvents:'none',zIndex:'3',opacity:'0'});
+    bag.appendChild(plus);
+    plus.animate([{opacity:0,transform:'translate(-50%,-80%)'},{opacity:1,transform:'translate(-50%,-100%)',offset:.18},{opacity:1,transform:'translate(-50%,-130%)',offset:.65},{opacity:0,transform:'translate(-50%,-160%)'}],{duration:1500,easing:'ease-out',fill:'forwards'});
+    gameSetTimeout(()=>plus.remove(),1500);
+  },480);
+}
+function pickupMap1Money(){
+  const money=map1NearbyMoney();if(!money)return false;
+  money.el.dataset.picked='1';money.el.remove();map1GuestMoney.splice(map1GuestMoney.indexOf(money),1);
+  const sound=map1MoneySounds[money.count-1];sound.pause();sound.currentTime=0;sound.play().catch(()=>{});
+  animateMap1MoneyToBag(money.count);return true;
+}
+
 function showMap1GuestEmotion(tableId,kind){
   const table=document.getElementById(tableId),src=MAP1_GUEST_EMOTION_IMAGES[kind];
   if(!table||!src)return;
@@ -3068,6 +3128,7 @@ function map1GuestEmotionKind(waitMs){return waitMs<30000?'green':waitMs<60000?'
 function resolveMap1GuestSatisfaction(tableId,waitMs,unserved=false){
   const kind=unserved?'red':map1GuestEmotionKind(waitMs);
   showMap1GuestEmotion(tableId,kind);
+  if(!unserved)dropMap1GuestMoney(tableId,kind);
   if(unserved)changeMap1Popularity(-2);
   else if(kind==='green')changeMap1Popularity(1);
   else if(kind==='yellow'){} // v100: neutral/gelb = ausdrücklich KEINE Beliebtheitsänderung
@@ -4085,7 +4146,7 @@ window.addEventListener('keydown',e=>{
   if(k==='5' && !e.repeat){e.preventDefault();startMap1Event5();}
 });
 window.addEventListener('keydown',e=>{
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){ if(!startMap1AppleShake() && !toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
@@ -4223,6 +4284,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...MAP1_COIN_IMAGES,MAP1_MONEY_BAG_IMAGE,
     ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,MAP1_APPLE_SHAKE_IMAGE,MAP1_APPLE_IMAGE,
     'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
     'assets/npc/baer-run-1.png?v=22','assets/npc/baer-run-2.png?v=22','assets/npc/baer-run-3.png?v=22',
@@ -4328,6 +4390,7 @@ async function start(){
   ensureMap1Runner();
   ensureMap1Bear();
   ensureMap1Scribe();
+  ensureMap1MoneyBag();
   syncMap1Scribe(true);
   initMap1Guests();
   ensureMap1Toad();
