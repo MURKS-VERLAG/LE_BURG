@@ -2312,6 +2312,7 @@ function pickupMap1Toad(){
   showMap1MugPlusOne(map1Toad);
   map1Toad.style.display='none';map1Toad.style.filter='none';
   map1ToadSound.pause();map1ToadSound.currentTime=0;
+  map1ToadPickupSound.pause();map1ToadPickupSound.currentTime=0;map1ToadPickupSound.play().catch(()=>{});
   return true;
 }
 
@@ -2321,6 +2322,48 @@ const MAP1_APPLE_IMAGE='assets/props/apfel.png?v=111';
 let map1AppleShake=null,map1AppleShakeEl=null;
 const map1Apples=[];
 let map1ApplesCollected=0;
+/* v113: Shuffle-Bag bleibt über Rüttelaktionen hinweg erhalten. */
+const map1AppleShakeSounds=[1,2,3,4].map(n=>new Audio(`assets/audio/apfelbaum-ruetteln-${n}.mp3?v=113`));
+const map1ToadPickupSound=new Audio('assets/audio/kroete-aufsammeln.mp3?v=113');
+[...map1AppleShakeSounds,map1ToadPickupSound].forEach(a=>{a.preload='auto';a.volume=1;});
+let map1AppleSoundBag=[],map1AppleEffects=null;
+function nextMap1AppleShakeSound(){
+  if(!map1AppleSoundBag.length){
+    map1AppleSoundBag=[...map1AppleShakeSounds];
+    for(let i=map1AppleSoundBag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[map1AppleSoundBag[i],map1AppleSoundBag[j]]=[map1AppleSoundBag[j],map1AppleSoundBag[i]];}
+  }
+  return map1AppleSoundBag.pop();
+}
+function stopMap1AppleShakeEffects(){
+  const fx=map1AppleEffects;if(!fx)return;
+  map1AppleEffects=null;
+  gameClearTimeout(fx.stopTimer);gameClearTimeout(fx.leafTimer);
+  for(const sound of map1AppleShakeSounds){sound.onended=null;sound.pause();sound.currentTime=0;gamePausedAudio.delete(sound);}
+  fx.leaves.remove();
+}
+function startMap1AppleShakeEffects(){
+  stopMap1AppleShakeEffects();
+  const state=map1AppleShake;if(!state)return;
+  const leaves=document.createElement('div');
+  Object.assign(leaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});
+  world.appendChild(leaves);
+  const fx={leaves,stopTimer:0,leafTimer:0};map1AppleEffects=fx;
+  const playNext=()=>{
+    if(map1AppleEffects!==fx||!map1AppleShake||gameNow()-state.start>=3000)return;
+    const sound=nextMap1AppleShakeSound();sound.pause();sound.currentTime=0;
+    sound.onended=playNext;sound.play().catch(()=>{});
+  };
+  const emitLeaves=()=>{
+    if(map1AppleEffects!==fx||!map1AppleShake)return;
+    const remaining=3000-(gameNow()-state.start);if(remaining<=0)return;
+    const tree=state.tree;
+    burstMap1TreeLeaves({leaves,originX:px(tree,'left')+tree.offsetWidth*.5,originY:px(tree,'top')+tree.offsetHeight*.24,durationLimit:remaining});
+    fx.leafTimer=gameSetTimeout(emitLeaves,350);
+  };
+  fx.stopTimer=gameSetTimeout(stopMap1AppleShakeEffects,Math.max(0,3000-(gameNow()-state.start)));
+  playNext();emitLeaves();
+}
+
 function map1AppleSprite(){return collisionSprites.find(s=>s.el.id==='apfelbaum');}
 function startMap1AppleShake(){
   if(map1AppleShake)return true; // Leertaste während der Aktion verbrauchen.
@@ -2347,15 +2390,17 @@ function startMap1AppleShake(){
       if(first>=0)visibleRatio=(last-first+1)/canvas.height;
     }catch(_){}
   }
-  const height=playerWorldHeight()*visibleRatio*.65; // v112: Rüttelbild exakt 35 % kleiner
+  const height=playerWorldHeight()*visibleRatio*.65*1.10; // v113: gegenüber v112 exakt 10 % größer
   map1AppleShake={start:gameNow(),tree,treeTransform:tree.style.transform,playerVisibility:player.style.visibility,x:PLAYER.x,y:PLAYER.y};
   Object.assign(map1AppleShakeEl.style,{display:'block',height:`${height}px`,width:'auto',left:`${PLAYER.x}px`,top:`${PLAYER.y}px`});
   PLAYER.moving=false;PLAYER.frameClock=0;player.style.visibility='hidden';
+  startMap1AppleShakeEffects();
   updateMap1AppleShake(gameNow());return true;
 }
 function updateMap1AppleShake(now){
   const state=map1AppleShake;if(!state)return;
   if(now-state.start>=3000){
+    stopMap1AppleShakeEffects();
     state.tree.style.transform=state.treeTransform;
     player.style.visibility=state.playerVisibility;
     map1AppleShakeEl.style.display='none';map1AppleShake=null;
@@ -3411,9 +3456,9 @@ function syncMap1TreeHideImagePosition(){
   map1TreeHideImage.style.top=`${d.top+d.h*.155}px`;
   map1TreeHideImage.style.transform='translate(-50%,-18%) scale(.88)';
 }
-function burstMap1TreeLeaves(){
-  const fx=ensureMap1TreeHideFX(),d=map1TreeDockPoint(); if(!fx||!d)return;
-  const originX=d.left+d.w*.5, originY=d.top+d.h*.24;
+function burstMap1TreeLeaves(options=null){
+  const fx=options?{leaves:options.leaves}:ensureMap1TreeHideFX(),d=options?null:map1TreeDockPoint(); if(!fx||(!options&&!d))return;
+  const originX=options?options.originX:d.left+d.w*.5, originY=options?options.originY:d.top+d.h*.24;
   const glyphs=['●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆','●','◆'];
   glyphs.forEach((glyph,i)=>{
     const leaf=document.createElement('span');leaf.textContent=glyph;
@@ -3432,7 +3477,7 @@ function burstMap1TreeLeaves(){
       {transform:`translate(-50%,-50%) translate(${dx}px,${up}px) rotate(${rot*.28}deg) scale(1)`,opacity:1,offset:.18},
       {transform:`translate(-50%,-50%) translate(${drift*.82}px,${fall*.55}px) rotate(${rot*.72}deg) scale(.92)`,opacity:.95,offset:.72},
       {transform:`translate(-50%,-50%) translate(${drift}px,${fall}px) rotate(${rot}deg) scale(.72)`,opacity:0,offset:1}
-    ],{duration:1500+(i%5)*95,easing:'cubic-bezier(.18,.65,.28,1)',fill:'forwards'});
+    ],{duration:Math.min(1500+(i%5)*95,options?options.durationLimit:Infinity),easing:'cubic-bezier(.18,.65,.28,1)',fill:'forwards'});
     anim.onfinish=()=>leaf.remove();
   });
 }
