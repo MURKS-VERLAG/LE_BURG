@@ -20,6 +20,7 @@ function pauseAnimationSystem(){
   if(gamePaused)return;
   gamePauseAt=performance.now();gamePaused=true;
   keys.clear();
+  stopPlayerFight();
   for(const item of gameTimers.values())gameNativeClear(item.native);
   for(const item of gameFrames.values())gameNativeCancel(item.native);
   gameAudio.add(bgMusic);
@@ -2781,6 +2782,7 @@ function draw(now){
   updateMap1King(now);
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
+  if(playerFight&&playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
   updateKingTableMask();
   updateFurniturePlayerMask();
   syncMap1LandscapeDepth();
@@ -4347,8 +4349,55 @@ function syncMap1NpcPlayerDepth(){
   }
 }
 
+/* v123: stationäre, auf die Audioposition synchronisierte Schlagfolge. */
+const PLAYER_FIGHT_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-back-${n}.png?v=123`),right:[1,2,3].map(n=>`assets/player/fight-side-${n}.png?v=123`),front:[1,2,4].map(n=>`assets/player/fight-front-${n}.png?v=123`)};
+const playerFightSound=new Audio('assets/audio/player-fight.mp3?v=123');playerFightSound.preload='auto';playerFightSound.volume=1;playerFightSound.loop=true;
+let playerFight=null,playerFightMug=null;
+function playerFightBlockedByGlow(){
+  return !!(map1NearbyMoney()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
+    (currentMap===1&&map1Toad&&map1Toad.style.display!=='none'&&map1Toad.style.filter!== 'none'&&map1Toad.style.filter)||
+    (currentMap===1&&map1PierPosition===1&&PLAYER.direction==='back'));
+}
+function startPlayerFight(){
+  if(playerFight||gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||playerFightBlockedByGlow())return false;
+  playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,baseHeight:player.offsetHeight,frame:-2};
+  PLAYER.moving=false;PLAYER.frameClock=0;
+  if(playerHasBeer){
+    if(!playerFightMug){playerFightMug=document.createElement('img');playerFightMug.src='assets/npc/bock-wunsch.png?v=38';playerFightMug.alt='';playerFightMug.draggable=false;Object.assign(playerFightMug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',transform:'translate(-50%,-100%)'});world.appendChild(playerFightMug);}
+    Object.assign(playerFightMug.style,{left:`${PLAYER.x+22}px`,top:`${PLAYER.y}px`,display:'block',visibility:'visible'});
+  }
+  playerFightSound.currentTime=0;playerFightSound.play().catch(()=>{stopPlayerFight();});updatePlayerFight();return true;
+}
+function stopPlayerFight(){
+  if(!playerFight)return;const state=playerFight;playerFight=null;playerFightSound.pause();playerFightSound.currentTime=0;gamePausedAudio.delete(playerFightSound);
+  if(playerFightMug)playerFightMug.style.display='none';
+  Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform});PLAYER.direction=state.direction;PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
+}
+function updatePlayerFight(){
+  if(!playerFight)return;
+  if(map1GameOverStarted||mapTransitioning){stopPlayerFight();return;}
+  const state=playerFight,t=playerFightSound.currentTime;
+  const hit=t<.5?-1:t<1.028?0:t<1.606?1:t<2.215?2:3;
+  if(hit!==state.frame){
+    state.frame=hit;
+    if(hit<0){player.src=state.src;Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform});}
+    else{
+      const dir=state.direction==='left'?'right':state.direction;
+      // Arrayplätze: 1,3,1,2 (S: 1,4,1,2).
+      const index=[0,2,0,1][hit];player.src=PLAYER_FIGHT_IMAGES[dir][index];
+      const scale=playerVisualScale(),mirror=state.direction==='left'?-1:1;
+      Object.assign(player.style,{height:`${state.baseHeight}px`,width:'auto',transform:`translate(-50%,-100%) scale(${scale*mirror},${scale})`});
+    }
+  }
+  if(playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
+}
+
 function updatePlayer(now){
   if(!player)return;
+  if(playerFight){
+    updatePlayerFight();playerLastTime=now;PLAYER.moving=false;
+    updateMap2Occlusion();updateMap2BarDepth();updateStandingTableDepth();return;
+  }
   if(map1GameOverStarted || map1AppleShake || mapTransitioning || map2BarServing || map1TableServing || map1TreeHiding || map1TreeTransitioning){ playerLastTime=now; updateMap2BarInteractionCue(); updateMap1TableInteractionCue(); return; }
 
   const dt=Math.min(.04,(now-playerLastTime)/1000);
@@ -4428,15 +4477,19 @@ window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
-    if(!e.repeat){ if(!startMap1AppleShake() && !toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
+    if(!e.repeat){
+      const handled=startMap1AppleShake()||toggleMap1TreeHide()||takeMap1GuestOrder()||takeMap1WomanOrder()||startMap1TableServe()||startMap1BockBeerServe();
+      if(!handled){if(map2BarCanInteract())startMap2BarServe();else startPlayerFight();}
+    }
   }
 });
 
 window.addEventListener('keyup',e=>{
+  if(e.code==='Space'){e.preventDefault();stopPlayerFight();}
   const k=e.key.toLowerCase();
   if(['w','a','s','d'].includes(k)){keys.delete(k);e.preventDefault();}
 });
-window.addEventListener('blur',()=>keys.clear());
+window.addEventListener('blur',()=>{keys.clear();stopPlayerFight();});
 
 /* v106: neue Landschaftsobjekte, unabhängig von den bisherigen Prop-Zonen. */
 const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.61,.72],[.61,1],[.44,1]]; // v108: gerade Stammseiten, keine seitlichen Wurzel-Hitboxen
@@ -4563,6 +4616,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...Object.values(PLAYER_FIGHT_IMAGES).flat(),
     ...MAP1_KING_IMAGES,
     ...MAP1_COIN_IMAGES,
     ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,MAP1_APPLE_SHAKE_IMAGE,MAP1_APPLE_IMAGE,
