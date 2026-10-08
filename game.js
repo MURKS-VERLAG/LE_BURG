@@ -275,7 +275,7 @@ function syncMap1RealGuestCount(){
   const regular=(typeof map1GuestActive!=='undefined'&&map1GuestActive?1:0)+(typeof map1WomanActive!=='undefined'&&map1WomanActive?1:0);
   const event3=(typeof map1Event3Active!=='undefined'&&map1Event3Active&&map1Event3FarmerStarted&&map1Event3AttackStage!=='hit')?1:0;
   const event5=(typeof map1Event5Active!=='undefined'&&map1Event5Active&&map1Event5FarmerStarted&&map1Event5FireStage==='none')?1:0;
-  setMap1GuestCount(regular+event3+event5);
+  setMap1GuestCount(regular+event3+event5+(typeof map1KingActive!=='undefined'&&map1KingActive?1:0));
 }
 function ensureMap1GameOverFX(){
   if(map1GameOverOverlay)return;
@@ -2241,7 +2241,7 @@ function syncMap1EventVisibility(){
    die Event-SONGS; Schreie/Bärensounds/Bock-SFX bleiben innen stumm. */
 function syncEventAudioForCurrentMap(){
   if(currentMap===2){
-    map1KingArrivalSound.pause();map1KingGreetingSound.pause();
+    map1KingArrivalSound.pause();map1KingGreetingSound.pause();map1KingStandSound.pause();
     map1RunnerSound.pause();
     stopMap1BearAudioLoop();
     [map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>a.pause());
@@ -2495,11 +2495,13 @@ function updateMap1Apples(now){
 }
 
 /* v116: Philipp ausschließlich auf Taste 6, eigener Referenzpfad ohne Kollisionen. */
-const MAP1_KING_IMAGES=['assets/npc/philipp-walk.png?v=116','assets/npc/philipp-gruss.png?v=116','assets/npc/philipp-sitz.png?v=116'];
+const MAP1_KING_IMAGES=['assets/npc/philipp-walk.png?v=116','assets/npc/philipp-gruss.png?v=116','assets/npc/philipp-sitz.png?v=116','assets/npc/philipp-danke.png?v=117','assets/npc/philipp-trinken.png?v=117',...[1,2,3].map(n=>`assets/npc/philipp-return-${n}.png?v=117`)];
+const map1KingStandSound=new Audio('assets/audio/philipp-aufstehen.mp3?v=117');
 const map1KingArrivalSound=new Audio('assets/audio/philipp-ankunft.mp3?v=116');
 const map1KingGreetingSound=new Audio('assets/audio/philipp-gruss.mp3?v=116');
-[map1KingArrivalSound,map1KingGreetingSound].forEach(a=>{a.preload='auto';a.volume=1;});
+[map1KingArrivalSound,map1KingGreetingSound,map1KingStandSound].forEach(a=>{a.preload='auto';a.volume=1;});
 let map1King=null,map1KingThought=null,map1KingActive=false,map1KingStage='idle',map1KingStart=0,map1KingGreetingAt=0,map1KingHeight=110;
+let map1KingWaitStart=0,map1KingServiceWaitMs=0,map1KingReturnStart=0,map1KingMugTimer=0,map1KingDrinkTimer=0;
 const MAP1_KING_SPEED=55,MAP1_KING_FRAME_MS=285;
 const MAP1_KING_PATH=[[1475,1065],[1434.367,1018.247],[1422.861,1010.577],[1411.356,1001.948],[1399.85,993.318],[1388.345,984.689],[1376.839,976.06],[1365.333,968.39],[1353.828,959.76],[1342.322,951.131],[1330.816,942.502],[1319.311,933.873],[1307.805,926.202],[1296.3,917.573],[1284.794,908.944],[1273.288,901.273],[1261.783,892.644],[1250.277,884.974],[1238.772,876.345],[1227.266,868.674],[1215.76,861.004],[1204.255,853.333],[1192.749,846.622],[1181.243,838.951],[1169.738,832.24],[1158.232,826.487],[1146.727,819.775],[1135.221,814.981],[1123.715,809.228],[1112.21,804.434],[1100.704,799.64],[1089.199,793.888],[1077.693,789.094],[1066.187,784.3],[1054.682,776.629],[1043.176,768.959],[1031.67,761.288],[1020.165,753.139],[1008.659,745.948],[997.154,737.318],[985.648,729.648],[974.142,721.978],[962.637,714.307],[951.131,706.637],[939.625,699.925],[928.12,693.213],[916.614,686.502],[905.109,679.79],[893.603,674.996],[882.097,670.202],[870.592,665.408],[859.086,662.532],[847.581,659.655],[836.075,657.738],[824.569,655.82],[813.064,653.903],[801.558,652.944],[790.052,651.985],[768,647]];
 const MAP1_KING_PATH_LENGTH=bockPathLength(MAP1_KING_PATH);
@@ -2523,22 +2525,70 @@ function ensureMap1KingThought(){
 }
 function setMap1KingPose(index,mirror=false){
   const el=ensureMap1King(),src=MAP1_KING_IMAGES[index];if(el.getAttribute('src')!==src)el.src=src;
-  let height=map1KingHeight;
-  // Sitzfläche liegt bei 78 % der vorhandenen Stuhlhöhe; Hüftanker im Sitzsprite bei 52 %.
-  if(index===2){const chair=document.getElementById('stuhl'),foot=MAP1_KING_PATH.at(-1)[1];if(chair){const seatY=px(chair,'top')+chair.offsetHeight*.78;height=foot>seatY?(foot-seatY)/.48:map1KingHeight*.8;}}
-  const anchors=[.49,.61,.52],ax=mirror?1-anchors[index]:anchors[index];
+  const seated=index>=2&&index<=4;
+  const height=seated?map1KingHeight*.94:map1KingHeight;
+  if(seated){
+    const chair=document.getElementById('stuhl'),foot=MAP1_KING_PATH.at(-1)[1];
+    const seatY=chair?px(chair,'top')+chair.offsetHeight*.78:foot-map1KingHeight*.45;
+    // Alle Sitzgesten bleiben mit der Hüfte auf derselben Stuhlsitzfläche.
+    const hip=[.52,.46,.44][index-2];el.style.left=`${MAP1_KING_PATH.at(-1)[0]}px`;el.style.top=`${seatY+height*(1-hip)}px`;
+  }
+  const anchors=[.49,.61,.52,.60,.60,.5,.5,.5],ax=mirror?1-anchors[index]:anchors[index];
   Object.assign(el.style,{height:`${height}px`,width:'auto',transformOrigin:`${ax*100}% 100%`,transform:`translate(${-ax*100}%,-100%) scaleX(${mirror?-1:1})`});
 }
 function startMap1KingEvent(){
   if(currentMap!==1||mapTransitioning||gamePaused||map1GameOverStarted||map1KingActive)return false;
   ensureMap1PropDepthOrder();ensureMap1King();ensureMap1KingThought();
+  map1KingWaitStart=map1KingServiceWaitMs=0;clearMap1KingTimers();
   map1KingActive=true;map1KingStage='arriving';map1KingStart=gameNow();
   // Normalgröße der W-Figur ohne Bier, unabhängig von momentanem Bier-/Richtungsstatus.
   const back=PLAYER_IMAGE_CACHE.get('assets/player/nobier-back-1.png?v=69');
-  map1KingHeight=back?.naturalWidth&&back?.naturalHeight?player.offsetWidth*1.10*back.naturalHeight/back.naturalWidth:playerWorldHeight();
+  map1KingHeight=1.05*(back?.naturalWidth&&back?.naturalHeight?player.offsetWidth*1.10*back.naturalHeight/back.naturalWidth:playerWorldHeight());
   map1KingThought.style.display='none';map1KingThought.style.opacity='0';
   map1King.style.display='block';setMap1KingPose(0,false);updateMap1King(gameNow());
-  map1KingArrivalSound.pause();map1KingArrivalSound.currentTime=0;map1KingArrivalSound.play().catch(()=>{});return true;
+  map1KingArrivalSound.pause();map1KingArrivalSound.currentTime=0;map1KingArrivalSound.play().catch(()=>{});syncMap1RealGuestCount();return true;
+}
+function clearMap1KingTimers(){
+  gameClearTimeout(map1KingMugTimer);gameClearTimeout(map1KingDrinkTimer);map1KingMugTimer=map1KingDrinkTimer=0;
+}
+function hideMap1KingThought(){
+  if(!map1KingThought)return;map1KingThought.style.opacity='0';map1KingThought.style.transform='scale(.84)';
+  gameSetTimeout(()=>{if(map1KingThought&&map1KingThought.style.opacity==='0')map1KingThought.style.display='none';},280);
+}
+function resolveMap1KingSatisfaction(unserved=false){
+  const kind=unserved?'red':map1GuestEmotionKind(map1KingServiceWaitMs);
+  showMap1GuestEmotion('tafel',kind);
+  if(!unserved)dropMap1GuestMoney('tafel',kind,10);
+  if(kind==='green')changeMap1Popularity(5);else if(kind==='red')changeMap1Popularity(-10);
+}
+function beginMap1KingReturn(){
+  if(!map1KingActive||map1KingStage==='returning')return;
+  clearMap1KingTimers();hideMap1KingThought();map1KingStage='returning';map1KingReturnStart=gameNow();
+  const [x,y]=MAP1_KING_PATH.at(-1);map1King.style.left=`${x}px`;map1King.style.top=`${y}px`;setMap1KingPose(5);
+  if(currentMap===1){map1KingStandSound.pause();map1KingStandSound.currentTime=0;map1KingStandSound.play().catch(()=>{});}
+}
+function finishMap1King(){
+  clearMap1KingTimers();map1KingActive=false;map1KingStage='idle';map1King.style.display='none';
+  if(map1KingThought){map1KingThought.style.opacity='0';map1KingThought.style.display='none';}
+  syncMap1RealGuestCount();
+}
+function map1KingBeerServed(table,mug){
+  if(!map1KingActive||map1KingStage!=='seated'||table?.el?.id!=='tafel')return false;
+  hideMap1KingThought();map1KingServiceWaitMs=Math.max(0,gameNow()-map1KingWaitStart);map1KingStage='beerOnTable';setMap1KingPose(3);
+  map1KingMugTimer=gameSetTimeout(()=>{
+    map1KingMugTimer=0;if(!map1KingActive||map1KingStage!=='beerOnTable')return;
+    if(mug?.isConnected)mug.style.display='none';map1KingStage='drinking';setMap1KingPose(4);
+    map1KingDrinkTimer=gameSetTimeout(()=>{
+      map1KingDrinkTimer=0;if(!map1KingActive||map1KingStage!=='drinking')return;
+      if(mug?.isConnected){
+        mug.src='assets/npc/gast-krug-leer.png?v=92';mug.style.display='block';mug.style.filter='none';
+        mug.dataset.guestEmpty='1';mug.dataset.picked='0';mug.dataset.landed='1';
+        mug.dataset.x=String(parseFloat(mug.style.left)||0);mug.dataset.y=String(parseFloat(mug.style.top)||0);
+      }
+      resolveMap1KingSatisfaction(false);beginMap1KingReturn();
+    },3000);
+  },2000);
+  return true;
 }
 function updateMap1King(now){
   if(!map1KingActive)return;
@@ -2550,8 +2600,21 @@ function updateMap1King(now){
     setMap1KingPose(0,Math.floor((now-map1KingStart)/MAP1_KING_FRAME_MS)%2===1);
     if(t===1){map1KingStage='greeting';map1KingGreetingAt=now;setMap1KingPose(1,false);if(visible){map1KingGreetingSound.pause();map1KingGreetingSound.currentTime=0;map1KingGreetingSound.play().catch(()=>{});}}
   }else if(map1KingStage==='greeting'&&now-map1KingGreetingAt>=2000){
-    map1KingStage='seated';setMap1KingPose(2,false);const b=ensureMap1KingThought();b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';
-    gameRequestAnimationFrame(()=>gameRequestAnimationFrame(()=>{if(map1KingStage==='seated'){b.style.opacity='1';b.style.transform='scale(1)';}}));
+    map1KingStage='seated';map1KingWaitStart=now;setMap1KingPose(2,false);
+    const mug=map1ExistingFullTableMug('tafel');
+    if(mug)map1KingBeerServed(tableSpriteById('tafel'),mug);
+    else{
+      const b=ensureMap1KingThought();b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';
+      gameRequestAnimationFrame(()=>gameRequestAnimationFrame(()=>{if(map1KingStage==='seated'){b.style.opacity='1';b.style.transform='scale(1)';}}));
+    }
+  }else if(map1KingStage==='seated'&&now-map1KingWaitStart>=90000){
+    resolveMap1KingSatisfaction(true);beginMap1KingReturn();
+  }else if(map1KingStage==='returning'){
+    const t=Math.min(1,(now-map1KingReturnStart)/(MAP1_KING_PATH_LENGTH/MAP1_KING_SPEED*1000));
+    const [x,y]=t===1?MAP1_KING_PATH[0]:map1GuestPointOnPath(MAP1_KING_PATH,1-t);
+    el.style.left=`${x}px`;el.style.top=`${y}px`;
+    const sequence=[5,7,6,7];setMap1KingPose(sequence[Math.floor((now-map1KingReturnStart)/MAP1_KING_FRAME_MS)%sequence.length]);
+    if(t===1)finishMap1King();
   }
   if(map1KingThought.style.display!=='none'){
     map1KingThought.style.left=`${parseFloat(el.style.left)+18}px`;
@@ -3108,6 +3171,7 @@ function startMap1TableServe(){
     const servedMug=ensureTableMug(table);
     map1GuestBeerServed(table,servedMug);
     map1WomanBeerServed(table,servedMug);
+    map1KingBeerServed(table,servedMug);
     map1TableServing=false;
     playerHasBeer=false;
     PLAYER.sequenceIndex=0; PLAYER.frameClock=0; PLAYER.frame=activePlayerSequence(PLAYER.direction)[0];
@@ -3136,16 +3200,16 @@ const map1MoneySounds=[1,2,3].map(n=>new Audio(`assets/audio/geld-${n}.mp3?v=114
 map1MoneySounds.forEach(a=>{a.preload='auto';a.volume=1;});
 const map1GuestMoney=[];
 let map1MoneyTotal=0;
-function dropMap1GuestMoney(tableId,kind){
+function dropMap1GuestMoney(tableId,kind,valueMultiplier=1){
   const table=document.getElementById(tableId),mug=map1TableMugs.get(tableId);
   if(!table||!mug?.isConnected||mug.dataset.guestEmpty!=='1')return;
   const count=kind==='green'?3:kind==='yellow'?2:1;
   const el=document.createElement('img');el.src=MAP1_COIN_IMAGES[count-1];el.alt='';el.draggable=false;
-  const x=px(table,'left')+table.offsetWidth*.5,y=px(table,'top')+table.offsetHeight*.23+10;
+  const x=px(table,'left')+table.offsetWidth*.5,y=tableId==='tafel'?parseFloat(mug.style.top)+10:px(table,'top')+table.offsetHeight*.23+10;
   const [anchorX,anchorY]=MAP1_COIN_ANCHORS[count-1];
   Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:`translate(${-anchorX*100}%,${-anchorY*100}%)`,pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
   el.dataset.x=String(x);el.dataset.y=String(y);el.dataset.picked='0';
-  world.appendChild(el);map1GuestMoney.push({el,count,x,y,tableId,mug});
+  world.appendChild(el);map1GuestMoney.push({el,count,value:count*valueMultiplier,x,y,tableId,mug});
 }
 function map1NearbyMoney(){
   if(currentMap!==1||mapTransitioning||gamePaused)return null;
@@ -3157,14 +3221,14 @@ function updateMap1MoneyCue(){
   const near=map1NearbyMoney();
   for(const money of map1GuestMoney){money.el.style.visibility=currentMap===1?'visible':'hidden';money.el.style.filter=money===near?MAP1_LANDSCAPE_GLOW:'none';money.el.style.zIndex=String((Number(money.mug.style.zIndex)||750)+1);}
 }
-function showMap1MoneyAtScribe(count){
+function showMap1MoneyAtScribe(count,value=count){
   const scribe=ensureMap1Scribe(),fx=document.createElement('div');
   Object.assign(fx.style,{position:'absolute',left:'50%',top:'-6px',display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',pointerEvents:'none',zIndex:'30000',opacity:'0',transform:'translate(-50%,-100%)'});
   const coin=document.createElement('img');coin.src=MAP1_COIN_IMAGES[count-1];coin.alt='';coin.draggable=false;
   Object.assign(coin.style,{width:`${MAP1_COIN_WIDTHS[count-1]*1.8}px`,height:'auto',maxWidth:'none',pointerEvents:'none'});
-  const plus=document.createElement('div');plus.textContent=`+${count}`;
+  const plus=document.createElement('div');plus.textContent=`+${value}`;
   Object.assign(plus.style,{font:'700 22px/1 sans-serif',color:'#b87333',textShadow:'0 2px 3px rgba(0,0,0,.8)',whiteSpace:'nowrap'});
-  fx.append(coin,plus);scribe.appendChild(fx);map1MoneyTotal+=count;
+  fx.append(coin,plus);scribe.appendChild(fx);map1MoneyTotal+=value;
   fx.animate([{opacity:0,transform:'translate(-50%,-90%)'},{opacity:1,transform:'translate(-50%,-100%)',offset:.18},{opacity:1,transform:'translate(-50%,-120%)',offset:.65},{opacity:0,transform:'translate(-50%,-145%)'}],{duration:1500,easing:'ease-out',fill:'forwards'});
   gameSetTimeout(()=>fx.remove(),1500);
 }
@@ -3172,7 +3236,7 @@ function pickupMap1Money(){
   const money=map1NearbyMoney();if(!money)return false;
   money.el.dataset.picked='1';money.el.remove();map1GuestMoney.splice(map1GuestMoney.indexOf(money),1);
   const sound=map1MoneySounds[money.count-1];sound.pause();sound.currentTime=0;sound.play().catch(()=>{});
-  showMap1MoneyAtScribe(money.count);return true;
+  showMap1MoneyAtScribe(money.count,money.value??money.count);return true;
 }
 
 function showMap1GuestEmotion(tableId,kind){
