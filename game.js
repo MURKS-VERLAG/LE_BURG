@@ -1248,6 +1248,35 @@ function finishMap1Event4(){
   if(map1Event4Kalif)map1Event4Kalif.style.display='none';
   resumeMap1AmbientMusic();
 }
+/* v112: Kalif-Intro erst gepuffert und nach abgeschlossenem Rücksprung auf 0 starten. */
+const kalifAudioStarts=new WeakMap();
+async function startKalifIntroAudio(intro,music,isActive){
+  const token=(kalifAudioStarts.get(intro)||0)+1;kalifAudioStarts.set(intro,token);
+  intro.pause();music.pause();
+  const current=()=>kalifAudioStarts.get(intro)===token&&isActive();
+  try{
+    if(intro.readyState<4){
+      await new Promise((resolve,reject)=>{
+        const clean=()=>{intro.removeEventListener('canplaythrough',ready);intro.removeEventListener('error',failed);};
+        const ready=()=>{clean();resolve();};
+        const failed=()=>{clean();reject(new Error('Kalif-Intro konnte nicht geladen werden'));};
+        intro.addEventListener('canplaythrough',ready);intro.addEventListener('error',failed);
+        intro.load();
+        if(intro.readyState>=4)ready();
+      });
+    }
+    if(!current())return;
+    intro.currentTime=0;
+    if(intro.seeking)await new Promise(resolve=>intro.addEventListener('seeked',resolve,{once:true}));
+    if(gamePaused)await new Promise(resolve=>gameRequestAnimationFrame(resolve));
+    if(!current())return;
+    music.currentTime=0;
+    const introStarted=intro.play();
+    const musicStarted=music.play();
+    await Promise.all([introStarted,musicStarted]);
+  }catch(error){console.error('KALIF-INTRO:',error);}
+}
+
 function startMap1Event4(){
   if(currentMap!==1||mapTransitioning||map1Event4Active)return;
   map1Event4Active=true;map1Event4Walking=false;map1Event4SpecialStart=-1;map1Event4PopularityDone=false;
@@ -1256,7 +1285,7 @@ function startMap1Event4(){
   const kalif=ensureMap1Event4Kalif();kalif.style.display='none';
   if(bgMusic)bgMusic.pause();map1Event4Music.pause();map1Event4Music.currentTime=0;
   // Taste 4: Crusader-Song sofort zusammen mit dem Intro-Sound starten.
-  map1Event4Music.currentTime=0;map1Event4Music.play().catch(()=>{});
+  // Intro und Musik werden gemeinsam nach der Audiovorbereitung gestartet.
   map1Event4Intro.pause();map1Event4Intro.currentTime=0;
   map1Event4Intro.onended=()=>{
     if(!map1Event4Active)return;
@@ -1264,7 +1293,7 @@ function startMap1Event4(){
     map1Event4Start=gameNow();map1Event4Walking=true;
     kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
   };
-  map1Event4Intro.play().catch(()=>{});
+  startKalifIntroAudio(map1Event4Intro,map1Event4Music,()=>map1Event4Active);
 }
 function updateMap1Event4(now){
   if(!map1Event4Active)return;
@@ -1381,8 +1410,8 @@ function beginMap1Event5Kalif(){
   // Dadurch bleibt die Fackel-Anzünd-Wegstelle an seiner Laufroute unverändert, die Begegnung mit dem Bauern liegt aber weiter unten.
   map1Event5KalifStart=gameNow();map1Event5KalifWalking=true;map1Event5TorchStart=-1;map1Event5TorchSoundDone=false;
   kalif.src='assets/npc/kalif-1.png?v=82';kalif.style.width='112px';kalif.style.display='block';kalif.style.visibility='visible';kalif.style.opacity='1';
-  map1Event5Music.pause();map1Event5Music.currentTime=0;map1Event5Music.play().catch(()=>{});
-  map1Event5Intro.pause();map1Event5Intro.currentTime=0;map1Event5Intro.onended=null;map1Event5Intro.play().catch(()=>{});
+  map1Event5Intro.onended=null;
+  startKalifIntroAudio(map1Event5Intro,map1Event5Music,()=>map1Event5Active);
 }
 function finishMap1Event5(){
   if(!map1Event5Active)return;map1Event5Active=false;map1Event5FarmerStarted=false;map1Event5KalifWalking=false;
@@ -2219,7 +2248,7 @@ function syncEventAudioForCurrentMap(){
 /* v110: Eigenständiges Krötenevent; keine Kollision oder Änderung der Teichregeln. */
 const MAP1_TOAD_SOURCES=[1,2,3,4].map(n=>`assets/npc/kroete-${n}.png?v=110`);
 const MAP1_TOAD_SPLASH='assets/npc/kroete-splash.png?v=110';
-let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1,map1ToadSide=1;
+let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1,map1ToadSide=1,map1ToadCollectedCycle=-1;
 const map1ToadSound=new Audio('assets/audio/kroete-plop.mp3?v=110');
 map1ToadSound.preload='auto';
 function ensureMap1Toad(){
@@ -2254,6 +2283,7 @@ function updateMap1Toad(now){
   if(elapsed<20000){map1Toad.style.display='none';return;}
   const cycle=Math.floor(elapsed/20000),age=elapsed-cycle*20000;
   if(cycle!==map1ToadCycle){map1ToadCycle=cycle;map1ToadLastAge=-1;map1ToadSide=Math.random()<.5?-1:1;}
+  if(cycle===map1ToadCollectedCycle){map1Toad.style.display='none';map1Toad.style.filter='none';return;}
   if(map1ToadLastAge<0&&age<180)playMap1ToadSound();
   if(map1ToadLastAge<4060&&age>=4060&&age<4660)playMap1ToadSound();
   map1ToadLastAge=age;
@@ -2266,6 +2296,23 @@ function updateMap1Toad(now){
     transform:`translate(-50%, -100%) scaleX(${(pose.mirror?-1:1)*map1ToadSide})`,
     zIndex:String(PLAYER.y>point.groundY?(Number(player.style.zIndex)||10000)-1:(Number(player.style.zIndex)||10000)+1),
     filter:pose.ground&&Math.hypot(PLAYER.x-point.x,PLAYER.y-point.groundY)<=48?MAP1_LANDSCAPE_GLOW:'none'});
+}
+
+/* v112: Nur die leuchtenden Bodenposen sind mit ^ aufhebbar. */
+function pickupMap1Toad(){
+  if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake||map1ToadEpoch===null)return false;
+  const elapsed=gameNow()-map1ToadEpoch,cycle=Math.floor(elapsed/20000);
+  if(cycle<1||cycle!==map1ToadCycle||cycle===map1ToadCollectedCycle||!map1Toad||map1Toad.style.display==='none')return false;
+  const pose=map1ToadPose(elapsed-cycle*20000);
+  if(!pose?.ground)return false;
+  const point=map1ToadPoint(1);
+  if(Math.hypot(PLAYER.x-point.x,PLAYER.y-point.groundY)>48)return false;
+  map1ToadCollectedCycle=cycle;
+  map1Toad.dataset.x=String(point.x);map1Toad.dataset.y=String(point.groundY);
+  showMap1MugPlusOne(map1Toad);
+  map1Toad.style.display='none';map1Toad.style.filter='none';
+  map1ToadSound.pause();map1ToadSound.currentTime=0;
+  return true;
 }
 
 /* v111: Apfelbaumaktion und Früchte auf der pausierbaren Weltzeit. */
@@ -2300,7 +2347,7 @@ function startMap1AppleShake(){
       if(first>=0)visibleRatio=(last-first+1)/canvas.height;
     }catch(_){}
   }
-  const height=playerWorldHeight()*visibleRatio;
+  const height=playerWorldHeight()*visibleRatio*.65; // v112: Rüttelbild exakt 35 % kleiner
   map1AppleShake={start:gameNow(),tree,treeTransform:tree.style.transform,playerVisibility:player.style.visibility,x:PLAYER.x,y:PLAYER.y};
   Object.assign(map1AppleShakeEl.style,{display:'block',height:`${height}px`,width:'auto',left:`${PLAYER.x}px`,top:`${PLAYER.y}px`});
   PLAYER.moving=false;PLAYER.frameClock=0;player.style.visibility='hidden';
@@ -3738,7 +3785,6 @@ async function enterWirtschaft(){
   // Der Sound läuft während des kompletten Übergangs unabhängig weiter.
   mapTransitioning=true;
   playDoorPassSound();
-  keys.clear();
   PLAYER.moving=false;
   PLAYER.frameClock=0;
 
@@ -3780,7 +3826,7 @@ async function leaveWirtschaft(){
   // v59: Auch beim Rückweg Iris SOFORT bei Zonenberührung; Türsound läuft weiter.
   mapTransitioning=true;
   playDoorPassSound();
-  keys.clear(); PLAYER.moving=false; PLAYER.frameClock=0;
+  PLAYER.moving=false; PLAYER.frameClock=0;
 
   const mapReady=ensureTransitionMapReady('assets/maps/terrasse.jpg');
   await animateIris(150,0,650);
@@ -3994,7 +4040,7 @@ window.addEventListener('keydown',e=>{
   if(k==='5' && !e.repeat){e.preventDefault();startMap1Event5();}
 });
 window.addEventListener('keydown',e=>{
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){ if(!startMap1AppleShake() && !toggleMap1TreeHide() && !takeMap1GuestOrder() && !takeMap1WomanOrder() && !startMap1TableServe() && !startMap1BockBeerServe()) startMap2BarServe(); }
