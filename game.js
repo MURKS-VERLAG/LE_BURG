@@ -2637,6 +2637,7 @@ function syncMap1KingDepth(){
   if(!map1KingActive||currentMap!==1)return;
   const table=document.getElementById('tafel'),chair=document.getElementById('stuhl');
   const chairZ=Number(chair?.style.zIndex)||MAP1_PROP_DEPTH_Z;
+  if(table)table.style.zIndex=String(chairZ+2); // Tafel IMMER vor Philipp, auch beim Laufen.
   if(!['arriving','returning'].includes(map1KingStage)){
     map1King.style.zIndex=String(chairZ+1);
     if(table)table.style.zIndex=String(chairZ+2);
@@ -2665,9 +2666,55 @@ function syncMap1KingDepth(){
   const playerRank=actors.findIndex(a=>a.el===player),kingRank=actors.findIndex(a=>a.el===map1King);
   let base=playerRank>=0?playerZ-playerRank:Number(map1King.style.zIndex)-kingRank;
   for(let i=0;i<actors.length;i++)if(actors[i].behind)base=Math.min(base,MAP1_PLAYER_BEHIND_Z-1-i);
+  base=Math.min(base,chairZ+1-kingRank); // Fußsortierung bleibt erhalten; König bleibt hinter der Tafel.
   actors.forEach((a,i)=>a.el.style.zIndex=String(base+i));
   if(actors.some(a=>a.el===map1Event3Farmer)&&map1Event3Blood&&map1Event3Blood.style.display!=='none')
     map1Event3Blood.style.zIndex=String(Number(map1Event3Farmer.style.zIndex)-1);
+}
+
+/* v120: Figuren dürfen auch durch halbtransparente Möbelkanten nicht durchscheinen.
+   Originalbilder/Filter bleiben unverändert; ausschließlich der Spieler wird verdeckt. */
+let furniturePlayerMaskCanvas=null,furniturePlayerMaskKey='';
+function clearFurniturePlayerMask(){
+  player.style.maskImage='none';player.style.webkitMaskImage='none';furniturePlayerMaskKey='';
+}
+function updateFurniturePlayerMask(){
+  const playerZ=Number(player.style.zIndex)||0;
+  const props=currentMap===2?[map2Bar,map2BarAction]:currentMap===1?
+    [...STANDING_TABLE_IDS,'tafel'].map(id=>document.getElementById(id)):[];
+  const pr=player.getBoundingClientRect();
+  if(!pr.width||!pr.height||player.style.visibility==='hidden'){clearFurniturePlayerMask();return;}
+  const visible=props.filter(el=>{
+    if(!el||!el.complete||!el.naturalWidth||el.style.display==='none'||el.style.visibility==='hidden'||Number(el.style.zIndex)<=playerZ)return false;
+    const r=el.getBoundingClientRect();return r.left<pr.right&&r.right>pr.left&&r.top<pr.bottom&&r.bottom>pr.top;
+  });
+  if(!visible.length){if(furniturePlayerMaskKey)clearFurniturePlayerMask();return;}
+  const transform=getComputedStyle(player).transform;
+  const mirrored=transform&&transform!=='none'?new DOMMatrix(transform).a<0:false;
+  const w=Math.max(1,Math.ceil(player.offsetWidth)),h=Math.max(1,Math.ceil(player.offsetHeight));
+  const rects=visible.map(el=>el.getBoundingClientRect());
+  const key=JSON.stringify([w,h,mirrored,...visible.map((el,i)=>[el.currentSrc||el.src,...[(rects[i].left-pr.left)/pr.width,(rects[i].top-pr.top)/pr.height,rects[i].width/pr.width,rects[i].height/pr.height].map(n=>Number(n.toFixed(4)))])]);
+  if(key===furniturePlayerMaskKey)return;
+  try{
+    const canvas=furniturePlayerMaskCanvas||(furniturePlayerMaskCanvas=document.createElement('canvas'));
+    canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    if(mirrored){ctx.translate(w,0);ctx.scale(-1,1);}
+    visible.forEach((el,i)=>{const r=rects[i];ctx.drawImage(el,(r.left-pr.left)/pr.width*w,(r.top-pr.top)/pr.height*h,r.width/pr.width*w,r.height/pr.height*h);});
+    ctx.setTransform(1,0,0,1,0,0);
+    const data=ctx.getImageData(0,0,w,h),alpha=new Uint8Array(w*h);
+    for(let i=0;i<alpha.length;i++)alpha[i]=data.data[i*4+3];
+    // Ein Maskenpixel Sicherheitsrand verhindert erneutes Durchscheinen beim Skalieren.
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      let covered=false;
+      for(let dy=-1;dy<=1&&!covered;dy++)for(let dx=-1;dx<=1;dx++){
+        const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h&&alpha[yy*w+xx]>0){covered=true;break;}
+      }
+      const i=(y*w+x)*4;data.data[i]=data.data[i+1]=data.data[i+2]=255;data.data[i+3]=covered?0:255;
+    }
+    ctx.putImageData(data,0,0);const mask=`url("${canvas.toDataURL('image/png')}")`;
+    Object.assign(player.style,{maskImage:mask,webkitMaskImage:mask,maskSize:'100% 100%',webkitMaskSize:'100% 100%',maskRepeat:'no-repeat',webkitMaskRepeat:'no-repeat'});
+    furniturePlayerMaskKey=key;
+  }catch(_){clearFurniturePlayerMask();}
 }
 
 function draw(now){
@@ -2692,6 +2739,7 @@ function draw(now){
   updateMap1King(now);
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
+  updateFurniturePlayerMask();
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
   updateMap1Apples(now);
