@@ -2637,10 +2637,10 @@ function syncMap1KingDepth(){
   if(!map1KingActive||currentMap!==1)return;
   const table=document.getElementById('tafel'),chair=document.getElementById('stuhl');
   const chairZ=Number(chair?.style.zIndex)||MAP1_PROP_DEPTH_Z;
-  if(table)table.style.zIndex=String(chairZ+2); // Tafel IMMER vor Philipp, auch beim Laufen.
+  if(table)table.style.setProperty('z-index',String(chairZ+2),'important'); // Tafel IMMER vor Philipp, auch beim Laufen.
   if(!['arriving','returning'].includes(map1KingStage)){
-    map1King.style.zIndex=String(chairZ+1);
-    if(table)table.style.zIndex=String(chairZ+2);
+    map1King.style.setProperty('z-index',String(chairZ+1),'important');
+    if(table)table.style.setProperty('z-index',String(chairZ+2),'important');
     return;
   }
   const kingFoot=parseFloat(map1King.style.top),playerZ=Number(player.style.zIndex)||1000;
@@ -2668,6 +2668,7 @@ function syncMap1KingDepth(){
   for(let i=0;i<actors.length;i++)if(actors[i].behind)base=Math.min(base,MAP1_PLAYER_BEHIND_Z-1-i);
   base=Math.min(base,chairZ+1-kingRank); // Fußsortierung bleibt erhalten; König bleibt hinter der Tafel.
   actors.forEach((a,i)=>a.el.style.zIndex=String(base+i));
+  map1King.style.setProperty('z-index',String(Math.min(Number(map1King.style.zIndex),chairZ+1)),'important');
   if(actors.some(a=>a.el===map1Event3Farmer)&&map1Event3Blood&&map1Event3Blood.style.display!=='none')
     map1Event3Blood.style.zIndex=String(Number(map1Event3Farmer.style.zIndex)-1);
 }
@@ -2717,6 +2718,51 @@ function updateFurniturePlayerMask(){
   }catch(_){clearFurniturePlayerMask();}
 }
 
+/* v121: Philipp bleibt auch an halbtransparenten Tafelrändern vollständig dahinter.
+   Die Tafel und alle anderen Figuren behalten ihre Originalbilder. */
+let kingTableMaskCanvas=null,kingTableMaskKey='';
+function clearKingTableMask(){
+  map1King.style.maskImage='none';map1King.style.webkitMaskImage='none';kingTableMaskKey='';
+}
+function updateKingTableMask(){
+  if(!map1King)return;
+  const map1KingZ=Number(map1King.style.zIndex)||0;
+  const props=currentMap===1&&map1KingActive?[document.getElementById('tafel')]:[];
+  const pr=map1King.getBoundingClientRect();
+  if(!pr.width||!pr.height||map1King.style.visibility==='hidden'){clearKingTableMask();return;}
+  const visible=props.filter(el=>{
+    if(!el||!el.complete||!el.naturalWidth||el.style.display==='none'||el.style.visibility==='hidden'||Number(el.style.zIndex)<=map1KingZ)return false;
+    const r=el.getBoundingClientRect();return r.left<pr.right&&r.right>pr.left&&r.top<pr.bottom&&r.bottom>pr.top;
+  });
+  if(!visible.length){if(kingTableMaskKey)clearKingTableMask();return;}
+  const transform=getComputedStyle(map1King).transform;
+  const mirrored=transform&&transform!=='none'?new DOMMatrix(transform).a<0:false;
+  const w=Math.max(1,Math.ceil(map1King.offsetWidth)),h=Math.max(1,Math.ceil(map1King.offsetHeight));
+  const rects=visible.map(el=>el.getBoundingClientRect());
+  const key=JSON.stringify([w,h,mirrored,...visible.map((el,i)=>[el.currentSrc||el.src,...[(rects[i].left-pr.left)/pr.width,(rects[i].top-pr.top)/pr.height,rects[i].width/pr.width,rects[i].height/pr.height].map(n=>Number(n.toFixed(4)))])]);
+  if(key===kingTableMaskKey)return;
+  try{
+    const canvas=kingTableMaskCanvas||(kingTableMaskCanvas=document.createElement('canvas'));
+    canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    if(mirrored){ctx.translate(w,0);ctx.scale(-1,1);}
+    visible.forEach((el,i)=>{const r=rects[i];ctx.drawImage(el,(r.left-pr.left)/pr.width*w,(r.top-pr.top)/pr.height*h,r.width/pr.width*w,r.height/pr.height*h);});
+    ctx.setTransform(1,0,0,1,0,0);
+    const data=ctx.getImageData(0,0,w,h),alpha=new Uint8Array(w*h);
+    for(let i=0;i<alpha.length;i++)alpha[i]=data.data[i*4+3];
+    // Ein Maskenpixel Sicherheitsrand verhindert erneutes Durchscheinen beim Skalieren.
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      let covered=false;
+      for(let dy=-1;dy<=1&&!covered;dy++)for(let dx=-1;dx<=1;dx++){
+        const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h&&alpha[yy*w+xx]>0){covered=true;break;}
+      }
+      const i=(y*w+x)*4;data.data[i]=data.data[i+1]=data.data[i+2]=255;data.data[i+3]=covered?0:255;
+    }
+    ctx.putImageData(data,0,0);const mask=`url("${canvas.toDataURL('image/png')}")`;
+    Object.assign(map1King.style,{maskImage:mask,webkitMaskImage:mask,maskSize:'100% 100%',webkitMaskSize:'100% 100%',maskRepeat:'no-repeat',webkitMaskRepeat:'no-repeat'});
+    kingTableMaskKey=key;
+  }catch(_){clearKingTableMask();}
+}
+
 function draw(now){
   const z=ZOOM_LEVELS[zoomIndex];
   currentX+=(targetX-currentX)*.055;
@@ -2739,6 +2785,7 @@ function draw(now){
   updateMap1King(now);
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
+  updateKingTableMask();
   updateFurniturePlayerMask();
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
