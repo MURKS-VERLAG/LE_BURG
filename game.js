@@ -2324,6 +2324,8 @@ const map1Apples=[];
 let map1ApplesCollected=0;
 /* v113: Shuffle-Bag bleibt über Rüttelaktionen hinweg erhalten. */
 const map1AppleShakeSounds=[1,2,3,4].map(n=>new Audio(`assets/audio/apfelbaum-ruetteln-${n}.mp3?v=113`));
+const map1AppleExtraSound=new Audio('assets/audio/apfelbaum-zusatz.mp3?v=115');
+map1AppleExtraSound.preload='auto';map1AppleExtraSound.volume=1;
 const map1ToadPickupSound=new Audio('assets/audio/kroete-aufsammeln.mp3?v=113');
 [...map1AppleShakeSounds,map1ToadPickupSound].forEach(a=>{a.preload='auto';a.volume=1;});
 let map1AppleSoundBag=[],map1AppleEffects=null;
@@ -2337,8 +2339,9 @@ function nextMap1AppleShakeSound(){
 function stopMap1AppleShakeEffects(){
   const fx=map1AppleEffects;if(!fx)return;
   map1AppleEffects=null;
-  gameClearTimeout(fx.stopTimer);gameClearTimeout(fx.leafTimer);
+  gameClearTimeout(fx.stopTimer);gameClearTimeout(fx.leafTimer);gameClearTimeout(fx.extraTimer);
   for(const sound of map1AppleShakeSounds){sound.onended=null;sound.pause();sound.currentTime=0;gamePausedAudio.delete(sound);}
+  map1AppleExtraSound.pause();map1AppleExtraSound.currentTime=0;gamePausedAudio.delete(map1AppleExtraSound);
   fx.leaves.remove();
 }
 function startMap1AppleShakeEffects(){
@@ -2347,7 +2350,7 @@ function startMap1AppleShakeEffects(){
   const leaves=document.createElement('div');
   Object.assign(leaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});
   world.appendChild(leaves);
-  const fx={leaves,stopTimer:0,leafTimer:0};map1AppleEffects=fx;
+  const fx={leaves,stopTimer:0,leafTimer:0,extraTimer:0};map1AppleEffects=fx;
   const playNext=()=>{
     if(map1AppleEffects!==fx||!map1AppleShake||gameNow()-state.start>=3000)return;
     const sound=nextMap1AppleShakeSound();sound.pause();sound.currentTime=0;
@@ -2361,6 +2364,10 @@ function startMap1AppleShakeEffects(){
     fx.leafTimer=gameSetTimeout(emitLeaves,350);
   };
   fx.stopTimer=gameSetTimeout(stopMap1AppleShakeEffects,Math.max(0,3000-(gameNow()-state.start)));
+  fx.extraTimer=gameSetTimeout(()=>{
+    if(map1AppleEffects!==fx||!map1AppleShake||gameNow()-state.start>=3000)return;
+    map1AppleExtraSound.pause();map1AppleExtraSound.currentTime=0;map1AppleExtraSound.play().catch(()=>{});
+  },Math.max(0,1000-(gameNow()-state.start)));
   playNext();emitLeaves();
 }
 
@@ -3046,26 +3053,19 @@ const MAP1_GUEST_EMOTION_IMAGES={
 /* v114: Zahlungen übernehmen exakt die Emotionswertung des bedienten Gasts. */
 const MAP1_COIN_IMAGES=[1,2,3].map(n=>`assets/props/kupfer-${n}.png?v=114`);
 const MAP1_COIN_WIDTHS=[11.0, 15.076, 16.9572]; // gemeinsamer Maßstab für die ausgeschnittenen Münzen
-const MAP1_MONEY_BAG_IMAGE='assets/props/geldsack.png?v=114';
+const MAP1_COIN_ANCHORS=[[.503001343,.506003426],[.496367159,.502770802],[.495100518,.544426940]]; // v115: Mittelpunkt der sichtbaren Alpha-Fläche
 const map1MoneySounds=[1,2,3].map(n=>new Audio(`assets/audio/geld-${n}.mp3?v=114`));
 map1MoneySounds.forEach(a=>{a.preload='auto';a.volume=1;});
 const map1GuestMoney=[];
-let map1MoneyBag=null,map1MoneyTotal=0;
-function ensureMap1MoneyBag(){
-  if(map1MoneyBag)return map1MoneyBag;
-  map1MoneyBag=document.createElement('div');map1MoneyBag.id='map1MoneyBag';
-  Object.assign(map1MoneyBag.style,{position:'absolute',right:'0',bottom:'0',width:'clamp(105px, 11.97vw, 180.6px)',aspectRatio:'1277 / 1109',pointerEvents:'none',userSelect:'none',overflow:'visible',zIndex:'70000'});
-  const img=document.createElement('img');img.src=MAP1_MONEY_BAG_IMAGE;img.alt='';img.draggable=false;
-  Object.assign(img.style,{position:'absolute',inset:'0',width:'100%',height:'100%',maxWidth:'none',objectFit:'contain',transform:'scaleX(-1)',zIndex:'1',pointerEvents:'none'});
-  map1MoneyBag.appendChild(img);game.appendChild(map1MoneyBag);return map1MoneyBag;
-}
+let map1MoneyTotal=0;
 function dropMap1GuestMoney(tableId,kind){
   const table=document.getElementById(tableId),mug=map1TableMugs.get(tableId);
   if(!table||!mug?.isConnected||mug.dataset.guestEmpty!=='1')return;
   const count=kind==='green'?3:kind==='yellow'?2:1;
   const el=document.createElement('img');el.src=MAP1_COIN_IMAGES[count-1];el.alt='';el.draggable=false;
-  const x=px(table,'left')+table.offsetWidth*.5,y=(parseFloat(mug.style.top)||px(table,'top')+table.offsetHeight*.23)+10;
-  Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
+  const x=px(table,'left')+table.offsetWidth*.5,y=px(table,'top')+table.offsetHeight*.23+10;
+  const [anchorX,anchorY]=MAP1_COIN_ANCHORS[count-1];
+  Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:`translate(${-anchorX*100}%,${-anchorY*100}%)`,pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
   el.dataset.x=String(x);el.dataset.y=String(y);el.dataset.picked='0';
   world.appendChild(el);map1GuestMoney.push({el,count,x,y,tableId,mug});
 }
@@ -3079,27 +3079,22 @@ function updateMap1MoneyCue(){
   const near=map1NearbyMoney();
   for(const money of map1GuestMoney){money.el.style.visibility=currentMap===1?'visible':'hidden';money.el.style.filter=money===near?MAP1_LANDSCAPE_GLOW:'none';money.el.style.zIndex=String((Number(money.mug.style.zIndex)||750)+1);}
 }
-function animateMap1MoneyToBag(count){
-  const bag=ensureMap1MoneyBag(),coin=document.createElement('img');coin.src=MAP1_COIN_IMAGES[count-1];coin.alt='';coin.draggable=false;
-  const startY=-10*baseScale*ZOOM_LEVELS[zoomIndex];
-  Object.assign(coin.style,{position:'absolute',left:'49%',top:`${startY}px`,width:`${MAP1_COIN_WIDTHS[count-1]*baseScale*ZOOM_LEVELS[zoomIndex]}px`,height:'auto',maxWidth:'none',transform:'translate(-50%,-50%)',pointerEvents:'none',zIndex:'2'});
-  bag.appendChild(coin);
-  const fall=coin.animate([{top:`${startY}px`},{top:'32%'}],{duration:480,easing:'cubic-bezier(.42,0,1,1)',fill:'forwards'});
-  // Die pausierbare Spielzeit bleibt auch dann maßgeblich, wenn Web Animations onfinish verzögert wird.
-  gameSetTimeout(()=>{
-    fall.cancel();coin.remove();map1MoneyTotal+=count;
-    const plus=document.createElement('div');plus.textContent=`+${count}`;
-    Object.assign(plus.style,{position:'absolute',left:'49%',top:'-6px',font:'700 22px/1 sans-serif',color:'#b87333',textShadow:'0 2px 3px rgba(0,0,0,.8)',transform:'translate(-50%,-100%)',pointerEvents:'none',zIndex:'3',opacity:'0'});
-    bag.appendChild(plus);
-    plus.animate([{opacity:0,transform:'translate(-50%,-80%)'},{opacity:1,transform:'translate(-50%,-100%)',offset:.18},{opacity:1,transform:'translate(-50%,-130%)',offset:.65},{opacity:0,transform:'translate(-50%,-160%)'}],{duration:1500,easing:'ease-out',fill:'forwards'});
-    gameSetTimeout(()=>plus.remove(),1500);
-  },480);
+function showMap1MoneyAtScribe(count){
+  const scribe=ensureMap1Scribe(),fx=document.createElement('div');
+  Object.assign(fx.style,{position:'absolute',left:'50%',top:'-6px',display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',pointerEvents:'none',zIndex:'30000',opacity:'0',transform:'translate(-50%,-100%)'});
+  const coin=document.createElement('img');coin.src=MAP1_COIN_IMAGES[count-1];coin.alt='';coin.draggable=false;
+  Object.assign(coin.style,{width:`${MAP1_COIN_WIDTHS[count-1]*1.8}px`,height:'auto',maxWidth:'none',pointerEvents:'none'});
+  const plus=document.createElement('div');plus.textContent=`+${count}`;
+  Object.assign(plus.style,{font:'700 22px/1 sans-serif',color:'#b87333',textShadow:'0 2px 3px rgba(0,0,0,.8)',whiteSpace:'nowrap'});
+  fx.append(coin,plus);scribe.appendChild(fx);map1MoneyTotal+=count;
+  fx.animate([{opacity:0,transform:'translate(-50%,-90%)'},{opacity:1,transform:'translate(-50%,-100%)',offset:.18},{opacity:1,transform:'translate(-50%,-120%)',offset:.65},{opacity:0,transform:'translate(-50%,-145%)'}],{duration:1500,easing:'ease-out',fill:'forwards'});
+  gameSetTimeout(()=>fx.remove(),1500);
 }
 function pickupMap1Money(){
   const money=map1NearbyMoney();if(!money)return false;
   money.el.dataset.picked='1';money.el.remove();map1GuestMoney.splice(map1GuestMoney.indexOf(money),1);
   const sound=map1MoneySounds[money.count-1];sound.pause();sound.currentTime=0;sound.play().catch(()=>{});
-  animateMap1MoneyToBag(money.count);return true;
+  showMap1MoneyAtScribe(money.count);return true;
 }
 
 function showMap1GuestEmotion(tableId,kind){
@@ -3665,9 +3660,14 @@ function map1PondGeometry(){
   const left=px(el,'left'),top=px(el,'top'),w=el.offsetWidth,h=el.offsetHeight;
   const ax=left+w*.184,ay=top+h*.7106+9;
   const vx=w*(.425-.184),vy=h*(.493-.7106),len=Math.hypot(vx,vy);
-  return {cx:left+w*.51147,cy:top+h*.48570,rx:w*.40255,ry:h*.28720,angle:.097883,
+  const g={cx:left+w*.51147,cy:top+h*.48570,rx:w*.40255,ry:h*.28720,angle:.097883,
     ax,ay,bx:ax+vx-vx/len*3,by:ay+vy-vy/len*3,
     entryAX:ax,entryAY:ay,entryRX:w*.0608,entryRY:h*.0754};
+  // v115: Nur Eintrittsellipse entlang der unveränderten Steglinie an die Uferkontur schieben.
+  const p=map1PondLocal(g,g.ax,g.ay),q=map1PondLocal(g,g.bx,g.by),dx=q[0]-p[0],dy=q[1]-p[1];
+  const A=dx*dx+dy*dy,B=2*(p[0]*dx+p[1]*dy),C=p[0]*p[0]+p[1]*p[1]-1,disc=B*B-4*A*C;
+  if(A>0&&disc>=0){const t=(-B-Math.sqrt(disc))/(2*A);if(t>=0&&t<=1){g.entryAX=g.ax+(g.bx-g.ax)*t;g.entryAY=g.ay+(g.by-g.ay)*t;}}
+  return g;
 }
 function map1PondLocal(g,x,y){const dx=x-g.cx,dy=y-g.cy,c=Math.cos(g.angle),s=Math.sin(g.angle);return[(dx*c+dy*s)/g.rx,(-dx*s+dy*c)/g.ry];}
 function map1PondInside(x,y){const g=map1PondGeometry();if(!g)return false;const[u,v]=map1PondLocal(g,x,y);return u*u+v*v<=1;}
@@ -4284,7 +4284,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
-    ...MAP1_COIN_IMAGES,MAP1_MONEY_BAG_IMAGE,
+    ...MAP1_COIN_IMAGES,
     ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,MAP1_APPLE_SHAKE_IMAGE,MAP1_APPLE_IMAGE,
     'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
     'assets/npc/baer-run-1.png?v=22','assets/npc/baer-run-2.png?v=22','assets/npc/baer-run-3.png?v=22',
@@ -4390,7 +4390,6 @@ async function start(){
   ensureMap1Runner();
   ensureMap1Bear();
   ensureMap1Scribe();
-  ensureMap1MoneyBag();
   syncMap1Scribe(true);
   initMap1Guests();
   ensureMap1Toad();
