@@ -628,13 +628,25 @@ function dropMap1BockMug(index){
     mug.dataset.landed='1';
   };
 }
+/* v118: Sammelreichweite erweitert; Tischgegenstände von jeder Tischkante erreichbar.
+   Möbelkollisionen und Positionen bleiben unverändert. */
+const MAP1_PICKUP_RADIUS=76;
+function map1PickupReachable(x,y,tableId=null){
+  if(Math.hypot(PLAYER.x-x,PLAYER.y-y)<=MAP1_PICKUP_RADIUS)return true;
+  const table=tableId?document.getElementById(tableId):null;
+  if(!table||!table.offsetWidth||!table.offsetHeight)return false;
+  const left=px(table,'left'),top=px(table,'top');
+  const dx=Math.max(left-PLAYER.x,0,PLAYER.x-left-table.offsetWidth);
+  const dy=Math.max(top-PLAYER.y,0,PLAYER.y-top-table.offsetHeight);
+  return Math.hypot(dx,dy)<=(PLAYER.radius||13)+12;
+}
 function map1BockNearbyMug(){
   if(currentMap!==1||mapTransitioning)return null;
   let best=null,bestD=Infinity;
   for(const mug of map1BockMugs){
     if(!mug?.isConnected||mug.dataset.picked==='1'||mug.dataset.landed!=='1')continue;
     const x=+mug.dataset.x,y=+mug.dataset.y,d=Math.hypot(PLAYER.x-x,PLAYER.y-y);
-    if(d<=42&&d<bestD){best=mug;bestD=d;}
+    if(map1PickupReachable(x,y)&&d<bestD){best=mug;bestD=d;}
   }
   return best;
 }
@@ -653,11 +665,11 @@ function showMap1MugPlusOne(mug){
 function map1GuestNearbyEmptyMug(){
   if(currentMap!==1||mapTransitioning)return null;
   let best=null,bestD=Infinity;
-  for(const mug of map1TableMugs.values()){
+  for(const [tableId,mug] of map1TableMugs.entries()){
     if(!mug?.isConnected||mug.dataset.guestEmpty!=='1'||mug.dataset.picked==='1'||mug.style.display==='none')continue;
     const x=parseFloat(mug.style.left)||+mug.dataset.x||0,y=parseFloat(mug.style.top)||+mug.dataset.y||0;
     const d=Math.hypot(PLAYER.x-x,PLAYER.y-y);
-    if(d<=42&&d<bestD){best=mug;bestD=d;}
+    if(map1PickupReachable(x,y,tableId)&&d<bestD){best=mug;bestD=d;}
   }
   return best;
 }
@@ -2530,8 +2542,8 @@ function setMap1KingPose(index,mirror=false){
   if(seated){
     const chair=document.getElementById('stuhl'),foot=MAP1_KING_PATH.at(-1)[1];
     const seatY=chair?px(chair,'top')+chair.offsetHeight*.78:foot-map1KingHeight*.45;
-    // Alle Sitzgesten bleiben mit der Hüfte auf derselben Stuhlsitzfläche.
-    const hip=[.52,.46,.44][index-2];el.style.left=`${MAP1_KING_PATH.at(-1)[0]}px`;el.style.top=`${seatY+height*(1-hip)}px`;
+    // v118: identische Größe und Höhe aller drei Sitzbilder; erstes Sitzbild minus 3 Weltpixel.
+    el.style.left=`${MAP1_KING_PATH.at(-1)[0]}px`;el.style.top=`${seatY+height*.48-3}px`;
   }
   const anchors=[.49,.61,.52,.60,.60,.5,.5,.5],ax=mirror?1-anchors[index]:anchors[index];
   Object.assign(el.style,{height:`${height}px`,width:'auto',transformOrigin:`${ax*100}% 100%`,transform:`translate(${-ax*100}%,-100%) scaleX(${mirror?-1:1})`});
@@ -3205,7 +3217,12 @@ function dropMap1GuestMoney(tableId,kind,valueMultiplier=1){
   if(!table||!mug?.isConnected||mug.dataset.guestEmpty!=='1')return;
   const count=kind==='green'?3:kind==='yellow'?2:1;
   const el=document.createElement('img');el.src=MAP1_COIN_IMAGES[count-1];el.alt='';el.draggable=false;
-  const x=px(table,'left')+table.offsetWidth*.5,y=tableId==='tafel'?parseFloat(mug.style.top)+10:px(table,'top')+table.offsetHeight*.23+10;
+  let x=px(table,'left')+table.offsetWidth*.5,y=px(table,'top')+table.offsetHeight*.23+10;
+  if(tableId==='tafel'){
+    const side=Math.random()<.5?-1:1;
+    x=parseFloat(mug.style.left)+side*((mug.offsetWidth||28)/2+MAP1_COIN_WIDTHS[count-1]/2+2);
+    y=parseFloat(mug.style.top); // Krug ist am unteren Rand verankert: Münzmitte auf dieser Höhe.
+  }
   const [anchorX,anchorY]=MAP1_COIN_ANCHORS[count-1];
   Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:`translate(${-anchorX*100}%,${-anchorY*100}%)`,pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
   el.dataset.x=String(x);el.dataset.y=String(y);el.dataset.picked='0';
@@ -3214,7 +3231,7 @@ function dropMap1GuestMoney(tableId,kind,valueMultiplier=1){
 function map1NearbyMoney(){
   if(currentMap!==1||mapTransitioning||gamePaused)return null;
   let best=null,bestD=Infinity;
-  for(const money of map1GuestMoney){const d=Math.hypot(PLAYER.x-money.x,PLAYER.y-money.y);if(money.el.isConnected&&money.el.dataset.picked!=='1'&&d<=42&&d<bestD){best=money;bestD=d;}}
+  for(const money of map1GuestMoney){const d=Math.hypot(PLAYER.x-money.x,PLAYER.y-money.y);if(money.el.isConnected&&money.el.dataset.picked!=='1'&&map1PickupReachable(money.x,money.y,money.tableId)&&d<bestD){best=money;bestD=d;}}
   return best;
 }
 function updateMap1MoneyCue(){
