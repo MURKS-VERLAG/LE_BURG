@@ -2217,6 +2217,8 @@ function clampPosition(){
 }
 function syncMap1EventVisibility(){
   const onMap1=currentMap===1; // v99: wie Spieler – bis zum echten Map-Swap sichtbar, beim Rückswap sofort sichtbar
+  if(map1King)map1King.style.visibility=onMap1&&map1KingActive?'visible':'hidden';
+  if(map1KingThought)map1KingThought.style.visibility=onMap1&&map1KingActive?'visible':'hidden';
   // Nur die VISUALS von Map-1-Events verstecken. Zustände/Zeitachsen laufen weiter.
   if(map1Runner) map1Runner.style.visibility=onMap1 ? (map1RunnerActive?'visible':'hidden') : 'hidden';
   if(map1Bear) map1Bear.style.visibility=onMap1 ? (map1BearActive?'visible':'hidden') : 'hidden';
@@ -2239,6 +2241,7 @@ function syncMap1EventVisibility(){
    die Event-SONGS; Schreie/Bärensounds/Bock-SFX bleiben innen stumm. */
 function syncEventAudioForCurrentMap(){
   if(currentMap===2){
+    map1KingArrivalSound.pause();map1KingGreetingSound.pause();
     map1RunnerSound.pause();
     stopMap1BearAudioLoop();
     [map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>a.pause());
@@ -2491,6 +2494,79 @@ function updateMap1Apples(now){
   const near=map1NearbyApple();for(const a of map1Apples)a.el.style.filter=a===near?MAP1_LANDSCAPE_GLOW:'none';
 }
 
+/* v116: Philipp ausschließlich auf Taste 6, eigener Referenzpfad ohne Kollisionen. */
+const MAP1_KING_IMAGES=['assets/npc/philipp-walk.png?v=116','assets/npc/philipp-gruss.png?v=116','assets/npc/philipp-sitz.png?v=116'];
+const map1KingArrivalSound=new Audio('assets/audio/philipp-ankunft.mp3?v=116');
+const map1KingGreetingSound=new Audio('assets/audio/philipp-gruss.mp3?v=116');
+[map1KingArrivalSound,map1KingGreetingSound].forEach(a=>{a.preload='auto';a.volume=1;});
+let map1King=null,map1KingThought=null,map1KingActive=false,map1KingStage='idle',map1KingStart=0,map1KingGreetingAt=0,map1KingHeight=110;
+const MAP1_KING_SPEED=55,MAP1_KING_FRAME_MS=285;
+const MAP1_KING_PATH=[[1475,1065],[1434.367,1018.247],[1422.861,1010.577],[1411.356,1001.948],[1399.85,993.318],[1388.345,984.689],[1376.839,976.06],[1365.333,968.39],[1353.828,959.76],[1342.322,951.131],[1330.816,942.502],[1319.311,933.873],[1307.805,926.202],[1296.3,917.573],[1284.794,908.944],[1273.288,901.273],[1261.783,892.644],[1250.277,884.974],[1238.772,876.345],[1227.266,868.674],[1215.76,861.004],[1204.255,853.333],[1192.749,846.622],[1181.243,838.951],[1169.738,832.24],[1158.232,826.487],[1146.727,819.775],[1135.221,814.981],[1123.715,809.228],[1112.21,804.434],[1100.704,799.64],[1089.199,793.888],[1077.693,789.094],[1066.187,784.3],[1054.682,776.629],[1043.176,768.959],[1031.67,761.288],[1020.165,753.139],[1008.659,745.948],[997.154,737.318],[985.648,729.648],[974.142,721.978],[962.637,714.307],[951.131,706.637],[939.625,699.925],[928.12,693.213],[916.614,686.502],[905.109,679.79],[893.603,674.996],[882.097,670.202],[870.592,665.408],[859.086,662.532],[847.581,659.655],[836.075,657.738],[824.569,655.82],[813.064,653.903],[801.558,652.944],[790.052,651.985],[768,647]];
+const MAP1_KING_PATH_LENGTH=bockPathLength(MAP1_KING_PATH);
+function ensureMap1King(){
+  if(map1King)return map1King;
+  map1King=document.createElement('img');map1King.id='map1KingPhilipp';map1King.alt='';map1King.draggable=false;
+  Object.assign(map1King.style,{position:'absolute',height:'110px',width:'auto',maxWidth:'none',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'501'});
+  world.appendChild(map1King);return map1King;
+}
+function ensureMap1KingThought(){
+  if(map1KingThought)return map1KingThought;
+  // Dieselbe Bierblase, Größen, Farben und Einblendung wie bei den bisherigen Gästen.
+  const b=document.createElement('div');map1KingThought=b;
+  Object.assign(b.style,{position:'absolute',width:'92.4px',height:'75.6px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
+  const cloud=document.createElement('div');Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
+  const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;
+  Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
+  const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));
+  Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
+  b.append(c1,c2,cloud);world.appendChild(b);return b;
+}
+function setMap1KingPose(index,mirror=false){
+  const el=ensureMap1King(),src=MAP1_KING_IMAGES[index];if(el.getAttribute('src')!==src)el.src=src;
+  let height=map1KingHeight;
+  // Sitzfläche liegt bei 78 % der vorhandenen Stuhlhöhe; Hüftanker im Sitzsprite bei 52 %.
+  if(index===2){const chair=document.getElementById('stuhl'),foot=MAP1_KING_PATH.at(-1)[1];if(chair){const seatY=px(chair,'top')+chair.offsetHeight*.78;height=foot>seatY?(foot-seatY)/.48:map1KingHeight*.8;}}
+  const anchors=[.49,.61,.52],ax=mirror?1-anchors[index]:anchors[index];
+  Object.assign(el.style,{height:`${height}px`,width:'auto',transformOrigin:`${ax*100}% 100%`,transform:`translate(${-ax*100}%,-100%) scaleX(${mirror?-1:1})`});
+}
+function startMap1KingEvent(){
+  if(currentMap!==1||mapTransitioning||gamePaused||map1GameOverStarted||map1KingActive)return false;
+  ensureMap1PropDepthOrder();ensureMap1King();ensureMap1KingThought();
+  map1KingActive=true;map1KingStage='arriving';map1KingStart=gameNow();
+  // Normalgröße der W-Figur ohne Bier, unabhängig von momentanem Bier-/Richtungsstatus.
+  const back=PLAYER_IMAGE_CACHE.get('assets/player/nobier-back-1.png?v=69');
+  map1KingHeight=back?.naturalWidth&&back?.naturalHeight?player.offsetWidth*1.10*back.naturalHeight/back.naturalWidth:playerWorldHeight();
+  map1KingThought.style.display='none';map1KingThought.style.opacity='0';
+  map1King.style.display='block';setMap1KingPose(0,false);updateMap1King(gameNow());
+  map1KingArrivalSound.pause();map1KingArrivalSound.currentTime=0;map1KingArrivalSound.play().catch(()=>{});return true;
+}
+function updateMap1King(now){
+  if(!map1KingActive)return;
+  const el=ensureMap1King(),visible=currentMap===1;
+  el.style.visibility=visible?'visible':'hidden';
+  if(map1KingStage==='arriving'){
+    const t=Math.min(1,(now-map1KingStart)/(MAP1_KING_PATH_LENGTH/MAP1_KING_SPEED*1000));
+    const [x,y]=t===1?MAP1_KING_PATH.at(-1):map1GuestPointOnPath(MAP1_KING_PATH,t);el.style.left=`${x}px`;el.style.top=`${y}px`;
+    setMap1KingPose(0,Math.floor((now-map1KingStart)/MAP1_KING_FRAME_MS)%2===1);
+    if(t===1){map1KingStage='greeting';map1KingGreetingAt=now;setMap1KingPose(1,false);if(visible){map1KingGreetingSound.pause();map1KingGreetingSound.currentTime=0;map1KingGreetingSound.play().catch(()=>{});}}
+  }else if(map1KingStage==='greeting'&&now-map1KingGreetingAt>=2000){
+    map1KingStage='seated';setMap1KingPose(2,false);const b=ensureMap1KingThought();b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';
+    gameRequestAnimationFrame(()=>gameRequestAnimationFrame(()=>{if(map1KingStage==='seated'){b.style.opacity='1';b.style.transform='scale(1)';}}));
+  }
+  if(map1KingThought.style.display!=='none'){
+    map1KingThought.style.left=`${parseFloat(el.style.left)+18}px`;
+    map1KingThought.style.top=`${parseFloat(el.style.top)-parseFloat(el.style.height)-82}px`;
+    map1KingThought.style.visibility=visible?'visible':'hidden';
+  }
+}
+function syncMap1KingDepth(){
+  if(!map1KingActive||currentMap!==1)return;
+  const table=document.getElementById('tafel'),chair=document.getElementById('stuhl');
+  const chairZ=Number(chair?.style.zIndex)||MAP1_PROP_DEPTH_Z;
+  map1King.style.zIndex=String(chairZ+1);
+  if(table)table.style.zIndex=String(chairZ+2);
+}
+
 function draw(now){
   const z=ZOOM_LEVELS[zoomIndex];
   currentX+=(targetX-currentX)*.055;
@@ -2510,7 +2586,9 @@ function draw(now){
   updateMap1Event5(now);
   updateMap1Guest(now);
   updateMap1Woman(now);
+  updateMap1King(now);
   syncMap1NpcPlayerDepth();
+  syncMap1KingDepth();
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
   updateMap1Apples(now);
@@ -4144,6 +4222,7 @@ window.addEventListener('keydown',e=>{
   if(k==='3' && !e.repeat){e.preventDefault();startMap1Event3();}
   if(k==='4' && !e.repeat){e.preventDefault();startMap1Event4();}
   if(k==='5' && !e.repeat){e.preventDefault();startMap1Event5();}
+  if(k==='6' && !e.repeat){e.preventDefault();startMap1KingEvent();}
 });
 window.addEventListener('keydown',e=>{
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
@@ -4284,6 +4363,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...MAP1_KING_IMAGES,
     ...MAP1_COIN_IMAGES,
     ...MAP1_TOAD_SOURCES,MAP1_TOAD_SPLASH,MAP1_APPLE_SHAKE_IMAGE,MAP1_APPLE_IMAGE,
     'assets/npc/frau-run-1.png?v=02','assets/npc/frau-run-2.png?v=02',
