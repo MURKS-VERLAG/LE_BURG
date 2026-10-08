@@ -1752,6 +1752,7 @@ function updateMap2BarDepth(){
     return;
   }
   bar.style.display='block';
+  bar.style.zIndex='10000'; // v119: gleiches Objekt im selben Zeichenrang vor/hinter dem Spieler.
 
   const insideBarWidth=
     PLAYER.x>=MAP2_BAR.left &&
@@ -1763,12 +1764,10 @@ function updateMap2BarDepth(){
   const playerBehindBar=insideBarWidth && PLAYER.y<MAP2_BAR.bottom;
   if(playerBehindBar){
     // Oberhalb der Unterkante: Figur läuft HINTER der Theke.
-    bar.style.zIndex='10000';
     player.style.zIndex='9999';
   }else{
     // Auf/unterhalb der Unterkante: Figur steht VOR der Theke und bleibt vollständig sichtbar.
-    bar.style.zIndex='600';
-    player.style.zIndex='10000';
+    player.style.zIndex='10001';
   }
 }
 
@@ -2576,7 +2575,7 @@ function resolveMap1KingSatisfaction(unserved=false){
 function beginMap1KingReturn(){
   if(!map1KingActive||map1KingStage==='returning')return;
   clearMap1KingTimers();hideMap1KingThought();map1KingStage='returning';map1KingReturnStart=gameNow();
-  const [x,y]=MAP1_KING_PATH.at(-1);map1King.style.left=`${x}px`;map1King.style.top=`${y}px`;setMap1KingPose(5);
+  const [x,y]=MAP1_KING_PATH.at(-1);map1King.style.left=`${x}px`;map1King.style.top=`${y}px`;setMap1KingPose(6);
   if(currentMap===1){map1KingStandSound.pause();map1KingStandSound.currentTime=0;map1KingStandSound.play().catch(()=>{});}
 }
 function finishMap1King(){
@@ -2625,7 +2624,7 @@ function updateMap1King(now){
     const t=Math.min(1,(now-map1KingReturnStart)/(MAP1_KING_PATH_LENGTH/MAP1_KING_SPEED*1000));
     const [x,y]=t===1?MAP1_KING_PATH[0]:map1GuestPointOnPath(MAP1_KING_PATH,1-t);
     el.style.left=`${x}px`;el.style.top=`${y}px`;
-    const sequence=[5,7,6,7];setMap1KingPose(sequence[Math.floor((now-map1KingReturnStart)/MAP1_KING_FRAME_MS)%sequence.length]);
+    const sequence=[6,7];setMap1KingPose(sequence[Math.floor((now-map1KingReturnStart)/MAP1_KING_FRAME_MS)%sequence.length]);
     if(t===1)finishMap1King();
   }
   if(map1KingThought.style.display!=='none'){
@@ -2638,8 +2637,37 @@ function syncMap1KingDepth(){
   if(!map1KingActive||currentMap!==1)return;
   const table=document.getElementById('tafel'),chair=document.getElementById('stuhl');
   const chairZ=Number(chair?.style.zIndex)||MAP1_PROP_DEPTH_Z;
-  map1King.style.zIndex=String(chairZ+1);
-  if(table)table.style.zIndex=String(chairZ+2);
+  if(!['arriving','returning'].includes(map1KingStage)){
+    map1King.style.zIndex=String(chairZ+1);
+    if(table)table.style.zIndex=String(chairZ+2);
+    return;
+  }
+  const kingFoot=parseFloat(map1King.style.top),playerZ=Number(player.style.zIndex)||1000;
+  map1King.style.zIndex=String(playerZ+(kingFoot>PLAYER.y?1:-1));
+  // Bei sichtbarer Überschneidung alle beteiligten Figuren gemeinsam nach Füßen sortieren.
+  // Unbeteiligte Figuren und ihre Möbel-/Eventebenen bleiben unverändert.
+  const candidates=[
+    {el:player,foot:PLAYER.y},
+    ...[map1Runner,map1Bear,map1BockRider,map1BockFinal,map1Event3Farmer,map1Event3Bock,map1Event4Kalif,map1Event5Kalif].map(el=>({el,foot:parseFloat(el?.style.top)})),
+    {el:map1GuestEl,foot:parseFloat(map1GuestEl?.style.top),behind:map1GuestActive&&(map1GuestOccupiesRightTable()||map1GuestBehindProps())},
+    {el:map1WomanEl,foot:parseFloat(map1WomanEl?.style.top),behind:map1WomanActive}
+  ].filter(a=>a.el&&a.el.style.display!=='none'&&a.el.style.visibility!=='hidden'&&Number.isFinite(a.foot));
+  const actors=[{el:map1King,foot:kingFoot}],remaining=[...candidates];
+  const overlaps=(a,b)=>{
+    const ar=a.el.getBoundingClientRect(),br=b.el.getBoundingClientRect();
+    return ar.left<br.right&&ar.right>br.left&&ar.top<br.bottom&&ar.bottom>br.top;
+  };
+  // Zusammenhängende Überlappungen verhindern widersprüchliche Ebenen bei drei Figuren.
+  for(let i=0;i<actors.length;i++)for(let j=remaining.length-1;j>=0;j--){
+    if(overlaps(actors[i],remaining[j]))actors.push(...remaining.splice(j,1));
+  }
+  actors.sort((a,b)=>a.foot-b.foot||(a.el===player?1:b.el===player?-1:0));
+  const playerRank=actors.findIndex(a=>a.el===player),kingRank=actors.findIndex(a=>a.el===map1King);
+  let base=playerRank>=0?playerZ-playerRank:Number(map1King.style.zIndex)-kingRank;
+  for(let i=0;i<actors.length;i++)if(actors[i].behind)base=Math.min(base,MAP1_PLAYER_BEHIND_Z-1-i);
+  actors.forEach((a,i)=>a.el.style.zIndex=String(base+i));
+  if(actors.some(a=>a.el===map1Event3Farmer)&&map1Event3Blood&&map1Event3Blood.style.display!=='none')
+    map1Event3Blood.style.zIndex=String(Number(map1Event3Farmer.style.zIndex)-1);
 }
 
 function draw(now){
