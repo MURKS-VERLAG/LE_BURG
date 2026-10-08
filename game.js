@@ -4360,7 +4360,8 @@ function playerFightBlockedByGlow(){
 }
 function startPlayerFight(){
   if(playerFight||gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||playerFightBlockedByGlow())return false;
-  playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,baseHeight:player.offsetHeight*playerFightVisibleRatio(PLAYER_IMAGE_CACHE.get(playerSpritePath(PLAYER.direction,PLAYER.frame))||player),frame:-2};
+  playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,transition:player.style.transition,baseHeight:.875*player.offsetHeight*playerFightVisibleRatio(PLAYER_IMAGE_CACHE.get(playerSpritePath(PLAYER.direction,PLAYER.frame))||player),frame:-2};
+  player.style.transition='none';
   PLAYER.moving=false;PLAYER.frameClock=0;
   if(playerHasBeer){
     if(!playerFightMug){playerFightMug=document.createElement('img');playerFightMug.src='assets/npc/bock-wunsch.png?v=38';playerFightMug.alt='';playerFightMug.draggable=false;Object.assign(playerFightMug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',transform:'translate(-50%,-100%)'});world.appendChild(playerFightMug);}
@@ -4371,9 +4372,9 @@ function startPlayerFight(){
 function stopPlayerFight(){
   if(!playerFight)return;const state=playerFight;playerFight=null;playerFightSound.pause();playerFightSound.currentTime=0;gamePausedAudio.delete(playerFightSound);
   if(playerFightMug)playerFightMug.style.display='none';
-  Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform});PLAYER.direction=state.direction;PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
+  Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform,transition:state.transition});PLAYER.direction=state.direction;PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
 }
-const PLAYER_FIGHT_REST_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-rest-back-${n}.png?v=124`),right:[1,2,3].map(n=>`assets/player/fight-rest-side-${n}.png?v=124`),front:[1,2,3].map(n=>`assets/player/fight-rest-front-${n}.png?v=124`)};
+const PLAYER_FIGHT_REST_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-rest-back-${n}.png?v=124`),right:[1,2,3].map(n=>`assets/player/fight-rest-side-${n}.png?v=124`),front:[1,2].map(n=>`assets/player/fight-rest-front-${n}.png?v=124`)};
 const playerFightVisibleRatios=new WeakMap();
 function playerFightVisibleRatio(img){
   if(!img?.naturalWidth||!img?.naturalHeight)return 1;
@@ -4392,13 +4393,17 @@ function updatePlayerFight(){
   const hit=peaks.findIndex(at=>t>=at&&t<at+.3),dir=state.direction==='left'?'right':state.direction;
   const frame=hit<0?'rest':`hit${hit}`;
   if(frame!==state.frame){
-    state.frame=frame;
-    const index=hit<0?Math.floor(Math.random()*3):[0,2,0,1][hit];
-    const src=hit<0?PLAYER_FIGHT_REST_IMAGES[dir][index]:PLAYER_FIGHT_IMAGES[dir][index];
-    player.src=src;
-    const img=EVENT_IMAGE_CACHE.get(src),height=state.baseHeight/playerFightVisibleRatio(img);
+    const images=hit<0?PLAYER_FIGHT_REST_IMAGES[dir]:PLAYER_FIGHT_IMAGES[dir];
+    const index=hit<0?Math.floor(Math.random()*images.length):[0,2,0,1][hit];
+    const src=images[index],img=EVENT_IMAGE_CACHE.get(src);
+    // Erst vollständig vorgeladene Bilder verwenden; keine Größenänderung nach src-Laden.
+    if(!img?.naturalWidth||!img?.naturalHeight)return;
+    const height=state.baseHeight/playerFightVisibleRatio(img),width=height*img.naturalWidth/img.naturalHeight;
     const scale=playerVisualScale(),mirror=state.direction==='left'||(hit>=0&&dir==='back'&&index===2)?-1:1;
-    Object.assign(player.style,{height:`${height}px`,width:'auto',transform:`translate(-50%,-100%) scale(${scale*mirror},${scale})`});
+    // Front 4: Fußpaar-Mitte gegenüber Front 1 um 18,5 Quellpixel nach rechts ausrichten.
+    const footOffset=hit>=0&&dir==='front'&&index===2?height*(18.5/665)*scale:0;
+    Object.assign(player.style,{height:`${height}px`,width:`${width}px`,transition:'none',transform:`translate(calc(-50% + ${footOffset}px),-100%) scale(${scale*mirror},${scale})`});
+    player.src=img.src||src;state.frame=frame;
   }
   if(playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
 }
