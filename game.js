@@ -2704,12 +2704,10 @@ function updateFurniturePlayerMask(){
     ctx.setTransform(1,0,0,1,0,0);
     const data=ctx.getImageData(0,0,w,h),alpha=new Uint8Array(w*h);
     for(let i=0;i<alpha.length;i++)alpha[i]=data.data[i*4+3];
-    // Ein Maskenpixel Sicherheitsrand verhindert erneutes Durchscheinen beim Skalieren.
+    // v122: gleiche Alpha-Konturgrenze wie die vorhandenen Objektprüfungen.
+    // Keine Randvergrößerung und keine Verdeckung durch fast transparente Außenpixel.
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-      let covered=false;
-      for(let dy=-1;dy<=1&&!covered;dy++)for(let dx=-1;dx<=1;dx++){
-        const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h&&alpha[yy*w+xx]>0){covered=true;break;}
-      }
+      const covered=alpha[y*w+x]>=24;
       const i=(y*w+x)*4;data.data[i]=data.data[i+1]=data.data[i+2]=255;data.data[i+3]=covered?0:255;
     }
     ctx.putImageData(data,0,0);const mask=`url("${canvas.toDataURL('image/png')}")`;
@@ -2749,12 +2747,10 @@ function updateKingTableMask(){
     ctx.setTransform(1,0,0,1,0,0);
     const data=ctx.getImageData(0,0,w,h),alpha=new Uint8Array(w*h);
     for(let i=0;i<alpha.length;i++)alpha[i]=data.data[i*4+3];
-    // Ein Maskenpixel Sicherheitsrand verhindert erneutes Durchscheinen beim Skalieren.
+    // v122: gleiche Alpha-Konturgrenze wie die vorhandenen Objektprüfungen.
+    // Keine Randvergrößerung und keine Verdeckung durch fast transparente Außenpixel.
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-      let covered=false;
-      for(let dy=-1;dy<=1&&!covered;dy++)for(let dx=-1;dx<=1;dx++){
-        const xx=x+dx,yy=y+dy;if(xx>=0&&xx<w&&yy>=0&&yy<h&&alpha[yy*w+xx]>0){covered=true;break;}
-      }
+      const covered=alpha[y*w+x]>=24;
       const i=(y*w+x)*4;data.data[i]=data.data[i+1]=data.data[i+2]=255;data.data[i+3]=covered?0:255;
     }
     ctx.putImageData(data,0,0);const mask=`url("${canvas.toDataURL('image/png')}")`;
