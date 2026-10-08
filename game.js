@@ -4363,7 +4363,7 @@ function startPlayerFight(){
   const dir=PLAYER.direction==='left'?'right':PLAYER.direction;
   const normal=PLAYER_IMAGE_CACHE.get(`assets/player/nobier-${dir==='right'?'side':dir}-1.png?v=69`);
   // Gleiche No-Beer-Referenzgröße für beide Bierzustände; zusätzlich 5 % kleiner.
-  const baseHeight=.875*.95*(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
+  const baseHeight=.875*.95*1.035*(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
   playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,transition:player.style.transition,baseHeight,scale:1.10*(currentMap===2?1.15:1),frame:-2};
   player.style.transition='none';
   PLAYER.moving=false;PLAYER.frameClock=0;
@@ -4378,7 +4378,7 @@ function stopPlayerFight(){
   if(playerFightMug)playerFightMug.style.display='none';
   Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform,transition:state.transition});PLAYER.direction=state.direction;PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
 }
-const PLAYER_FIGHT_REST_IMAGES={back:[1,2].map(n=>`assets/player/fight-rest-back-${n}.png?v=126`),right:[2,3].map(n=>`assets/player/fight-rest-side-${n}.png?v=124`),front:[1,2].map(n=>`assets/player/fight-rest-front-${n}.png?v=124`)};
+const PLAYER_FIGHT_REST_IMAGES={back:[1,2].map(n=>`assets/player/fight-rest-back-${n}.png?v=126`),right:[1,2].map(n=>`assets/player/fight-rest-side-${n}.png?v=124`),front:[1,2].map(n=>`assets/player/fight-rest-front-${n}.png?v=124`)};
 const playerFightVisibleRatios=new WeakMap();
 function playerFightVisibleRatio(img){
   if(!img?.naturalWidth||!img?.naturalHeight)return 1;
