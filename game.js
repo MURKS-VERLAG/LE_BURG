@@ -4360,7 +4360,7 @@ function playerFightBlockedByGlow(){
 }
 function startPlayerFight(){
   if(playerFight||gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||playerFightBlockedByGlow())return false;
-  playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,baseHeight:player.offsetHeight,frame:-2};
+  playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,baseHeight:player.offsetHeight*playerFightVisibleRatio(PLAYER_IMAGE_CACHE.get(playerSpritePath(PLAYER.direction,PLAYER.frame))||player),frame:-2};
   PLAYER.moving=false;PLAYER.frameClock=0;
   if(playerHasBeer){
     if(!playerFightMug){playerFightMug=document.createElement('img');playerFightMug.src='assets/npc/bock-wunsch.png?v=38';playerFightMug.alt='';playerFightMug.draggable=false;Object.assign(playerFightMug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',transform:'translate(-50%,-100%)'});world.appendChild(playerFightMug);}
@@ -4373,21 +4373,32 @@ function stopPlayerFight(){
   if(playerFightMug)playerFightMug.style.display='none';
   Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform});PLAYER.direction=state.direction;PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
 }
+const PLAYER_FIGHT_REST_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-rest-back-${n}.png?v=124`),right:[1,2,3].map(n=>`assets/player/fight-rest-side-${n}.png?v=124`),front:[1,2,3].map(n=>`assets/player/fight-rest-front-${n}.png?v=124`)};
+const playerFightVisibleRatios=new WeakMap();
+function playerFightVisibleRatio(img){
+  if(!img?.naturalWidth||!img?.naturalHeight)return 1;
+  if(playerFightVisibleRatios.has(img))return playerFightVisibleRatios.get(img);
+  try{
+    const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;
+    const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);const d=ctx.getImageData(0,0,c.width,c.height).data;
+    let first=-1,last=-1;for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(d[(y*c.width+x)*4+3]>=24){if(first<0)first=y;last=y;break;}
+    const ratio=first<0?1:(last-first+1)/c.height;playerFightVisibleRatios.set(img,ratio);return ratio;
+  }catch(_){return 1;}
+}
 function updatePlayerFight(){
   if(!playerFight)return;
   if(map1GameOverStarted||mapTransitioning){stopPlayerFight();return;}
-  const state=playerFight,t=playerFightSound.currentTime;
-  const hit=t<.5?-1:t<1.028?0:t<1.606?1:t<2.215?2:3;
-  if(hit!==state.frame){
-    state.frame=hit;
-    if(hit<0){player.src=state.src;Object.assign(player.style,{width:state.width,height:state.height,transform:state.transform});}
-    else{
-      const dir=state.direction==='left'?'right':state.direction;
-      // Arrayplätze: 1,3,1,2 (S: 1,4,1,2).
-      const index=[0,2,0,1][hit];player.src=PLAYER_FIGHT_IMAGES[dir][index];
-      const scale=playerVisualScale(),mirror=state.direction==='left'?-1:1;
-      Object.assign(player.style,{height:`${state.baseHeight}px`,width:'auto',transform:`translate(-50%,-100%) scale(${scale*mirror},${scale})`});
-    }
+  const state=playerFight,t=playerFightSound.currentTime,peaks=[.5,1.028,1.606,2.215];
+  const hit=peaks.findIndex(at=>t>=at&&t<at+.3),dir=state.direction==='left'?'right':state.direction;
+  const frame=hit<0?'rest':`hit${hit}`;
+  if(frame!==state.frame){
+    state.frame=frame;
+    const index=hit<0?Math.floor(Math.random()*3):[0,2,0,1][hit];
+    const src=hit<0?PLAYER_FIGHT_REST_IMAGES[dir][index]:PLAYER_FIGHT_IMAGES[dir][index];
+    player.src=src;
+    const img=EVENT_IMAGE_CACHE.get(src),height=state.baseHeight/playerFightVisibleRatio(img);
+    const scale=playerVisualScale(),mirror=state.direction==='left'||(hit>=0&&dir==='back'&&index===2)?-1:1;
+    Object.assign(player.style,{height:`${height}px`,width:'auto',transform:`translate(-50%,-100%) scale(${scale*mirror},${scale})`});
   }
   if(playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
 }
@@ -4616,6 +4627,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...Object.values(PLAYER_FIGHT_REST_IMAGES).flat(),
     ...Object.values(PLAYER_FIGHT_IMAGES).flat(),
     ...MAP1_KING_IMAGES,
     ...MAP1_COIN_IMAGES,
