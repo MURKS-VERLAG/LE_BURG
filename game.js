@@ -2285,8 +2285,9 @@ function updateMap1DeadToads(now){
   }
 }
 function pickupMap1DeadToad(){
+  if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake)return false;
   const now=gameNow();updateMap1DeadToads(now);
-  const i=map1DeadToads.findIndex(d=>d.el.style.display!=='none'&&d.el.style.filter===MAP1_LANDSCAPE_GLOW&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48);
+  const i=map1DeadToads.findIndex(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48);
   if(i<0)return false;
   const d=map1DeadToads[i];d.el.dataset.x=String(d.x);d.el.dataset.y=String(d.y);showMap1MugPlusOne(d.el);d.el.remove();map1DeadToads.splice(i,1);
   map1ToadPickupSound.pause();map1ToadPickupSound.currentTime=0;map1ToadPickupSound.play().catch(()=>{});return true;
@@ -2834,6 +2835,7 @@ function draw(now){
   updateMap1King(now);
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
+  syncCrossbowNpcFootDepth();
   if(playerFight&&playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
   updateMap1DeadToads(now);
   updateCrossbowBolts(now);
@@ -4361,6 +4363,26 @@ function map1GuestBehindProps(){
   for(const id of ids){const el=document.getElementById(id),sprite=el?collisionSprites.find(s=>s.el===el):null;if(sprite&&(furnitureTopPassage(sprite,x,y)||propRatioPassage(sprite,x,y)))return true;}
   return false;
 }
+/* v131: im Armbrustmodus alle sichtbaren NPCs nach Fußlinie zur Figur ordnen. */
+function syncCrossbowNpcFootDepth(){
+  if(!playerCrossbow||currentMap!==1)return;
+  const pr=player.getBoundingClientRect();
+  const actors=[map1Runner,map1Bear,map1BockRider,map1BockFinal,map1Event3Farmer,map1Event3Bock,map1Event4Kalif,map1GuestEl,map1WomanEl,map1King].filter(el=>{
+    if(!el||el.style.display==='none'||el.style.visibility==='hidden'||!Number.isFinite(parseFloat(el.style.top)))return false;
+    const r=el.getBoundingClientRect();return r.left<pr.right&&r.right>pr.left&&r.top<pr.bottom&&r.bottom>pr.top;
+  });
+  const furnitureBound=el=>el===map1GuestEl||el===map1WomanEl||el===map1King;
+  let z=Number(player.style.zIndex)||1000;
+  // Preserve guests' furniture limits while placing the player behind lower feet.
+  for(const el of actors)if(furnitureBound(el)&&parseFloat(el.style.top)>PLAYER.y)z=Math.min(z,(Number(el.style.zIndex)||z)-1);
+  player.style.zIndex=String(z);
+  for(const el of actors){const value=z+(parseFloat(el.style.top)>PLAYER.y?1:-1);
+    if(el===map1King){const chair=document.getElementById('stuhl');el.style.setProperty('z-index',String(Math.min(value,(Number(chair?.style.zIndex)||MAP1_PROP_DEPTH_Z)+1)),'important');}
+    else el.style.zIndex=String(value);
+  }
+  if(map1Event3Blood&&map1Event3Farmer&&map1Event3Blood.style.display!=='none')map1Event3Blood.style.zIndex=String(Number(map1Event3Farmer.style.zIndex)-1);
+}
+
 function syncMap1NpcPlayerDepth(){
   if(currentMap!==1||!player)return;
   const playerZ=Number(player.style.zIndex)||10000;
@@ -4417,9 +4439,9 @@ function playerFightBlockedByGlow(){
 function startPlayerFight(){
   if(playerFight||gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||playerFightBlockedByGlow())return false;
   const dir=PLAYER.direction==='left'?'right':PLAYER.direction;
-  const normal=PLAYER_IMAGE_CACHE.get(`assets/player/nobier-${dir==='right'?'side':dir}-1.png?v=69`);
-  // Gemeinsame Kampfgröße für beide Bierzustände; zuletzt zusätzlich 5 % größer.
-  const baseHeight=.875*.95*1.035*1.05*(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
+  const normal=PLAYER_IMAGE_CACHE.get('assets/player/nobier-front-1.png?v=69');
+  // Gemeinsame Standardhöhe wie die Armbrust, für alle Kampfposen und beide Bierzustände.
+  const baseHeight=(normal?.naturalWidth?player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal):player.offsetHeight*playerFightVisibleRatio(player));
   playerFight={direction:PLAYER.direction,src:player.getAttribute('src'),width:player.style.width,height:player.style.height,transform:player.style.transform,transition:player.style.transition,baseHeight,scale:1.10*(currentMap===2?1.15:1),frame:-2};
   player.style.transition='none';
   PLAYER.moving=false;PLAYER.frameClock=0;
@@ -4453,7 +4475,7 @@ function playerFightMugX(){
   for(const src of [...PLAYER_FIGHT_IMAGES[dir],...PLAYER_FIGHT_REST_IMAGES[dir]]){
     const img=EVENT_IMAGE_CACHE.get(src);if(!img?.naturalWidth||!img?.naturalHeight)continue;
     // S-Krug exakt auf der bisherigen Position lassen, trotz größerer Kampfpose.
-    const height=state.baseHeight/(dir==='front'?1.05:1)/playerFightVisibleRatio(img);
+    const height=state.baseHeight/playerFightVisibleRatio(img);
     const width=height*img.naturalWidth/img.naturalHeight;
     let reach=width*state.scale/2;
     if(dir!=='front'){
@@ -4471,7 +4493,7 @@ function playerFightMugX(){
     edge=Math.max(edge,reach);
     if(src.includes('fight-front-4.png'))extra=Math.max(extra,height*(18.5/665)*state.scale);
   }
-  const offset=dir==='front'?-3:dir==='back'?3:0;
+  const offset=0;
   return PLAYER.x+offset+side*(edge+extra+14+(dir==='front'?6:2));
 }
 function updatePlayerFight(){
@@ -4489,7 +4511,7 @@ function updatePlayerFight(){
     const height=state.baseHeight/playerFightVisibleRatio(img),width=height*img.naturalWidth/img.naturalHeight;
     const scale=state.scale,mirror=state.direction==='left'||(hit>=0&&dir==='back'&&index===2)?-1:1;
     // Front 4: Fußpaar-Mitte gegenüber Front 1 um 18,5 Quellpixel nach rechts ausrichten.
-    const footOffset=(dir==='front'?-3:dir==='back'?3:0)+(hit>=0&&dir==='front'&&index===2?height*(18.5/665)*scale:0);
+    const footOffset=hit>=0&&dir==='front'&&index===2?height*(18.5/665)*scale:0;
     Object.assign(player.style,{height:`${height}px`,width:`${width}px`,transition:'none',transform:`translate(calc(-50% + ${footOffset}px),-100%) scale(${scale*mirror},${scale})`});
     player.src=img.src||src;state.frame=frame;
   }
