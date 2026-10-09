@@ -20,6 +20,7 @@ function pauseAnimationSystem(){
   if(gamePaused)return;
   gamePauseAt=performance.now();gamePaused=true;
   keys.clear();
+  cancelCrossbowReload();
   stopPlayerFight();
   for(const item of gameTimers.values())gameNativeClear(item.native);
   for(const item of gameFrames.values())gameNativeCancel(item.native);
@@ -2783,6 +2784,7 @@ function draw(now){
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
   if(playerFight&&playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
+  updateCrossbowBolts(now);
   updateKingTableMask();
   updateFurniturePlayerMask();
   syncMap1LandscapeDepth();
@@ -2887,6 +2889,7 @@ function playerSpritePath(direction,frame){
 }
 
 function playerVisualScale(){
+  if(playerCrossbow)return playerCrossbow.scale;
   let s=1;
   /* v72: ALLE OHNE-BIER-Richtungen insgesamt exakt 10 % größer.
      MIT Bier bleibt jede bisherige Skalierung EXAKT unangetastet. */
@@ -2898,6 +2901,7 @@ function playerVisualScale(){
 
 function showPlayerFrame(force=false){
   if(!player)return;
+  if(playerCrossbow){renderPlayerCrossbow();return;}
   const next=playerSpritePath(PLAYER.direction,PLAYER.frame);
   const current=player.getAttribute('src')||'';
   if(force || current!==next){
@@ -4440,8 +4444,135 @@ function updatePlayerFight(){
   if(playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
 }
 
+/* v129: stationäre Armbrust, Mausausrichtung und audio-synchrones Laden. */
+const PLAYER_CROSSBOW_IMAGES={rest:'assets/player/crossbow-rest.png?v=129',load:'assets/player/crossbow-load.png?v=129',back:'assets/player/crossbow-back.png?v=129',front:'assets/player/crossbow-front.png?v=129',right:'assets/player/crossbow-side.png?v=129'};
+const playerCrossbowLoadSound=new Audio('assets/audio/crossbow-load.mp3?v=129');
+playerCrossbowLoadSound.preload='auto';playerCrossbowLoadSound.volume=1;
+let playerCrossbow=null,playerCrossbowCircle=null,playerCrossbowMug=null,playerCrossbowPointer=null;
+const playerCrossbowBolts=[];
+const crossbowCursorStyle=document.createElement('style');
+crossbowCursorStyle.textContent=`#game.crossbow-active,#game.crossbow-active *{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%23ff2525' stroke-width='2'%3E%3Ccircle cx='16' cy='16' r='7'/%3E%3Cpath d='M16 1v10m0 10v10M1 16h10m10 0h10'/%3E%3C/g%3E%3C/svg%3E") 16 16,crosshair!important}`;
+document.head.appendChild(crossbowCursorStyle);
+function crossbowImage(direction){return EVENT_IMAGE_CACHE.get(PLAYER_CROSSBOW_IMAGES[direction==='left'?'right':direction]);}
+function crossbowGeometry(direction){
+  const s=playerCrossbow,img=crossbowImage(direction);
+  const h=s.baseHeight/playerFightVisibleRatio(img),scale=s.scale;
+  return {height:h,width:h*img.naturalWidth/img.naturalHeight,scale};
+}
+function crossbowOrigin(direction){
+  const g=crossbowGeometry(direction),side=direction==='left'?-1:1;
+  return {x:PLAYER.x+((direction==='left'||direction==='right')?side*(g.width/2-4)*g.scale:0),y:PLAYER.y-g.height*g.scale*.84};
+}
+function crossbowAim(){
+  if(playerCrossbowPointer?.clientX!==undefined){
+    const r=world.getBoundingClientRect();
+    if(r.width&&r.height){playerCrossbowPointer.x=(playerCrossbowPointer.clientX-r.left)*WORLD_W/r.width;playerCrossbowPointer.y=(playerCrossbowPointer.clientY-r.top)*WORLD_H/r.height;}
+  }
+  if(!playerCrossbowPointer)return {direction:PLAYER.direction,origin:crossbowOrigin(PLAYER.direction),target:null};
+  // Four adjoining 90° sectors share the aiming pivot, avoiding gaps at the diagonals.
+  // The projectile itself starts at the selected crossbow barrel, not at this pivot.
+  const dx=playerCrossbowPointer.x-PLAYER.x,dy=playerCrossbowPointer.y-(PLAYER.y-playerCrossbow.baseHeight*playerCrossbow.scale*.84);
+  if(Math.hypot(dx,dy)<.01)return {direction:PLAYER.direction,origin:crossbowOrigin(PLAYER.direction),target:null};
+  const direction=Math.abs(dy)>=Math.abs(dx)?(dy<0?'back':'front'):(dx<0?'left':'right');
+  return {direction,origin:crossbowOrigin(direction),target:playerCrossbowPointer};
+}
+function startPlayerCrossbow(){
+  if(gamePaused||mapTransitioning||map1GameOverStarted||map1AppleShake||map1TreeHiding||map1TreeTransitioning||map1TableServing||map2BarServing||map1BockServing||!document.body.classList.contains('game-ready'))return false;
+  if(Object.values(PLAYER_CROSSBOW_IMAGES).some(src=>!EVENT_IMAGE_CACHE.get(src)?.naturalWidth))return false;
+  stopPlayerFight();
+  const normal=PLAYER_IMAGE_CACHE.get('assets/player/nobier-front-1.png?v=69');if(!normal?.naturalWidth)return false;
+  playerCrossbow={phase:'rest',ctrl:false,baseHeight:player.offsetWidth*normal.naturalHeight/normal.naturalWidth*playerFightVisibleRatio(normal),scale:1.10*(currentMap===2?1.15:1),width:player.style.width,height:player.style.height,transition:player.style.transition,transform:player.style.transform,shotAt:0,pose:''};
+  keys.clear();PLAYER.moving=false;PLAYER.frameClock=0;game.classList.add('crossbow-active');
+  if(!playerCrossbowCircle){playerCrossbowCircle=document.createElement('div');Object.assign(playerCrossbowCircle.style,{position:'absolute',width:'16px',height:'16px',borderRadius:'50%',pointerEvents:'none',transform:'translate(-50%,-100%)',zIndex:'20000',boxShadow:'0 0 0 1px rgba(255,255,255,.6)'});world.appendChild(playerCrossbowCircle);}
+  if(playerHasBeer&&!playerCrossbowMug){playerCrossbowMug=document.createElement('img');playerCrossbowMug.src='assets/npc/bock-wunsch.png?v=38';playerCrossbowMug.alt='';playerCrossbowMug.draggable=false;Object.assign(playerCrossbowMug.style,{position:'absolute',width:'28px',height:'28px',pointerEvents:'none',transform:'translate(-50%,-100%)'});world.appendChild(playerCrossbowMug);}
+  if(playerCrossbowMug){
+    let half=0;for(const d of ['rest','load','back','front','right']){const g=crossbowGeometry(d);half=Math.max(half,g.width*g.scale/2);}
+    Object.assign(playerCrossbowMug.style,{left:`${PLAYER.x+half+18}px`,top:`${PLAYER.y}px`,display:playerHasBeer?'block':'none'});
+  }
+  renderPlayerCrossbow();return true;
+}
+function cancelCrossbowReload(){
+  if(!playerCrossbow)return;
+  playerCrossbow.ctrl=false;
+  if(playerCrossbow.phase==='loading')playerCrossbow.phase='rest';
+  playerCrossbowLoadSound.pause();playerCrossbowLoadSound.currentTime=0;gamePausedAudio.delete(playerCrossbowLoadSound);
+  if(playerCrossbowCircle)playerCrossbowCircle.style.display='none';
+}
+function stopPlayerCrossbow(){
+  if(!playerCrossbow)return;
+  const state=playerCrossbow;cancelCrossbowReload();playerCrossbow=null;keys.clear();game.classList.remove('crossbow-active');
+  if(playerCrossbowMug)playerCrossbowMug.style.display='none';
+  Object.assign(player.style,{width:state.width,height:state.height,transition:state.transition,transform:state.transform});
+  PLAYER.frameClock=0;playerLastTime=gameNow();showPlayerFrame(true);
+}
+function startCrossbowReload(){
+  const s=playerCrossbow;if(!s||s.phase!=='rest'||gamePaused)return;
+  s.ctrl=true;s.phase='loading';playerCrossbowLoadSound.currentTime=0;
+  playerCrossbowLoadSound.play().catch(()=>{if(playerCrossbow===s&&s.phase==='loading'){cancelCrossbowReload();renderPlayerCrossbow();}});
+  renderPlayerCrossbow();
+}
+function finishCrossbowReload(){
+  if(!playerCrossbow||playerCrossbow.phase!=='loading'||!playerCrossbow.ctrl||gamePaused)return;
+  playerCrossbow.phase='aim';playerCrossbowCircle.style.display='none';renderPlayerCrossbow();
+}
+playerCrossbowLoadSound.addEventListener('ended',finishCrossbowReload);
+function shootPlayerCrossbow(){
+  const s=playerCrossbow;if(!s||s.phase!=='aim'||gamePaused)return false;
+  const aim=crossbowAim();if(!aim.target)return false;
+  PLAYER.direction=aim.direction;
+  const dx=aim.target.x-aim.origin.x,dy=aim.target.y-aim.origin.y,len=Math.hypot(dx,dy);if(len<.01)return false;
+  const bolt=document.createElement('div');Object.assign(bolt.style,{position:'absolute',left:`${aim.origin.x-10}px`,top:`${aim.origin.y-1.5}px`,transform:`rotate(${Math.atan2(dy,dx)}rad)`,width:'20px',height:'3px',background:'linear-gradient(to right,#ddd 0 12%,#70411d 12% 78%,#c9c9c9 78%)',clipPath:'polygon(0 0,78% 0,100% 50%,78% 100%,0 100%,12% 50%)',transformOrigin:'50% 50%',pointerEvents:'none',zIndex:'12000'});world.appendChild(bolt);
+  playerCrossbowBolts.push({el:bolt,x:aim.origin.x,y:aim.origin.y,dx:dx/len,dy:dy/len,at:gameNow(),map:currentMap});
+  s.phase='shot';s.shotAt=gameNow();s.shotDirection=aim.direction;renderPlayerCrossbow();return true;
+}
+function renderPlayerCrossbow(){
+  const s=playerCrossbow;if(!s)return;
+  if(s.phase==='aim')PLAYER.direction=crossbowAim().direction;
+  const pose=s.phase==='rest'?'rest':s.phase==='loading'?'load':s.phase==='shot'?s.shotDirection:PLAYER.direction;
+  const img=crossbowImage(pose),g=crossbowGeometry(pose);
+  // Kneeling pose uses the same body proportions, with a lower head than standing poses.
+  const factor=pose==='load'?.78:1,height=g.height*factor,width=g.width*factor;
+  const mirror=pose==='left'?-1:1;
+  const kick=s.phase==='shot'?2.5*Math.max(0,1-(gameNow()-s.shotAt)/180):0;
+  const x=pose==='left'?kick:pose==='right'?-kick:0,y=pose==='back'?kick:pose==='front'?-kick:0;
+  Object.assign(player.style,{left:`${PLAYER.x}px`,top:`${PLAYER.y}px`,width:`${width}px`,height:`${height}px`,transition:'none',transform:`translate(calc(-50% + ${x}px),calc(-100% + ${y}px)) scale(${g.scale*mirror},${g.scale})`});
+  if(s.pose!==pose){player.src=img.src||PLAYER_CROSSBOW_IMAGES[pose==='left'?'right':pose];s.pose=pose;}
+  playerCrossbowCircle.style.left=`${PLAYER.x}px`;playerCrossbowCircle.style.top=`${PLAYER.y-height*g.scale-7}px`;
+  playerCrossbowCircle.style.display=s.phase==='loading'?'block':'none';
+  if(s.phase==='loading'){
+    const duration=Number.isFinite(playerCrossbowLoadSound.duration)&&playerCrossbowLoadSound.duration>0?playerCrossbowLoadSound.duration:2.873469;
+    const progress=Math.min(1,playerCrossbowLoadSound.currentTime/duration);
+    playerCrossbowCircle.style.background=`conic-gradient(#f32b2b ${progress*360}deg,rgba(65,0,0,.55) 0deg)`;
+  }
+}
+function updatePlayerCrossbow(now){
+  if(!playerCrossbow)return;
+  if(mapTransitioning||map1GameOverStarted){stopPlayerCrossbow();return;}
+  if(playerCrossbow.phase==='shot'&&now-playerCrossbow.shotAt>=1000)playerCrossbow.phase='rest';
+  if(playerCrossbow.phase==='loading'&&playerCrossbowLoadSound.ended)finishCrossbowReload();
+  renderPlayerCrossbow();PLAYER.moving=false;playerLastTime=now;
+  updateMap2Occlusion();updateMap2BarDepth();updateStandingTableDepth();
+}
+function updateCrossbowBolts(now){
+  for(let i=playerCrossbowBolts.length-1;i>=0;i--){const b=playerCrossbowBolts[i],distance=(now-b.at)*.7,x=b.x+b.dx*distance,y=b.y+b.dy*distance;
+    if(b.map!==currentMap||x<0||x>WORLD_W||y<0||y>WORLD_H||distance>2200){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
+    Object.assign(b.el.style,{left:`${x-10}px`,top:`${y-1.5}px`,transform:`rotate(${Math.atan2(b.dy,b.dx)}rad)`});
+  }
+  if(playerCrossbow&&playerCrossbowMug&&playerCrossbowMug.style.display!=='none')playerCrossbowMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
+}
+game.addEventListener('mousemove',e=>{
+  const r=world.getBoundingClientRect();if(!r.width||!r.height)return;
+  playerCrossbowPointer={clientX:e.clientX,clientY:e.clientY,x:(e.clientX-r.left)*WORLD_W/r.width,y:(e.clientY-r.top)*WORLD_H/r.height};
+  if(playerCrossbow&&!gamePaused&&playerCrossbow.phase==='aim')renderPlayerCrossbow();
+});
+game.addEventListener('wheel',e=>{
+  if(!e.deltaY||gamePaused)return;e.preventDefault();
+  if(playerCrossbow)stopPlayerCrossbow();else startPlayerCrossbow();
+},{passive:false});
+
 function updatePlayer(now){
   if(!player)return;
+  if(playerCrossbow){updatePlayerCrossbow(now);return;}
   if(playerFight){
     updatePlayerFight();playerLastTime=now;PLAYER.moving=false;
     updateMap2Occlusion();updateMap2BarDepth();updateStandingTableDepth();return;
@@ -4513,6 +4644,7 @@ function updatePlayer(now){
 
 window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
+  if(playerCrossbow&&['w','a','s','d'].includes(k)){e.preventDefault();return;}
   if(['w','a','s','d'].includes(k)){keys.add(k);e.preventDefault();}
   if(k==='1' && !e.repeat){e.preventDefault();startMap1Runner();}
   if(k==='2' && !e.repeat){e.preventDefault();startMap1BockEvent();}
@@ -4522,6 +4654,12 @@ window.addEventListener('keydown',e=>{
   if(k==='6' && !e.repeat){e.preventDefault();startMap1KingEvent();}
 });
 window.addEventListener('keydown',e=>{
+  if(playerCrossbow){
+    if(e.key==='Control'){e.preventDefault();if(!e.repeat)startCrossbowReload();}
+    if(e.code==='Space'){e.preventDefault();if(!e.repeat)shootPlayerCrossbow();}
+    if(e.key==='^'||e.code==='Backquote')e.preventDefault();
+    return;
+  }
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
@@ -4533,11 +4671,12 @@ window.addEventListener('keydown',e=>{
 });
 
 window.addEventListener('keyup',e=>{
+  if(playerCrossbow&&e.key==='Control'){e.preventDefault();cancelCrossbowReload();renderPlayerCrossbow();}
   if(e.code==='Space'){e.preventDefault();stopPlayerFight();}
   const k=e.key.toLowerCase();
   if(['w','a','s','d'].includes(k)){keys.delete(k);e.preventDefault();}
 });
-window.addEventListener('blur',()=>{keys.clear();stopPlayerFight();});
+window.addEventListener('blur',()=>{keys.clear();cancelCrossbowReload();stopPlayerFight();});
 
 /* v106: neue Landschaftsobjekte, unabhängig von den bisherigen Prop-Zonen. */
 const MAP1_APPLE_TRUNK_POLY=[[.44,.72],[.61,.72],[.61,1],[.44,1]]; // v108: gerade Stammseiten, keine seitlichen Wurzel-Hitboxen
@@ -4664,6 +4803,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...Object.values(PLAYER_CROSSBOW_IMAGES),
     ...Object.values(PLAYER_FIGHT_REST_IMAGES).flat(),
     ...Object.values(PLAYER_FIGHT_IMAGES).flat(),
     ...MAP1_KING_IMAGES,
