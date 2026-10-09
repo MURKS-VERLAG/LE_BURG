@@ -2319,7 +2319,7 @@ function crossbowHitLiveToad(b,distance,now){
 }
 
 /* v132: einmal je 30-s-Fenster, Zufallszeit und unabhängige 50/50-Laufrichtung. */
-const MAP1_HARE_IMAGES={back:[1,2].map(n=>`assets/npc/hase-back-${n}.png?v=132`),front:[1,3].map(n=>`assets/npc/hase-front-${n}.png?v=132`)};
+const MAP1_HARE_IMAGES={back:[3,2].map(n=>`assets/npc/hase-back-${n}.png?v=132`),front:[1,3].map(n=>`assets/npc/hase-front-${n}.png?v=132`)};
 // Referenz: Map x=159..1761, rote Linie (1619,357)..(1616,1070).
 // Der untere Endpunkt liegt außerhalb der Map, damit der ganze Hase aus dem Bild läuft.
 const MAP1_HARE_TOP=[1398.98,342.32],MAP1_HARE_BOTTOM=[1395.86,1080];
@@ -2357,7 +2357,8 @@ function updateMap1Hare(now){
   const t=Math.min(1,age/MAP1_HARE_RUN_MS),u=e.fromTop?t:1-t;
   const x=MAP1_HARE_TOP[0]+(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0])*u,y=MAP1_HARE_TOP[1]+(MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])*u;
   let direction=e.fromTop?'front':'back',index=Math.floor(age/MAP1_HARE_FRAME_MS)%2,opacity=e.fromTop?Math.min(1,age/120):1;
-  // Beide Richtungen verwenden ausschließlich ihre beiden verbliebenen Laufbilder.
+  // Aufwärts: 3, 2, 3, gespiegelte 2; abwärts unverändert 1, 3.
+  const mirror=!e.fromTop&&t<1&&Math.floor(age/MAP1_HARE_FRAME_MS)%4===3?-1:1;
   if(!e.fromTop&&t===1){
     index=1;
     if(!e.forestDone){e.forestDone=true;map1HareForestEffect();}
@@ -2367,7 +2368,7 @@ function updateMap1Hare(now){
   const src=MAP1_HARE_IMAGES[direction][index],img=EVENT_IMAGE_CACHE.get(src);
   if(!img?.naturalWidth){map1Hare.style.display='none';return;}
   if(map1Hare.getAttribute('src')!==src)map1Hare.src=src;
-  Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
+  Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,transform:e.fromTop?'translate(-50%,-100%)':`translate(-50%,-100%) scaleX(${mirror})`,opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
 }
 
 function ensureMap1Toad(){
