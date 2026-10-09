@@ -2290,7 +2290,7 @@ function pickupMap1DeadToad(){
   const i=map1DeadToads.findIndex(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48);
   if(i<0)return false;
   const d=map1DeadToads[i];d.el.dataset.x=String(d.x);d.el.dataset.y=String(d.y);showMap1MugPlusOne(d.el);d.el.remove();map1DeadToads.splice(i,1);
-  map1ToadPickupSound.pause();map1ToadPickupSound.currentTime=0;map1ToadPickupSound.play().catch(()=>{});return true;
+  return true;
 }
 function crossbowHitLiveToad(b,distance,now){
   if(!map1Toad||map1Toad.style.display==='none'||map1ToadEpoch===null)return false;
@@ -2316,6 +2316,59 @@ function crossbowHitLiveToad(b,distance,now){
     map1ToadSound.pause();map1ToadSound.currentTime=0;playLoudInteractionSound(crossbowHitSounds[Math.floor(Math.random()*2)]);updateMap1DeadToads(now);return true;
   }
   return false;
+}
+
+/* v132: einmal je 30-s-Fenster, Zufallszeit und unabhängige 50/50-Laufrichtung. */
+const MAP1_HARE_IMAGES={back:[1,2,3].map(n=>`assets/npc/hase-back-${n}.png?v=132`),front:[1,2,3].map(n=>`assets/npc/hase-front-${n}.png?v=132`)};
+// Referenz: Map x=159..1761, rote Linie (1619,357)..(1616,1070).
+// Der untere Endpunkt liegt außerhalb der Map, damit der ganze Hase aus dem Bild läuft.
+const MAP1_HARE_TOP=[1398.98,342.32],MAP1_HARE_BOTTOM=[1395.86,1080];
+const MAP1_HARE_SPEED=235,MAP1_HARE_FRAME_MS=100,MAP1_HARE_WINDOW_MS=30000;
+const MAP1_HARE_RUN_MS=Math.hypot(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0],MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])/MAP1_HARE_SPEED*1000;
+const map1HareRustleSound=new Audio('assets/audio/harvest_01_converted_by_soundandgo.com_.mp3');
+map1HareRustleSound.preload='auto';map1HareRustleSound.volume=1;
+let map1Hare=null,map1HareLeaves=null,map1HareEpoch=null,map1HareWindow=-1,map1HareDue=0,map1HareSpawned=false,map1HareEvent=null;
+function ensureMap1Hare(){
+  if(!map1Hare){map1Hare=document.createElement('img');map1Hare.alt='';map1Hare.draggable=false;Object.assign(map1Hare.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',height:'44px',display:'none',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});world.appendChild(map1Hare);}
+  if(!map1HareLeaves){map1HareLeaves=document.createElement('div');Object.assign(map1HareLeaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});world.appendChild(map1HareLeaves);}
+}
+function map1HareForestEffect(){
+  if(currentMap!==1)return;
+  playLoudInteractionSound(map1HareRustleSound);
+  burstMap1TreeLeaves({leaves:map1HareLeaves,originX:MAP1_HARE_TOP[0],originY:MAP1_HARE_TOP[1]-12,durationLimit:1800});
+}
+function updateMap1Hare(now){
+  if(map1HareEpoch===null)return;
+  ensureMap1Hare();map1HareLeaves.style.display=currentMap===1?'block':'none';
+  const windowIndex=Math.floor((now-map1HareEpoch)/MAP1_HARE_WINDOW_MS);
+  if(windowIndex!==map1HareWindow){
+    map1HareWindow=windowIndex;map1HareSpawned=false;
+    // Reserve the run and transition time so every event fits inside its own window.
+    const room=MAP1_HARE_WINDOW_MS-MAP1_HARE_RUN_MS-700;
+    map1HareDue=map1HareEpoch+windowIndex*MAP1_HARE_WINDOW_MS+Math.random()*room;
+  }
+  if(!map1HareSpawned&&!map1HareEvent&&now>=map1HareDue){
+    const fromTop=Math.random()<.5;map1HareSpawned=true;map1HareEvent={fromTop,start:now,forestDone:fromTop};
+    if(fromTop)map1HareForestEffect();
+  }
+  const e=map1HareEvent;if(!e){map1Hare.style.display='none';return;}
+  const age=now-e.start-(e.fromTop?350:0);
+  if(age<0){map1Hare.style.display='none';return;}
+  const t=Math.min(1,age/MAP1_HARE_RUN_MS),u=e.fromTop?t:1-t;
+  const x=MAP1_HARE_TOP[0]+(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0])*u,y=MAP1_HARE_TOP[1]+(MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])*u;
+  let direction=e.fromTop?'front':'back',index=[0,1,2,1][Math.floor(age/MAP1_HARE_FRAME_MS)%4],opacity=e.fromTop?Math.min(1,age/120):1;
+  // Explicit requested special poses at the upper forest endpoint.
+  if(e.fromTop&&age<MAP1_HARE_FRAME_MS){direction='back';index=1;}
+  if(!e.fromTop&&t===1){
+    direction='front';index=1;
+    if(!e.forestDone){e.forestDone=true;map1HareForestEffect();}
+    opacity=Math.max(0,1-(age-MAP1_HARE_RUN_MS)/200);
+  }
+  if((e.fromTop&&t===1)||(!e.fromTop&&age>=MAP1_HARE_RUN_MS+200)){map1Hare.style.display='none';map1HareEvent=null;return;}
+  const src=MAP1_HARE_IMAGES[direction][index],img=EVENT_IMAGE_CACHE.get(src);
+  if(!img?.naturalWidth){map1Hare.style.display='none';return;}
+  if(map1Hare.getAttribute('src')!==src)map1Hare.src=src;
+  Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
 }
 
 function ensureMap1Toad(){
@@ -2843,6 +2896,7 @@ function draw(now){
   updateFurniturePlayerMask();
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
+  updateMap1Hare(now);
   updateMap1Apples(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -4886,6 +4940,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    ...Object.values(MAP1_HARE_IMAGES).flat(),
     MAP1_TOAD_DEAD_SOURCE,
     ...Object.values(PLAYER_CROSSBOW_IMAGES),
     ...Object.values(PLAYER_FIGHT_REST_IMAGES).flat(),
@@ -5001,6 +5056,7 @@ async function start(){
   initMap1Guests();
   ensureMap1Toad();
   map1ToadEpoch=gameNow();
+  ensureMap1Hare();map1HareEpoch=gameNow();
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
