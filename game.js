@@ -2267,6 +2267,56 @@ const MAP1_TOAD_SPLASH='assets/npc/kroete-splash.png?v=110';
 let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1,map1ToadSide=1,map1ToadCollectedCycle=-1;
 const map1ToadSound=new Audio('assets/audio/kroete-plop.mp3?v=110');
 map1ToadSound.preload='auto';
+/* v130: Armbrusttreffer nur auf stehende Kröte; Leichen unabhängig vom Spawn-Takt. */
+const MAP1_TOAD_DEAD_SOURCE='assets/npc/kroete-dead.png?v=130';
+const map1DeadToads=[],crossbowToadAlpha=new WeakMap();
+const crossbowShotSounds=[1,2,3].map(n=>new Audio(`assets/audio/crossbow-shot-${n}.mp3?v=130`));
+const crossbowHitSounds=[1,2].map(n=>new Audio(`assets/audio/crossbow-hit-${n}.mp3?v=130`));
+[...crossbowShotSounds,...crossbowHitSounds].forEach(a=>{a.preload='auto';a.volume=1;});
+let crossbowShotBag=[];
+function playCrossbowShotSound(){
+  if(!crossbowShotBag.length){crossbowShotBag=[0,1,2];for(let i=2;i>0;i--){const j=Math.floor(Math.random()*(i+1));[crossbowShotBag[i],crossbowShotBag[j]]=[crossbowShotBag[j],crossbowShotBag[i]];}}
+  playLoudInteractionSound(crossbowShotSounds[crossbowShotBag.pop()]);
+}
+function updateMap1DeadToads(now){
+  for(let i=map1DeadToads.length-1;i>=0;i--){const d=map1DeadToads[i];
+    if(now>=d.expires){d.el.remove();map1DeadToads.splice(i,1);continue;}
+    Object.assign(d.el.style,{display:currentMap===1?'block':'none',filter:currentMap===1&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48?MAP1_LANDSCAPE_GLOW:'none',zIndex:String((Number(player.style.zIndex)||10000)+(PLAYER.y>d.y?-1:1))});
+  }
+}
+function pickupMap1DeadToad(){
+  const now=gameNow();updateMap1DeadToads(now);
+  const i=map1DeadToads.findIndex(d=>d.el.style.display!=='none'&&d.el.style.filter===MAP1_LANDSCAPE_GLOW&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48);
+  if(i<0)return false;
+  const d=map1DeadToads[i];d.el.dataset.x=String(d.x);d.el.dataset.y=String(d.y);showMap1MugPlusOne(d.el);d.el.remove();map1DeadToads.splice(i,1);
+  map1ToadPickupSound.pause();map1ToadPickupSound.currentTime=0;map1ToadPickupSound.play().catch(()=>{});return true;
+}
+function crossbowHitLiveToad(b,distance,now){
+  if(!map1Toad||map1Toad.style.display==='none'||map1ToadEpoch===null)return false;
+  const elapsed=now-map1ToadEpoch,cycle=Math.floor(elapsed/20000),pose=map1ToadPose(elapsed-cycle*20000);
+  if(cycle<1||cycle===map1ToadCollectedCycle||cycle!==map1ToadCycle||!pose?.ground||!(map1Toad.getAttribute('src')||'').includes('kroete-4.png'))return false;
+  const img=EVENT_IMAGE_CACHE.get(MAP1_TOAD_SOURCES[3]);if(!img?.naturalWidth)return false;
+  let alpha=crossbowToadAlpha.get(img);
+  if(!alpha){try{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);alpha=ctx.getImageData(0,0,c.width,c.height).data;crossbowToadAlpha.set(img,alpha);}catch(_){return false;}}
+  const x=parseFloat(map1Toad.style.left),y=parseFloat(map1Toad.style.top),w=map1Toad.offsetWidth||58,h=map1Toad.offsetHeight||46.4;
+  const mirror=map1Toad.style.transform.includes('scaleX(-1)');
+  const from=b.previousDistance||0,to=Math.min(distance,2200),steps=Math.max(1,Math.ceil(to-from));
+  for(let i=0;i<=steps;i++){
+    // Tip, rather than bolt centre; sweep at most one world pixel per sample.
+    const travel=from+(to-from)*i/steps+10,px=b.x+b.dx*travel,py=b.y+b.dy*travel;
+    let u=(px-(x-w/2))/w;const v=(py-(y-h))/h;
+    if(u<0||u>=1||v<0||v>=1)continue;if(mirror)u=1-u;
+    const sx=Math.min(img.naturalWidth-1,Math.floor(u*img.naturalWidth)),sy=Math.floor(v*img.naturalHeight);
+    if(alpha[(sy*img.naturalWidth+sx)*4+3]<24)continue;
+    const dead=EVENT_IMAGE_CACHE.get(MAP1_TOAD_DEAD_SOURCE);if(!dead?.naturalWidth)return false;
+    const el=document.createElement('img');el.src=dead.src||MAP1_TOAD_DEAD_SOURCE;el.alt='';el.draggable=false;
+    Object.assign(el.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',left:`${x}px`,top:`${y}px`,width:'58px',height:`${58*dead.naturalHeight/dead.naturalWidth}px`,transformOrigin:'50% 100%',transform:`translate(-50%,-100%) scaleX(${mirror?-1:1})`});
+    world.appendChild(el);map1DeadToads.push({el,x,y,expires:now+20000});map1ToadCollectedCycle=cycle;map1Toad.style.display='none';map1Toad.style.filter='none';
+    map1ToadSound.pause();map1ToadSound.currentTime=0;playLoudInteractionSound(crossbowHitSounds[Math.floor(Math.random()*2)]);updateMap1DeadToads(now);return true;
+  }
+  return false;
+}
+
 function ensureMap1Toad(){
   if(map1Toad)return;
   map1Toad=document.createElement('img');
@@ -2317,6 +2367,7 @@ function updateMap1Toad(now){
 /* v112: Nur die leuchtenden Bodenposen sind mit ^ aufhebbar. */
 function pickupMap1Toad(){
   if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake||map1ToadEpoch===null)return false;
+  if(pickupMap1DeadToad())return true;
   const elapsed=gameNow()-map1ToadEpoch,cycle=Math.floor(elapsed/20000);
   if(cycle<1||cycle!==map1ToadCycle||cycle===map1ToadCollectedCycle||!map1Toad||map1Toad.style.display==='none')return false;
   const pose=map1ToadPose(elapsed-cycle*20000);
@@ -2784,6 +2835,7 @@ function draw(now){
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
   if(playerFight&&playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
+  updateMap1DeadToads(now);
   updateCrossbowBolts(now);
   updateKingTableMask();
   updateFurniturePlayerMask();
@@ -4358,7 +4410,7 @@ const PLAYER_FIGHT_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-back-${n}.pn
 const playerFightSound=new Audio('assets/audio/player-fight.mp3?v=123');playerFightSound.preload='auto';playerFightSound.volume=1;playerFightSound.loop=true;
 let playerFight=null,playerFightMug=null;
 function playerFightBlockedByGlow(){
-  return !!(map1NearbyMoney()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
+  return !!(map1DeadToads.some(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48)||map1NearbyMoney()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
     (currentMap===1&&map1Toad&&map1Toad.style.display!=='none'&&map1Toad.style.filter!== 'none'&&map1Toad.style.filter)||
     (currentMap===1&&map1PierPosition===1&&PLAYER.direction==='back'));
 }
@@ -4461,7 +4513,13 @@ function crossbowGeometry(direction){
 }
 function crossbowOrigin(direction){
   const g=crossbowGeometry(direction),side=direction==='left'?-1:1;
-  return {x:PLAYER.x+((direction==='left'||direction==='right')?side*(g.width/2-4)*g.scale:0),y:PLAYER.y-g.height*g.scale*.84};
+  if(direction==='back'||direction==='front'){
+    // Barrel anchors in the existing, unchanged transparent sprite canvases.
+    const anchor=direction==='back'?{x:266/818,y:114/967}:{x:335/1050,y:237/986};
+    let pivot=.5;try{const y=parseFloat(getComputedStyle(player).transformOrigin.split(' ')[1]);if(player.offsetHeight&&Number.isFinite(y))pivot=y/player.offsetHeight;}catch(_){}
+    return {x:PLAYER.x+(anchor.x-.5)*g.width*g.scale,y:PLAYER.y-g.height+g.height*pivot*(1-g.scale)+anchor.y*g.height*g.scale};
+  }
+  return {x:PLAYER.x+side*(g.width/2-4)*g.scale,y:PLAYER.y-g.height*g.scale*.84};
 }
 function crossbowAim(){
   if(playerCrossbowPointer?.clientX!==undefined){
@@ -4523,6 +4581,7 @@ function shootPlayerCrossbow(){
   const dx=aim.target.x-aim.origin.x,dy=aim.target.y-aim.origin.y,len=Math.hypot(dx,dy);if(len<.01)return false;
   const bolt=document.createElement('div');Object.assign(bolt.style,{position:'absolute',left:`${aim.origin.x-10}px`,top:`${aim.origin.y-1.5}px`,transform:`rotate(${Math.atan2(dy,dx)}rad)`,width:'20px',height:'3px',background:'linear-gradient(to right,#ddd 0 12%,#70411d 12% 78%,#c9c9c9 78%)',clipPath:'polygon(0 0,78% 0,100% 50%,78% 100%,0 100%,12% 50%)',transformOrigin:'50% 50%',pointerEvents:'none',zIndex:'12000'});world.appendChild(bolt);
   playerCrossbowBolts.push({el:bolt,x:aim.origin.x,y:aim.origin.y,dx:dx/len,dy:dy/len,at:gameNow(),map:currentMap});
+  playCrossbowShotSound();
   s.phase='shot';s.shotAt=gameNow();s.shotDirection=aim.direction;renderPlayerCrossbow();return true;
 }
 function renderPlayerCrossbow(){
@@ -4555,6 +4614,8 @@ function updatePlayerCrossbow(now){
 }
 function updateCrossbowBolts(now){
   for(let i=playerCrossbowBolts.length-1;i>=0;i--){const b=playerCrossbowBolts[i],distance=(now-b.at)*.7,x=b.x+b.dx*distance,y=b.y+b.dy*distance;
+    if(b.map===1&&currentMap===1&&crossbowHitLiveToad(b,distance,now)){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
+    b.previousDistance=distance;
     if(b.map!==currentMap||x<0||x>WORLD_W||y<0||y>WORLD_H||distance>2200){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
     Object.assign(b.el.style,{left:`${x-10}px`,top:`${y-1.5}px`,transform:`rotate(${Math.atan2(b.dy,b.dx)}rad)`});
   }
@@ -4657,7 +4718,7 @@ window.addEventListener('keydown',e=>{
   if(playerCrossbow){
     if(e.key==='Control'){e.preventDefault();if(!e.repeat)startCrossbowReload();}
     if(e.code==='Space'){e.preventDefault();if(!e.repeat)shootPlayerCrossbow();}
-    if(e.key==='^'||e.code==='Backquote')e.preventDefault();
+    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning)pickupMap1DeadToad();}
     return;
   }
   if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
@@ -4803,6 +4864,7 @@ async function preloadMap1BearFrames(){
   /* v74 ANTI-FREEZE: Event-/NPC-Bilder bleiben als decodierte Image-Objekte dauerhaft im RAM.
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
+    MAP1_TOAD_DEAD_SOURCE,
     ...Object.values(PLAYER_CROSSBOW_IMAGES),
     ...Object.values(PLAYER_FIGHT_REST_IMAGES).flat(),
     ...Object.values(PLAYER_FIGHT_IMAGES).flat(),
