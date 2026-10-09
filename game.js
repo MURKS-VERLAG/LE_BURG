@@ -2319,11 +2319,11 @@ function crossbowHitLiveToad(b,distance,now){
 }
 
 /* v132: einmal je 30-s-Fenster, Zufallszeit und unabhängige 50/50-Laufrichtung. */
-const MAP1_HARE_IMAGES={back:[1,2,3].map(n=>`assets/npc/hase-back-${n}.png?v=132`),front:[1,2,3].map(n=>`assets/npc/hase-front-${n}.png?v=132`)};
+const MAP1_HARE_IMAGES={back:[1,2].map(n=>`assets/npc/hase-back-${n}.png?v=132`),front:[1,3].map(n=>`assets/npc/hase-front-${n}.png?v=132`)};
 // Referenz: Map x=159..1761, rote Linie (1619,357)..(1616,1070).
 // Der untere Endpunkt liegt außerhalb der Map, damit der ganze Hase aus dem Bild läuft.
 const MAP1_HARE_TOP=[1398.98,342.32],MAP1_HARE_BOTTOM=[1395.86,1080];
-const MAP1_HARE_SPEED=235,MAP1_HARE_FRAME_MS=100,MAP1_HARE_WINDOW_MS=30000;
+const MAP1_HARE_SPEED=188,MAP1_HARE_FRAME_MS=125,MAP1_HARE_WINDOW_MS=30000;
 const MAP1_HARE_RUN_MS=Math.hypot(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0],MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])/MAP1_HARE_SPEED*1000;
 const map1HareRustleSound=new Audio('assets/audio/harvest_01_converted_by_soundandgo.com_.mp3');
 map1HareRustleSound.preload='auto';map1HareRustleSound.volume=1;
@@ -2356,11 +2356,10 @@ function updateMap1Hare(now){
   if(age<0){map1Hare.style.display='none';return;}
   const t=Math.min(1,age/MAP1_HARE_RUN_MS),u=e.fromTop?t:1-t;
   const x=MAP1_HARE_TOP[0]+(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0])*u,y=MAP1_HARE_TOP[1]+(MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])*u;
-  let direction=e.fromTop?'front':'back',index=[0,1,2,1][Math.floor(age/MAP1_HARE_FRAME_MS)%4],opacity=e.fromTop?Math.min(1,age/120):1;
-  // Explicit requested special poses at the upper forest endpoint.
-  if(e.fromTop&&age<MAP1_HARE_FRAME_MS){direction='back';index=1;}
+  let direction=e.fromTop?'front':'back',index=Math.floor(age/MAP1_HARE_FRAME_MS)%2,opacity=e.fromTop?Math.min(1,age/120):1;
+  // Beide Richtungen verwenden ausschließlich ihre beiden verbliebenen Laufbilder.
   if(!e.fromTop&&t===1){
-    direction='front';index=1;
+    index=1;
     if(!e.forestDone){e.forestDone=true;map1HareForestEffect();}
     opacity=Math.max(0,1-(age-MAP1_HARE_RUN_MS)/200);
   }
