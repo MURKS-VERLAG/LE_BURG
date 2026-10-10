@@ -2338,6 +2338,31 @@ const MAP1_HARE_RUN_MS=Math.hypot(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0],MAP1_HARE
 const map1HareRustleSound=new Audio('assets/audio/harvest_01_converted_by_soundandgo.com_.mp3');
 map1HareRustleSound.preload='auto';map1HareRustleSound.volume=1;
 let map1Hare=null,map1HareLeaves=null,map1HareEpoch=null,map1HareWindow=-1,map1HareDue=0,map1HareSpawned=false,map1HareEvent=null,map1HareNextFromTop=true;
+/* v144: Hasentreffer, persistente Gesundheit und sammelbarer Kadaver. */
+const MAP1_HARE_DEAD_IMAGES={dead:'assets/npc/hase-dead.png?v=144',deadBolt:'assets/npc/hase-dead-bolt.png?v=144'};
+const map1HareHitSounds=[1,2,3].map(n=>new Audio(`assets/audio/hase-hit-${n}.mp3?v=144`));map1HareHitSounds.forEach(a=>{a.preload='auto';a.volume=1;});
+let map1HareHealth=100;
+function killMap1Hare(e,bolt,now){
+  e.phase='dead';e.hp=0;e.deadAt=now;e.deadImage=bolt?'deadBolt':'dead';
+  playLoudInteractionSound(bolt?crossbowHitSounds[Math.floor(Math.random()*crossbowHitSounds.length)]:map1HareHitSounds[Math.floor(Math.random()*3)]);
+}
+function clearMap1DeadHare(now){
+  map1HareHealth=100;map1HareEvent=null;map1HareEpoch=now;map1HareWindow=-1;map1HareSpawned=false;
+  map1Hare.style.display='none';map1Hare.style.filter='none';
+}
+function map1NearbyDeadHare(){
+  const e=map1HareEvent;return currentMap===1&&!gamePaused&&!mapTransitioning&&!map1AppleShake&&e?.phase==='dead'&&gameNow()-e.deadAt<20000&&Math.hypot(PLAYER.x-e.x,PLAYER.y-e.y)<=48?e:null;
+}
+function pickupMap1DeadHare(){
+  const e=map1NearbyDeadHare();if(!e)return false;map1Hare.dataset.x=String(e.x);map1Hare.dataset.y=String(e.y);showMap1MugPlusOne(map1Hare);clearMap1DeadHare(gameNow());return true;
+}
+function renderMap1DeadHare(now){
+  const e=map1HareEvent;if(!e||e.phase!=='dead')return false;
+  const age=now-e.deadAt;if(age>=20000){clearMap1DeadHare(now);return true;}
+  const src=MAP1_HARE_DEAD_IMAGES[e.deadImage],img=EVENT_IMAGE_CACHE.get(src);if(!img?.naturalWidth){map1Hare.style.display='none';return true;}
+  if(map1Hare.getAttribute('src')!==src)map1Hare.src=src;
+  Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${e.x}px`,top:`${e.y}px`,height:'44px',width:`${44*img.naturalWidth/img.naturalHeight}px`,transform:'translate(-50%,-100%)',opacity:String(age<19300?1:(20000-age)/700),filter:map1NearbyDeadHare()?MAP1_LANDSCAPE_GLOW:'none',zIndex:String(map1AnimalFootDepth(map1Hare,e.x,e.y))});return true;
+}
 function ensureMap1Hare(){
   if(!map1Hare){map1Hare=document.createElement('img');map1Hare.alt='';map1Hare.draggable=false;Object.assign(map1Hare.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',height:'44px',display:'none',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});markMap1Visual(map1Hare);world.appendChild(map1Hare);}
   if(!map1HareLeaves){map1HareLeaves=document.createElement('div');Object.assign(map1HareLeaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});markMap1Visual(map1HareLeaves);world.appendChild(map1HareLeaves);}
@@ -2350,6 +2375,7 @@ function map1HareForestEffect(){
 function updateMap1Hare(now){
   if(map1HareEpoch===null)return;
   ensureMap1Hare();map1HareLeaves.style.display=currentMap===1?'block':'none';
+  if(renderMap1DeadHare(now))return;
   const windowIndex=Math.floor((now-map1HareEpoch)/MAP1_HARE_WINDOW_MS);
   if(windowIndex!==map1HareWindow){
     map1HareWindow=windowIndex;map1HareSpawned=false;
@@ -2358,7 +2384,7 @@ function updateMap1Hare(now){
     map1HareDue=map1HareEpoch+windowIndex*MAP1_HARE_WINDOW_MS+Math.random()*room;
   }
   if(!map1HareSpawned&&!map1HareEvent&&now>=map1HareDue){
-    const fromTop=map1HareNextFromTop;map1HareNextFromTop=!fromTop;map1HareSpawned=true;map1HareEvent={fromTop,start:now,forestDone:fromTop};
+    const fromTop=map1HareNextFromTop;map1HareNextFromTop=!fromTop;map1HareSpawned=true;map1HareEvent={fromTop,start:now,forestDone:fromTop,hp:map1HareHealth,phase:'run'};
     if(fromTop)map1HareForestEffect();
   }
   const e=map1HareEvent;if(!e){map1Hare.style.display='none';return;}
@@ -2373,12 +2399,20 @@ function updateMap1Hare(now){
     if(!e.forestDone){e.forestDone=true;map1HareForestEffect();}
     opacity=Math.max(0,1-(age-MAP1_HARE_RUN_MS)/200);
   }
-  if((e.fromTop&&t===1)||(!e.fromTop&&age>=MAP1_HARE_RUN_MS+200)){map1Hare.style.display='none';map1HareEvent=null;return;}
+  if((e.fromTop&&t===1)||(!e.fromTop&&age>=MAP1_HARE_RUN_MS+200)){map1HareHealth=e.hp;map1Hare.style.display='none';map1HareEvent=null;return;}
   const src=MAP1_HARE_IMAGES[direction][index],img=EVENT_IMAGE_CACHE.get(src);
   if(!img?.naturalWidth){map1Hare.style.display='none';return;}
   if(map1Hare.getAttribute('src')!==src)map1Hare.src=src;
   Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,transform:'translate(-50%,-100%)',opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
-  if(t<1)emitMap1HareDust(now,e,x,y);
+  e.x=x;e.y=y;map1Hare.style.filter='none';
+  if(t<1&&currentMap===1){
+    const hit=map1ChickenStrikeHit(e,44);
+    if(hit>=0){e.lastFight=playerFight;e.lastStrike=playerFight.chickenStrike;e.hp=Math.max(0,e.hp-(hit===3?40:20));map1HareHealth=e.hp;showMap1ChickenDamage(e,hit===3,now);
+      if(e.hp===0){killMap1Hare(e,false,now);renderMap1DeadHare(now);return;}
+      playLoudInteractionSound(map1HareHitSounds[Math.floor(Math.random()*3)]);
+    }
+    emitMap1HareDust(now,e,x,y);
+  }
 }
 
 /* v143: kurzlebiger Hasenstaub und Eier nach 30 ungestörten Sekunden. */
@@ -2454,11 +2488,11 @@ function map1ChickenChooseDirection(s,now){
   s.changed=now;s.until=now+2400+Math.random()*3100;s.peckUntil=0;s.nextPeck=now+1100+Math.random()*2400;
 }
 /* v137: gerichtete Schlagflächen; jeder einzelne Schlag trifft höchstens einmal. */
-function map1ChickenStrikeHit(s){
+function map1ChickenStrikeHit(s,height=MAP1_CHICKEN_HEIGHT){
   if(currentMap!==1||!playerFight||s.phase==='dead')return -1;
   const hit=[.5,1.028,1.606,2.215].findIndex(at=>playerFightSound.currentTime>=at&&playerFightSound.currentTime<at+.3);
   if(hit<0||playerFight.frame!==`hit${hit}`||(s.lastFight===playerFight&&s.lastStrike===playerFight.chickenStrike))return -1;
-  const f=playerFight,dir=f.direction,h=f.baseHeight*f.scale,cx=s.x,cy=s.y-MAP1_CHICKEN_HEIGHT*.45;
+  const f=playerFight,dir=f.direction,h=f.baseHeight*f.scale,cx=s.x,cy=s.y-height*.45;
   let inside=false;
   if(dir==='left'||dir==='right'){
     // Gleiche Quellanker/Höhe wie der unveränderte seitliche Armbrustbolzen.
@@ -2466,10 +2500,10 @@ function map1ChickenStrikeHit(s){
     const ch=img?.naturalHeight?f.baseHeight/playerFightVisibleRatio(img):f.baseHeight;
     const width=img?.naturalHeight?ch*img.naturalWidth/img.naturalHeight:h*.65;
     const side=dir==='left'?-1:1,x=PLAYER.x+side*(width/2-4)*f.scale,y=PLAYER.y-ch*f.scale*.84;
-    inside=(cx-PLAYER.x)*side>=-8&&Math.hypot((cx-x)/1.12,(cy-y)/1.35)<=52+MAP1_CHICKEN_HEIGHT*.28;
+    inside=(cx-PLAYER.x)*side>=-8&&Math.hypot((cx-x)/1.12,(cy-y)/1.35)<=52+height*.28;
   }else{
     const top=dir==='back'?PLAYER.y-h-26:PLAYER.y-h*.35,bottom=dir==='back'?PLAYER.y+12:PLAYER.y+62;
-    inside=(dir==='back'?s.y<=PLAYER.y+8:s.y>=PLAYER.y-8)&&Math.abs(cx-PLAYER.x)<=34+MAP1_CHICKEN_HEIGHT*.2&&cy>=top-MAP1_CHICKEN_HEIGHT*.35&&cy<=bottom+MAP1_CHICKEN_HEIGHT*.35;
+    inside=(dir==='back'?s.y<=PLAYER.y+8:s.y>=PLAYER.y-8)&&Math.abs(cx-PLAYER.x)<=34+height*.2&&cy>=top-height*.35&&cy<=bottom+height*.35;
   }
   return inside?hit:-1;
 }
@@ -2494,11 +2528,11 @@ function damageMap1Chicken(s,hit,now){
   const critical=hit===3;s.hp=Math.max(0,(s.hp??100)-(critical?40:20));showMap1ChickenDamage(s,critical,now);
   if(s.hp===0){s.phaseBeforeDeath=s.phase;killMap1Chicken(s,false);}else{s.phase='escape';s.changed=now;s.peckUntil=0;playLoudInteractionSound(map1ChickenFlapSounds[Math.floor(Math.random()*2)]);}
 }
-function crossbowChickenContact(b,distance){
-  const s=map1ChickenState;if(currentMap!==1||!s||s.phase==='dead'||!map1Chicken||map1Chicken.style.display==='none')return null;
-  const img=EVENT_IMAGE_CACHE.get(map1Chicken.getAttribute('src'));if(!img?.naturalWidth)return null;
+function crossbowChickenContact(b,distance,s=map1ChickenState,el=map1Chicken,height=MAP1_CHICKEN_HEIGHT){
+  if(currentMap!==1||!s||s.phase==='dead'||!el||el.style.display==='none')return null;
+  const img=EVENT_IMAGE_CACHE.get(el.getAttribute('src'));if(!img?.naturalWidth)return null;
   let alpha=crossbowChickenAlpha.get(img);if(!alpha){try{const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);alpha=ctx.getImageData(0,0,canvas.width,canvas.height).data;crossbowChickenAlpha.set(img,alpha);}catch(_){return null;}}
-  const h=MAP1_CHICKEN_HEIGHT,w=h*img.naturalWidth/img.naturalHeight,mirror=map1Chicken.style.transform.includes('scaleX(-1)'),from=b.previousDistance||0,to=Math.min(distance,2200),steps=Math.max(1,Math.ceil(to-from));
+  const h=height,w=h*img.naturalWidth/img.naturalHeight,mirror=el.style.transform.includes('scaleX(-1)'),from=b.previousDistance||0,to=Math.min(distance,2200),steps=Math.max(1,Math.ceil(to-from));
   for(let i=0;i<=steps;i++){const distance=from+(to-from)*i/steps,travel=distance+10,x=b.x+b.dx*travel,y=b.y+b.dy*travel;
     let u=(x-(s.x-w/2))/w;const v=(y-(s.y-h))/h;if(u<0||u>=1||v<0||v>=1)continue;if(mirror)u=1-u;
     const sx=Math.min(img.naturalWidth-1,Math.floor(u*img.naturalWidth)),sy=Math.floor(v*img.naturalHeight);
@@ -2506,10 +2540,11 @@ function crossbowChickenContact(b,distance){
   }return null;
 }
 function crossbowHitMap1Animal(b,distance,now){
-  const chicken=crossbowChickenContact(b,distance);
-  // Ein näherer Krötentreffer hat Vorrang; der Bolzen stoppt beim ersten Objekt.
-  if(crossbowHitLiveToad(b,chicken?chicken.distance:distance,now))return true;
-  if(!chicken)return false;chicken.state.phaseBeforeDeath=chicken.state.phase;killMap1Chicken(chicken.state,true);return true;
+  const chicken=crossbowChickenContact(b,distance),hare=crossbowChickenContact(b,distance,map1HareEvent,map1Hare,44);
+  const first=hare&&(!chicken||hare.distance<chicken.distance)?hare:chicken;
+  if(crossbowHitLiveToad(b,first?first.distance:distance,now))return true;
+  if(!first)return false;
+  if(first===hare)killMap1Hare(first.state,true,now);else{first.state.phaseBeforeDeath=first.state.phase;killMap1Chicken(first.state,true);}return true;
 }
 
 function clearMap1DeadChicken(now){
@@ -4764,7 +4799,7 @@ const PLAYER_FIGHT_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-back-${n}.pn
 const playerFightSound=new Audio('assets/audio/player-fight.mp3?v=123');playerFightSound.preload='auto';playerFightSound.volume=1;playerFightSound.loop=true;
 let playerFight=null,playerFightMug=null;
 function playerFightBlockedByGlow(){
-  return !!(map1DeadToads.some(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48)||map1NearbyMoney()||map1NearbyEgg()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
+  return !!(map1DeadToads.some(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48)||map1NearbyDeadHare()||map1NearbyMoney()||map1NearbyEgg()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
     (currentMap===1&&map1Toad&&map1Toad.style.display!=='none'&&map1Toad.style.filter!== 'none'&&map1Toad.style.filter)||
     (currentMap===1&&map1PierPosition===1&&PLAYER.direction==='back'));
 }
@@ -5077,10 +5112,10 @@ window.addEventListener('keydown',e=>{
   if(playerCrossbow){
     if(e.key==='Control'){e.preventDefault();if(!e.repeat)startCrossbowReload();}
     if(e.code==='Space'){e.preventDefault();if(!e.repeat)shootPlayerCrossbow();}
-    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning){if(!pickupMap1Egg()&&!pickupMap1DeadChicken())pickupMap1DeadToad();}}
+    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning){if(!pickupMap1Egg()&&!pickupMap1DeadHare()&&!pickupMap1DeadChicken())pickupMap1DeadToad();}}
     return;
   }
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Egg()&&!pickupMap1DeadChicken()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Egg()&&!pickupMap1DeadHare()&&!pickupMap1DeadChicken()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){
@@ -5225,6 +5260,7 @@ async function preloadMap1BearFrames(){
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
     ...Object.values(MAP1_HARE_IMAGES).flat(),
+    ...Object.values(MAP1_HARE_DEAD_IMAGES),
     ...Object.values(MAP1_CHICKEN_IMAGES),
     ...MAP1_EGG_IMAGES,
     ...Object.values(MAP1_WITCH_IMAGES),
