@@ -2263,6 +2263,7 @@ function syncEventAudioForCurrentMap(){
 
 /* v110: Eigenständiges Krötenevent; keine Kollision oder Änderung der Teichregeln. */
 const MAP1_TOAD_SOURCES=[1,2,3,4].map(n=>`assets/npc/kroete-${n}.png?v=110`);
+const MAP1_TOAD_WINDOW_MS=30000;
 const MAP1_TOAD_SPLASH='assets/npc/kroete-splash.png?v=110';
 let map1Toad=null,map1ToadEpoch=null,map1ToadCycle=-1,map1ToadLastAge=-1,map1ToadSide=1,map1ToadCollectedCycle=-1;
 const map1ToadSound=new Audio('assets/audio/kroete-plop.mp3?v=110');
@@ -2294,7 +2295,7 @@ function pickupMap1DeadToad(){
 }
 function crossbowHitLiveToad(b,distance,now){
   if(!map1Toad||map1Toad.style.display==='none'||map1ToadEpoch===null)return false;
-  const elapsed=now-map1ToadEpoch,cycle=Math.floor(elapsed/20000),pose=map1ToadPose(elapsed-cycle*20000);
+  const elapsed=now-map1ToadEpoch,cycle=Math.floor(elapsed/MAP1_TOAD_WINDOW_MS),pose=map1ToadPose(elapsed-cycle*MAP1_TOAD_WINDOW_MS);
   if(cycle<1||cycle===map1ToadCollectedCycle||cycle!==map1ToadCycle||!pose?.ground||!(map1Toad.getAttribute('src')||'').includes('kroete-4.png'))return false;
   const img=EVENT_IMAGE_CACHE.get(MAP1_TOAD_SOURCES[3]);if(!img?.naturalWidth)return false;
   let alpha=crossbowToadAlpha.get(img);
@@ -2323,11 +2324,11 @@ const MAP1_HARE_IMAGES={back:[1,2,3].map(n=>`assets/npc/hase-back-${n}.png?v=135
 // Referenz: Map x=159..1761, rote Linie (1619,357)..(1616,1070).
 // Der untere Endpunkt liegt außerhalb der Map, damit der ganze Hase aus dem Bild läuft.
 const MAP1_HARE_TOP=[1398.98,342.32],MAP1_HARE_BOTTOM=[1395.86,1080];
-const MAP1_HARE_SPEED=188,MAP1_HARE_FRAME_MS=125,MAP1_HARE_WINDOW_MS=30000;
+const MAP1_HARE_SPEED=188,MAP1_HARE_FRAME_MS=125,MAP1_HARE_WINDOW_MS=45000;
 const MAP1_HARE_RUN_MS=Math.hypot(MAP1_HARE_BOTTOM[0]-MAP1_HARE_TOP[0],MAP1_HARE_BOTTOM[1]-MAP1_HARE_TOP[1])/MAP1_HARE_SPEED*1000;
 const map1HareRustleSound=new Audio('assets/audio/harvest_01_converted_by_soundandgo.com_.mp3');
 map1HareRustleSound.preload='auto';map1HareRustleSound.volume=1;
-let map1Hare=null,map1HareLeaves=null,map1HareEpoch=null,map1HareWindow=-1,map1HareDue=0,map1HareSpawned=false,map1HareEvent=null;
+let map1Hare=null,map1HareLeaves=null,map1HareEpoch=null,map1HareWindow=-1,map1HareDue=0,map1HareSpawned=false,map1HareEvent=null,map1HareNextFromTop=true;
 function ensureMap1Hare(){
   if(!map1Hare){map1Hare=document.createElement('img');map1Hare.alt='';map1Hare.draggable=false;Object.assign(map1Hare.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',height:'44px',display:'none',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});world.appendChild(map1Hare);}
   if(!map1HareLeaves){map1HareLeaves=document.createElement('div');Object.assign(map1HareLeaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});world.appendChild(map1HareLeaves);}
@@ -2348,7 +2349,7 @@ function updateMap1Hare(now){
     map1HareDue=map1HareEpoch+windowIndex*MAP1_HARE_WINDOW_MS+Math.random()*room;
   }
   if(!map1HareSpawned&&!map1HareEvent&&now>=map1HareDue){
-    const fromTop=Math.random()<.5;map1HareSpawned=true;map1HareEvent={fromTop,start:now,forestDone:fromTop};
+    const fromTop=map1HareNextFromTop;map1HareNextFromTop=!fromTop;map1HareSpawned=true;map1HareEvent={fromTop,start:now,forestDone:fromTop};
     if(fromTop)map1HareForestEffect();
   }
   const e=map1HareEvent;if(!e){map1Hare.style.display='none';return;}
@@ -2378,6 +2379,7 @@ const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34*1.20;
 const map1ChickenHitSound=new Audio('assets/audio/begauk_converted_by_soundandgo.com_.mp3?v=136');map1ChickenHitSound.preload='auto';map1ChickenHitSound.volume=1;
 const map1ChickenFlapSounds=[1,2].map(n=>new Audio(`assets/audio/huhn-flap-${n}.mp3?v=137`));map1ChickenFlapSounds.forEach(a=>{a.preload='auto';a.volume=1;});
 const map1ChickenDamage=[],crossbowChickenAlpha=new WeakMap();
+let map1ChickenHealth=100;
 let map1Chicken=null,map1ChickenState=null,map1ChickenLast=null,map1ChickenNext=0,map1ChickenNextRegion=0,map1ChickenReady=false;
 function ensureMap1Chicken(){
   if(map1Chicken)return;
@@ -2406,10 +2408,10 @@ function map1ChickenStrikeHit(s){
     const ch=img?.naturalHeight?f.baseHeight/playerFightVisibleRatio(img):f.baseHeight;
     const width=img?.naturalHeight?ch*img.naturalWidth/img.naturalHeight:h*.65;
     const side=dir==='left'?-1:1,x=PLAYER.x+side*(width/2-4)*f.scale,y=PLAYER.y-ch*f.scale*.84;
-    inside=(cx-PLAYER.x)*side>=-8&&Math.hypot(cx-x,cy-y)<=46+MAP1_CHICKEN_HEIGHT*.28;
+    inside=(cx-PLAYER.x)*side>=-8&&Math.hypot((cx-x)/1.12,(cy-y)/1.35)<=52+MAP1_CHICKEN_HEIGHT*.28;
   }else{
-    const top=dir==='back'?PLAYER.y-h-18:PLAYER.y-h*.35,bottom=dir==='back'?PLAYER.y+8:PLAYER.y+52;
-    inside=(dir==='back'?s.y<=PLAYER.y+8:s.y>=PLAYER.y-8)&&Math.abs(cx-PLAYER.x)<=28+MAP1_CHICKEN_HEIGHT*.2&&cy>=top-MAP1_CHICKEN_HEIGHT*.35&&cy<=bottom+MAP1_CHICKEN_HEIGHT*.35;
+    const top=dir==='back'?PLAYER.y-h-26:PLAYER.y-h*.35,bottom=dir==='back'?PLAYER.y+12:PLAYER.y+62;
+    inside=(dir==='back'?s.y<=PLAYER.y+8:s.y>=PLAYER.y-8)&&Math.abs(cx-PLAYER.x)<=34+MAP1_CHICKEN_HEIGHT*.2&&cy>=top-MAP1_CHICKEN_HEIGHT*.35&&cy<=bottom+MAP1_CHICKEN_HEIGHT*.35;
   }
   return inside?hit:-1;
 }
@@ -2425,7 +2427,7 @@ function updateMap1ChickenDamage(now){
   }
 }
 function killMap1Chicken(s,bolt){
-  s.hp=0;s.phase='dead';s.deadImage=bolt?'deadBolt':'dead';s.deadMirror=s.direction==='right'||(s.phaseBeforeDeath==='escape'&&s.region===1);s.peckUntil=0;
+  s.deadAt=gameNow();s.hp=0;s.phase='dead';s.deadImage=bolt?'deadBolt':'dead';s.deadMirror=s.direction==='right'||(s.phaseBeforeDeath==='escape'&&s.region===1);s.peckUntil=0;
   playLoudInteractionSound(bolt?crossbowHitSounds[Math.floor(Math.random()*crossbowHitSounds.length)]:map1ChickenHitSound);
 }
 function damageMap1Chicken(s,hit,now){
@@ -2451,16 +2453,28 @@ function crossbowHitMap1Animal(b,distance,now){
   if(!chicken)return false;chicken.state.phaseBeforeDeath=chicken.state.phase;killMap1Chicken(chicken.state,true);return true;
 }
 
+function clearMap1DeadChicken(now){
+  const s=map1ChickenState;if(!s||s.phase!=='dead')return;
+  map1ChickenHealth=100;map1ChickenNextRegion=1-s.region;map1ChickenNext=now+650;map1ChickenState=null;
+  if(map1Chicken){map1Chicken.style.display='none';map1Chicken.style.filter='none';map1Chicken.style.opacity='1';}
+}
+function pickupMap1DeadChicken(){
+  if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake)return false;
+  const s=map1ChickenState,now=gameNow();
+  if(!s||s.phase!=='dead'||now-s.deadAt>=20000||Math.hypot(PLAYER.x-s.x,PLAYER.y-s.y)>48)return false;
+  map1Chicken.dataset.x=String(s.x);map1Chicken.dataset.y=String(s.y);showMap1MugPlusOne(map1Chicken);clearMap1DeadChicken(now);return true;
+}
 function updateMap1Chicken(now){
   updateMap1ChickenDamage(now);
   if(!map1ChickenReady)return;ensureMap1Chicken();
   // Keine nachträglichen Sprünge nach Mapwechsel; globale Spielpause verwendet gameNow.
   const dt=map1ChickenLast===null?0:Math.max(0,Math.min(50,now-map1ChickenLast))/1000;map1ChickenLast=now;
+  if(map1ChickenState?.phase==='dead'&&now-map1ChickenState.deadAt>=20000){clearMap1DeadChicken(now);return;}
   if(currentMap!==1){map1Chicken.style.display='none';return;}
   if(!map1ChickenState){
     if(now<map1ChickenNext){map1Chicken.style.display='none';return;}
     const region=map1ChickenNextRegion,r=MAP1_CHICKEN_REGIONS[region];
-    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',hp:100,changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
+    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',hp:map1ChickenHealth,changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
   }
   const s=map1ChickenState;
   const strike=map1ChickenStrikeHit(s);if(strike>=0)damageMap1Chicken(s,strike,now);
@@ -2487,12 +2501,14 @@ function updateMap1Chicken(now){
   }
   // Erst beim tatsächlichen Betreten des braunen Randes wechseln: nie zwei Hühner.
   if(s.phase!=='entry'&&s.phase!=='dead'&&(s.x<=0||s.x>=1536)){
+    map1ChickenHealth=s.hp??100;
     map1ChickenNextRegion=1-s.region;map1ChickenNext=now+650;map1ChickenState=null;map1Chicken.style.display='none';return;
   }
+  const displayHeight=MAP1_CHICKEN_HEIGHT*(s.phase==='dead'?1.25:1);
   const src=MAP1_CHICKEN_IMAGES[image],img=EVENT_IMAGE_CACHE.get(src);
   if(!img?.naturalWidth){map1Chicken.style.display='none';return;}
   if(map1Chicken.getAttribute('src')!==src)map1Chicken.src=src;
-  Object.assign(map1Chicken.style,{display:'block',left:`${s.x}px`,top:`${s.y}px`,width:`${MAP1_CHICKEN_HEIGHT*img.naturalWidth/img.naturalHeight}px`,transform:`translate(-50%,-100%) scaleX(${mirror?-1:1})`,zIndex:String((Number(player.style.zIndex)||1000)+(s.y>PLAYER.y?1:-1))});
+  Object.assign(map1Chicken.style,{display:'block',left:`${s.x}px`,top:`${s.y}px`,height:`${displayHeight}px`,width:`${displayHeight*img.naturalWidth/img.naturalHeight}px`,opacity:String(s.phase==='dead'?Math.min(1,Math.max(0,(20000-(now-s.deadAt))/700)):1),filter:s.phase==='dead'&&Math.hypot(PLAYER.x-s.x,PLAYER.y-s.y)<=48?MAP1_LANDSCAPE_GLOW:'none',transform:`translate(-50%,-100%) scaleX(${mirror?-1:1})`,zIndex:String((Number(player.style.zIndex)||1000)+(s.y>PLAYER.y?1:-1))});
 }
 
 function ensureMap1Toad(){
@@ -2524,8 +2540,8 @@ function updateMap1Toad(now){
   if(map1ToadEpoch===null)return;
   ensureMap1Toad();
   const elapsed=now-map1ToadEpoch;
-  if(elapsed<20000){map1Toad.style.display='none';return;}
-  const cycle=Math.floor(elapsed/20000),age=elapsed-cycle*20000;
+  if(elapsed<MAP1_TOAD_WINDOW_MS){map1Toad.style.display='none';return;}
+  const cycle=Math.floor(elapsed/MAP1_TOAD_WINDOW_MS),age=elapsed-cycle*MAP1_TOAD_WINDOW_MS;
   if(cycle!==map1ToadCycle){map1ToadCycle=cycle;map1ToadLastAge=-1;map1ToadSide=Math.random()<.5?-1:1;}
   if(cycle===map1ToadCollectedCycle){map1Toad.style.display='none';map1Toad.style.filter='none';return;}
   if(map1ToadLastAge<0&&age<180)playMap1ToadSound();
@@ -2546,9 +2562,9 @@ function updateMap1Toad(now){
 function pickupMap1Toad(){
   if(currentMap!==1||mapTransitioning||gamePaused||map1AppleShake||map1ToadEpoch===null)return false;
   if(pickupMap1DeadToad())return true;
-  const elapsed=gameNow()-map1ToadEpoch,cycle=Math.floor(elapsed/20000);
+  const elapsed=gameNow()-map1ToadEpoch,cycle=Math.floor(elapsed/MAP1_TOAD_WINDOW_MS);
   if(cycle<1||cycle!==map1ToadCycle||cycle===map1ToadCollectedCycle||!map1Toad||map1Toad.style.display==='none')return false;
-  const pose=map1ToadPose(elapsed-cycle*20000);
+  const pose=map1ToadPose(elapsed-cycle*MAP1_TOAD_WINDOW_MS);
   if(!pose?.ground)return false;
   const point=map1ToadPoint(1);
   if(Math.hypot(PLAYER.x-point.x,PLAYER.y-point.groundY)>48)return false;
@@ -4920,10 +4936,10 @@ window.addEventListener('keydown',e=>{
   if(playerCrossbow){
     if(e.key==='Control'){e.preventDefault();if(!e.repeat)startCrossbowReload();}
     if(e.code==='Space'){e.preventDefault();if(!e.repeat)shootPlayerCrossbow();}
-    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning)pickupMap1DeadToad();}
+    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning){if(!pickupMap1DeadChicken())pickupMap1DeadToad();}}
     return;
   }
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1DeadChicken()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){
