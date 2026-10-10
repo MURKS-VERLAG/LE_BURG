@@ -2706,15 +2706,17 @@ function map1AppleCrownDropPoint(sp){
 function dropMap1Apple(now,options=null){
   const sp=map1AppleSprite();if(!sp)return;
   const from=options?.from||map1AppleCrownDropPoint(sp);if(!from)return;
-  const landY=px(sp.el,'top')+sp.el.offsetHeight+PLAYER.radius+8;
-  const distance=3+Math.random()*3;
+  const landY=options?.plan?.landY??options?.landY??(px(sp.el,'top')+sp.el.offsetHeight+PLAYER.radius+8);
+  const distance=options?.plan?.distance??(3+Math.random()*3);
   let angle=Math.random()*Math.PI*2,dx=0,dy=0;
   // Rollbahn bleibt gerade und nutzt dieselben festen Weltkonturen wie der Spieler.
-  for(let attempt=0;attempt<32;attempt++){
+  if(!options?.plan)for(let attempt=0;attempt<32;attempt++){
     const tx=Math.cos(angle)*distance,ty=Math.sin(angle)*distance;
     if([0,.25,.5,.75,1].every(t=>{const x=from.x+tx*t,y=landY+ty*t;return x>=6&&x<=WORLD_W-6&&y>=6&&y<=WORLD_H-6&&!collisionSprites.some(s=>circleHitsSpecificSprite(s,x,y,6));})){dx=tx;dy=ty;break;}
     angle+=Math.PI*2/32;
   }
+  if(options?.plan){dx=options.plan.dx;dy=options.plan.dy;}
+  if(options?.prepareOnly)return {from,landY,dx,dy,distance};
   if(!dx&&!dy&&!options?.witchTemporary)return;
   const el=document.createElement('img');el.src=MAP1_APPLE_IMAGE;el.alt='';el.draggable=false;
   Object.assign(el.style,{position:'absolute',width:'13px',height:'auto',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 75%'});
@@ -2748,7 +2750,7 @@ function updateMap1Apples(now){
   updateMap1AppleShake(now);
   for(const a of [...map1Apples]){
     const age=Math.max(0,now-a.start);
-    if(a.witchTemporary&&age>=1200){a.el.remove();map1Apples.splice(map1Apples.indexOf(a),1);continue;}
+    if(a.witchTemporary&&age>=2200){a.el.remove();map1Apples.splice(map1Apples.indexOf(a),1);continue;}
     let visualY;
     if(age<550){const t=age/550;a.x=a.from.x;a.y=a.landY;visualY=a.from.y+(a.landY-a.from.y)*t*t;}
     else if(age<750){const t=(age-550)/200;a.x=a.from.x;a.y=a.landY;visualY=a.landY-4*Math.sin(Math.PI*t);}
@@ -2772,12 +2774,34 @@ function ensureMap1Witch(){
   if(map1Witch)return;map1Witch=document.createElement('img');map1Witch.alt='';map1Witch.draggable=false;
   Object.assign(map1Witch.style,{position:'absolute',width:'116px',height:'auto',maxWidth:'none',pointerEvents:'none',transform:'translate(-50%,-50%)',display:'none',zIndex:'24000'});markMap1Visual(map1Witch);world.appendChild(map1Witch);
 }
+function prepareMap1WitchDrop(sp){
+  const candidates=[],step=Math.max(1,Math.floor(Math.min(sp.sourceW,sp.sourceH)/70));
+  const left=px(sp.el,'left'),top=px(sp.el,'top'),w=sp.el.offsetWidth,h=sp.el.offsetHeight;
+  for(let sy=Math.floor(sp.sourceH*.12);sy<sp.sourceH*.62;sy+=step)for(let sx=Math.floor(sp.sourceW*.12);sx<sp.sourceW*.88;sx+=step){if(sp.alpha[sy*sp.sourceW+sx]>=24)candidates.push({sx,sy,x:left+(sx+.5)/sp.sourceW*w,y:top+(sy+.5)/sp.sourceH*h});}
+  const result=[],heights=[.18,.48,.28,.55,.38,.22,.52,.32,.16,.44];
+  for(let i=0;i<10;i++){
+    const tx=.14+i*.08,ty=heights[i];let best=null,score=Infinity;
+    for(const p of candidates){if(result.some(q=>Math.hypot(p.x-q.from.x,p.y-q.from.y)<w*.065))continue;const d=((p.sx/sp.sourceW-tx)*1.5)**2+(p.sy/sp.sourceH-ty)**2;if(d<score){score=d;best=p;}}
+    if(best){const plan=dropMap1Apple(0,{from:{x:best.x,y:best.y},landY:top+h+PLAYER.radius+8+i*2,prepareOnly:true,witchTemporary:true});if(plan)result.push(plan);}
+  }return result;
+}
+function updateMap1WitchLightning(e,x,y,now){
+  if(now<e.magicStart||now>e.contactAt){if(e.lightning)e.lightning.style.display='none';return;}
+  if(!e.lightning){const ns='http://www.w3.org/2000/svg',el=document.createElementNS(ns,'svg');el.setAttribute('viewBox',`0 0 ${WORLD_W} ${WORLD_H}`);Object.assign(el.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'24002'});const line=document.createElementNS(ns,'polyline');line.setAttribute('fill','none');line.setAttribute('stroke','#fff8bd');line.setAttribute('stroke-width','2');line.style.filter='drop-shadow(0 0 3px #e9a83c)';el.appendChild(line);markMap1Visual(el);world.appendChild(el);e.lightning=el;e.lightningLine=line;}
+  const progress=Math.min(1,(now-e.magicStart)/500),sp=map1AppleSprite(),root={x:px(sp.el,'left')+sp.el.offsetWidth*.53,y:px(sp.el,'top')+sp.el.offsetHeight*.92},start={x:x+50,y:y-31};
+  const end={x:start.x+(root.x-start.x)*progress,y:start.y+(root.y-start.y)*progress},dx=end.x-start.x,dy=end.y-start.y,len=Math.hypot(dx,dy)||1,points=[];
+  for(let i=0;i<=6;i++){const u=i/6,j=i===0||i===6?0:(i%2?4:-4);points.push(`${start.x+dx*u-dy/len*j},${start.y+dy*u+dx/len*j}`);}
+  e.lightningLine.setAttribute('points',points.join(' '));e.lightning.style.display=currentMap===1?'block':'none';
+}
 function startMap1Witch(){
   if(currentMap!==1||gamePaused||mapTransitioning||map1GameOverStarted||map1WitchEvent||map1WitchBareUntil||map1AppleShake)return false;
   const sp=map1AppleSprite();if(!sp||Object.values(MAP1_WITCH_IMAGES).some(src=>!EVENT_IMAGE_CACHE.get(src)?.naturalWidth))return false;
   ensureMap1Witch();const x=px(sp.el,'left')+sp.el.offsetWidth*.5,y=px(sp.el,'top')+sp.el.offsetHeight*.25;
   const start={x:-110,y:WORLD_H*.5},slope=(y-start.y)/(x-start.x),end={x:start.x+(-125-start.y)/slope,y:-125};
-  map1WitchEvent={start,end,at:gameNow(),duration:Math.hypot(end.x-start.x,end.y-start.y)/135*1000,cast:false,magicUntil:0};
+  const duration=Math.hypot(end.x-start.x,end.y-start.y)/135*1000;
+  let contact=duration;for(let i=0;i<=1000;i++){const u=i/1000;if(rawSpriteOpaqueAt(sp,start.x+(end.x-start.x)*u,start.y+(end.y-start.y)*u)){contact=duration*u;break;}}
+  const plans=prepareMap1WitchDrop(sp),at=gameNow(),contactAt=at+contact,magicStart=Math.max(at,contactAt-500);
+  map1WitchEvent={start,end,at,duration,cast:false,plans,contactAt,magicStart,magicUntil:magicStart+1000};
   gameClearTimeout(map1WitchSoundTimer);let scheduled=false;
   const follow=()=>{if(scheduled)return;scheduled=true;map1WitchSoundTimer=gameSetTimeout(()=>{map1WitchSoundTimer=0;playLoudInteractionSound(map1WitchVoice);},2000);};
   map1WitchLaugh.onended=follow;map1WitchLaugh.pause();map1WitchLaugh.currentTime=0;
@@ -2792,10 +2816,10 @@ function addMap1WitchParticle(kind,x,y,now,dx,dy,size,duration){
 function castMap1WitchTree(now){
   const sp=map1AppleSprite();if(!sp)return;
   const tree=sp.el,left=px(tree,'left'),top=px(tree,'top'),w=tree.offsetWidth,h=tree.offsetHeight;
-  const points=[];for(let attempt=0;attempt<500&&points.length<10;attempt++){const p=map1AppleCrownDropPoint(sp);if(p&&points.every(q=>Math.hypot(p.x-q.x,p.y-q.y)>w*.08))points.push(p);}
-  for(const from of points)dropMap1Apple(now,{from,witchTemporary:true});
+  const plans=map1WitchEvent.plans,points=plans.map(p=>p.from);
+  for(const plan of plans)dropMap1Apple(now,{from:plan.from,plan,witchTemporary:true});
   const leaves=document.createElement('div');Object.assign(leaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',zIndex:'23001'});markMap1Visual(leaves);world.appendChild(leaves);
-  for(let i=0;i<8;i++){const p=points[i]||{x:left+w*(.2+.6*Math.random()),y:top+h*(.15+.35*Math.random())};burstMap1TreeLeaves({leaves,originX:p.x,originY:p.y,durationLimit:2100,downwardOnly:true});}
+  for(let i=0;i<8;i++)gameSetTimeout(()=>{const p=points[i%points.length]||{x:left+w*.5,y:top+h*.3};burstMap1TreeLeaves({leaves,originX:p.x,originY:p.y,durationLimit:1800,downwardOnly:true});},i*35);
   gameSetTimeout(()=>leaves.remove(),2200);playLoudInteractionSound(map1WitchRustle);
   for(let i=0;i<22;i++){const a=Math.random()*Math.PI*2,r=.25+.75*Math.random();addMap1WitchParticle('smoke',left+w*.53,top+h*.79,now,Math.cos(a)*w*.55*r,-h*.35+Math.sin(a)*h*.45*r,26+Math.random()*38,1400+Math.random()*400);}
   map1WitchOriginalSource=tree.getAttribute('src');tree.src=MAP1_WITCH_IMAGES.bare;tree.style.filter='none';map1WitchBareUntil=now+60000;
@@ -2804,11 +2828,12 @@ function updateMap1Witch(now){
   if(map1WitchBareUntil&&now>=map1WitchBareUntil){const tree=document.getElementById('apfelbaum');if(tree&&map1WitchOriginalSource)tree.src=map1WitchOriginalSource;map1WitchBareUntil=0;map1WitchOriginalSource=null;}
   const e=map1WitchEvent;
   if(e){const t=Math.min(1,Math.max(0,(now-e.at)/e.duration)),x=e.start.x+(e.end.x-e.start.x)*t,y=e.start.y+(e.end.y-e.start.y)*t,sp=map1AppleSprite();
-    if(!e.cast&&sp&&rawSpriteOpaqueAt(sp,x,y)){e.cast=true;e.magicUntil=now+1000;castMap1WitchTree(now);}
-    const magic=now<e.magicUntil,src=magic?MAP1_WITCH_IMAGES.magic:MAP1_WITCH_IMAGES.fly;if(map1Witch.getAttribute('src')!==src)map1Witch.src=src;
+    if(!e.cast&&sp&&now>=e.contactAt){e.cast=true;castMap1WitchTree(now);}
+    updateMap1WitchLightning(e,x,y,now);
+    const magic=now>=e.magicStart&&now<e.magicUntil,src=magic?MAP1_WITCH_IMAGES.magic:MAP1_WITCH_IMAGES.fly;if(map1Witch.getAttribute('src')!==src)map1Witch.src=src;
     Object.assign(map1Witch.style,{left:`${x}px`,top:`${y}px`,display:currentMap===1?'block':'none'});
     if(magic&&(!e.sparkAt||now-e.sparkAt>=75)){e.sparkAt=now;for(let i=0;i<3;i++)addMap1WitchParticle('spark',x+(Math.random()-.5)*104,y+(Math.random()-.5)*68,now,(Math.random()-.5)*15,-10-Math.random()*20,4+Math.random()*5,420);}
-    if(t===1){map1Witch.style.display='none';map1WitchEvent=null;}
+    if(t===1){map1Witch.style.display='none';if(e.lightning)e.lightning.remove();map1WitchEvent=null;}
   }
   for(let i=map1WitchParticles.length-1;i>=0;i--){const p=map1WitchParticles[i],t=(now-p.at)/p.duration;if(t>=1){p.el.remove();map1WitchParticles.splice(i,1);continue;}
     Object.assign(p.el.style,{display:currentMap===1?'block':'none',transform:`translate(-50%,-50%) translate(${p.dx*t}px,${p.dy*t}px) scale(${p.kind==='smoke'?.3+3.3*t:1})`,opacity:String(Math.min(1,t*8)*(1-t))});
