@@ -2378,13 +2378,62 @@ function updateMap1Hare(now){
   if(!img?.naturalWidth){map1Hare.style.display='none';return;}
   if(map1Hare.getAttribute('src')!==src)map1Hare.src=src;
   Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,transform:'translate(-50%,-100%)',opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
+  if(t<1)emitMap1HareDust(now,e,x,y);
+}
+
+/* v143: kurzlebiger Hasenstaub und Eier nach 30 ungestörten Sekunden. */
+const MAP1_EGG_IMAGES=['assets/props/ei-braun.png?v=143','assets/props/ei-weiss.png?v=143'];
+const map1EggLaySounds=[1,2].map(n=>new Audio(`assets/audio/huhn-ei-${n}.mp3?v=143`));map1EggLaySounds.forEach(a=>{a.preload='auto';a.volume=1;});
+const map1Eggs=[],map1HareDust=[];
+function emitMap1HareDust(now,e,x,y){
+  if(currentMap!==1||e.dustAt!==undefined&&now-e.dustAt<85)return;e.dustAt=now;
+  for(let i=0;i<2;i++){const el=document.createElement('span'),size=5+Math.random()*5;
+    Object.assign(el.style,{position:'absolute',left:`${x+(Math.random()-.5)*8}px`,top:`${y+(e.fromTop?-7:5)}px`,width:`${size}px`,height:`${size*.6}px`,borderRadius:'50%',background:'radial-gradient(ellipse,rgba(196,153,98,.8),rgba(174,130,77,.3) 55%,transparent 75%)',pointerEvents:'none',zIndex:String(Number(map1Hare.style.zIndex)-1)});
+    markMap1Visual(el);world.appendChild(el);map1HareDust.push({el,at:now,dx:(Math.random()-.5)*12,dy:e.fromTop?-7:7,life:420+Math.random()*160});
+  }
+}
+function updateMap1HareDust(now){
+  for(let i=map1HareDust.length-1;i>=0;i--){const p=map1HareDust[i],t=(now-p.at)/p.life;if(t>=1){p.el.remove();map1HareDust.splice(i,1);continue;}
+    Object.assign(p.el.style,{display:currentMap===1?'block':'none',zIndex:String((Number(map1Hare?.style.zIndex)||1000)-1),opacity:String((1-t)*.75),transform:`translate(-50%,-50%) translate(${p.dx*t}px,${p.dy*t}px) scale(${.6+t*1.2})`});
+  }
+}
+function layMap1ChickenEgg(s,now){
+  const src=MAP1_EGG_IMAGES[Math.floor(Math.random()*2)],img=EVENT_IMAGE_CACHE.get(src);if(!img?.naturalWidth)return false;
+  const el=document.createElement('img');el.src=img.src||src;el.alt='';el.draggable=false;
+  Object.assign(el.style,{position:'absolute',width:'9px',height:'11.5px',objectFit:'contain',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 100%'});markMap1Visual(el);world.appendChild(el);
+  const dx=s.direction==='left'?5:s.direction==='right'?-5:(Math.random()<.5?-4:4),dy=s.direction==='back'?5:s.direction==='front'?-3:3;
+  map1Eggs.push({el,at:now,fromX:s.x,fromY:s.y-7,x:s.x+dx,y:s.y+dy,dx});s.calmSince=now;s.layingUntil=now+600;playLoudInteractionSound(map1EggLaySounds[Math.floor(Math.random()*2)]);return true;
+}
+function map1NearbyEgg(){
+  if(currentMap!==1||gamePaused||mapTransitioning||map1AppleShake)return null;
+  const now=gameNow();let best=null,distance=Infinity;
+  for(const egg of map1Eggs){if(now-egg.at<600)continue;const d=Math.hypot(PLAYER.x-egg.x,PLAYER.y-egg.y);if(d<=42&&d<distance){best=egg;distance=d;}}
+  return best;
+}
+function pickupMap1Egg(){
+  const egg=map1NearbyEgg();if(!egg)return false;egg.el.dataset.x=String(egg.x);egg.el.dataset.y=String(egg.y);showMap1MugPlusOne(egg.el);egg.el.remove();map1Eggs.splice(map1Eggs.indexOf(egg),1);return true;
+}
+function map1AnimalFootDepth(el,x,y){
+  let z=(Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1);
+  const actors=[map1Runner,map1Bear,map1BockRider,map1BockFinal,map1Event3Farmer,map1Event3Bock,map1Event4Kalif,map1Event5Farmer,map1Event5Kalif,map1GuestEl,map1WomanEl,map1King];
+  for(const npc of actors){if(!npc||npc.style.display==='none'||npc.style.visibility==='hidden')continue;const nx=parseFloat(npc.style.left),foot=parseFloat(npc.style.top);if(!Number.isFinite(nx)||!Number.isFinite(foot)||Math.abs(x-nx)>(npc.offsetWidth+(el.offsetWidth||12))*.5||y<foot-npc.offsetHeight||y-(el.offsetHeight||12)>foot)continue;
+    const nz=Number(npc.style.zIndex);if(!Number.isFinite(nz))continue;z=y<foot?Math.min(z,nz-1):Math.max(z,nz+1);
+  }return z;
+}
+function updateMap1Eggs(now){
+  const near=map1NearbyEgg();
+  for(const egg of map1Eggs){const t=Math.min(1,Math.max(0,(now-egg.at)/600)),ease=t*t*(3-2*t),x=egg.fromX+egg.dx*ease,y=egg.fromY+(egg.y-egg.fromY)*ease-(t>.45?1.8*Math.sin((t-.45)/.55*Math.PI):0);
+    Object.assign(egg.el.style,{left:`${x}px`,top:`${y}px`,display:currentMap===1?'block':'none',filter:egg===near?MAP1_LANDSCAPE_GLOW:'none',transform:`translate(-50%,-100%) rotate(${Math.sin(t*Math.PI)*9}deg)`,zIndex:String(map1AnimalFootDepth(egg.el,egg.x,egg.y))});
+    if(t<1&&map1ChickenState&&Math.hypot(egg.x-map1ChickenState.x,egg.y-map1ChickenState.y)<20)egg.el.style.zIndex=String(Math.min(Number(egg.el.style.zIndex),(Number(map1Chicken.style.zIndex)||1000)-1));
+  }
+  if(currentMap===1&&map1Chicken&&map1ChickenState&&map1Chicken.style.display!=='none')map1Chicken.style.zIndex=String(map1AnimalFootDepth(map1Chicken,map1ChickenState.x,map1ChickenState.y));
 }
 
 /* v136: ein Huhn, ausschließlich in den beiden Referenz-Ellipsen. */
 const MAP1_CHICKEN_IMAGES={back:'assets/npc/huhn-back.png?v=136',backMirror:'assets/npc/huhn-back-mirror.png?v=136',left:'assets/npc/huhn-left.png?v=136',front:'assets/npc/huhn-front.png?v=136',frontMirror:'assets/npc/huhn-front-mirror.png?v=136',right:'assets/npc/huhn-right.png?v=136',peckRight:'assets/npc/huhn-peck-right.png?v=136',peckFront:'assets/npc/huhn-peck-front.png?v=136',peckLeft:'assets/npc/huhn-peck-left.png?v=136',escape:'assets/npc/huhn-escape.png?v=136',dead:'assets/npc/huhn-dead.png?v=137',deadBolt:'assets/npc/huhn-dead-bolt.png?v=137'};
 // Referenz 1920x1072: spielbare Map x=159..1761, y=2..1070.
 const MAP1_CHICKEN_REGIONS=[{x:(260-159)*1536/1602,y:(488-2)*1024/1068,rx:241*1536/1602,ry:127*1024/1068,edge:0},{x:(1625-159)*1536/1602,y:(767-2)*1024/1068,rx:248*1536/1602,ry:148*1024/1068,edge:1536}];
-const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34*1.20;
+const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34*1.20*1.05;
 const map1ChickenHitSound=new Audio('assets/audio/begauk_converted_by_soundandgo.com_.mp3?v=136');map1ChickenHitSound.preload='auto';map1ChickenHitSound.volume=1;
 const map1ChickenFlapSounds=[1,2].map(n=>new Audio(`assets/audio/huhn-flap-${n}.mp3?v=137`));map1ChickenFlapSounds.forEach(a=>{a.preload='auto';a.volume=1;});
 const map1ChickenDamage=[],crossbowChickenAlpha=new WeakMap();
@@ -2440,6 +2489,7 @@ function killMap1Chicken(s,bolt){
   playLoudInteractionSound(bolt?crossbowHitSounds[Math.floor(Math.random()*crossbowHitSounds.length)]:map1ChickenHitSound);
 }
 function damageMap1Chicken(s,hit,now){
+  s.calmSince=now;s.layingUntil=0;
   s.lastFight=playerFight;s.lastStrike=playerFight.chickenStrike;
   const critical=hit===3;s.hp=Math.max(0,(s.hp??100)-(critical?40:20));showMap1ChickenDamage(s,critical,now);
   if(s.hp===0){s.phaseBeforeDeath=s.phase;killMap1Chicken(s,false);}else{s.phase='escape';s.changed=now;s.peckUntil=0;playLoudInteractionSound(map1ChickenFlapSounds[Math.floor(Math.random()*2)]);}
@@ -2483,7 +2533,7 @@ function updateMap1Chicken(now){
   if(!map1ChickenState){
     if(now<map1ChickenNext){map1Chicken.style.display='none';return;}
     const region=map1ChickenNextRegion,r=MAP1_CHICKEN_REGIONS[region];
-    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',hp:map1ChickenHealth,changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
+    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',hp:map1ChickenHealth,calmSince:now,layingUntil:0,changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
   }
   const s=map1ChickenState;
   const strike=map1ChickenStrikeHit(s);if(strike>=0)damageMap1Chicken(s,strike,now);
@@ -2493,7 +2543,7 @@ function updateMap1Chicken(now){
     image='escape';mirror=s.region===0;s.x+=(s.region===0?-1:1)*82*dt;
   }else{
     if(s.phase==='entry'){
-      if((s.region===0&&s.x>=22)||(s.region===1&&s.x<=1514)){s.phase='wander';map1ChickenChooseDirection(s,now);}
+      if((s.region===0&&s.x>=22)||(s.region===1&&s.x<=1514)){s.phase='wander';s.calmSince=now;map1ChickenChooseDirection(s,now);}
     }else if(now>=s.until)map1ChickenChooseDirection(s,now);
     const age=now-s.changed,step=Math.floor(age/230)%2;
     if(s.direction==='left'||s.direction==='right'){
@@ -2502,6 +2552,8 @@ function updateMap1Chicken(now){
       if(s.direction==='front'&&now>=s.nextPeck){s.peckUntil=now+320+Math.random()*180;s.nextPeck=now+1600+Math.random()*3000;}
       moving=now>=s.peckUntil;image=!moving?'peckFront':s.direction+(step?'Mirror':'');
     }
+    if(s.phase==='wander'&&now-s.calmSince>=30000)layMap1ChickenEgg(s,now);
+    if(now<s.layingUntil)moving=false;
     if(moving){
       const dx=s.direction==='right'?1:s.direction==='left'?-1:0,dy=s.direction==='front'?1:s.direction==='back'?-1:0;
       const nx=s.x+dx*MAP1_CHICKEN_SPEED*dt,ny=s.y+dy*MAP1_CHICKEN_SPEED*dt;
@@ -3128,7 +3180,9 @@ function draw(now){
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
   updateMap1Hare(now);
+  updateMap1HareDust(now);
   updateMap1Chicken(now);
+  updateMap1Eggs(now);
   updateMap1Apples(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -4710,7 +4764,7 @@ const PLAYER_FIGHT_IMAGES={back:[1,2,3].map(n=>`assets/player/fight-back-${n}.pn
 const playerFightSound=new Audio('assets/audio/player-fight.mp3?v=123');playerFightSound.preload='auto';playerFightSound.volume=1;playerFightSound.loop=true;
 let playerFight=null,playerFightMug=null;
 function playerFightBlockedByGlow(){
-  return !!(map1DeadToads.some(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48)||map1NearbyMoney()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
+  return !!(map1DeadToads.some(d=>d.el.style.display!=='none'&&Math.hypot(PLAYER.x-d.x,PLAYER.y-d.y)<=48)||map1NearbyMoney()||map1NearbyEgg()||map1NearbyApple()||map1GuestNearbyEmptyMug()||map1BockNearbyMug()||
     (currentMap===1&&map1Toad&&map1Toad.style.display!=='none'&&map1Toad.style.filter!== 'none'&&map1Toad.style.filter)||
     (currentMap===1&&map1PierPosition===1&&PLAYER.direction==='back'));
 }
@@ -5023,10 +5077,10 @@ window.addEventListener('keydown',e=>{
   if(playerCrossbow){
     if(e.key==='Control'){e.preventDefault();if(!e.repeat)startCrossbowReload();}
     if(e.code==='Space'){e.preventDefault();if(!e.repeat)shootPlayerCrossbow();}
-    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning){if(!pickupMap1DeadChicken())pickupMap1DeadToad();}}
+    if(e.key==='^'||e.code==='Backquote'){e.preventDefault();if(!e.repeat&&currentMap===1&&!gamePaused&&!mapTransitioning){if(!pickupMap1Egg()&&!pickupMap1DeadChicken())pickupMap1DeadToad();}}
     return;
   }
-  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1DeadChicken()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
+  if((e.key==='^'||e.code==='Backquote')&&!e.repeat){e.preventDefault();if(!pickupMap1Money()&&!pickupMap1Egg()&&!pickupMap1DeadChicken()&&!pickupMap1Toad()&&!pickupMap1Apple()&&!pickupMap1GuestEmptyMug())pickupMap1BockMug();return;}
   if(e.code==='Space'){
     e.preventDefault();
     if(!e.repeat){
@@ -5172,6 +5226,7 @@ async function preloadMap1BearFrames(){
   const paths=[
     ...Object.values(MAP1_HARE_IMAGES).flat(),
     ...Object.values(MAP1_CHICKEN_IMAGES),
+    ...MAP1_EGG_IMAGES,
     ...Object.values(MAP1_WITCH_IMAGES),
     MAP1_TOAD_DEAD_SOURCE,
     ...Object.values(PLAYER_CROSSBOW_IMAGES),
