@@ -7,7 +7,14 @@ const gameNativeRAF=window.requestAnimationFrame.bind(window),gameNativeCancel=w
 let gamePaused=false,gamePauseAt=0,gamePausedTotal=0,gameResumeTask=null,gameScheduleId=0;
 const gameTimers=new Map(),gameFrames=new Map(),gameAudio=new Set(),gamePausedAudio=new Set(),gamePausedAnimations=new Set();
 function gameNow(){return (gamePaused?gamePauseAt:performance.now())-gamePausedTotal;}
-const Audio=class extends window.Audio{constructor(...args){super(...args);gameAudio.add(this);}};
+const Audio=class extends window.Audio{
+  constructor(...args){super(...args);gameAudio.add(this);const src=String(args[0]||'');
+    this.burgMusic=/The Hold Steady|Der Bock geht um|Stronghold Crusader Soundtrack|Pints a Flowin/.test(src);
+    this.burgScope=/Door Open Sound/.test(src)?0:/cauldron_01/.test(src)?2:/player-fight|crossbow-load|crossbow-shot|crossbow-hit/.test(src)?'player':1;
+  }
+  play(){if(this.burgScope==='player')this.burgPlayedMap=currentMap;this.syncBurgMapAudio();return super.play();}
+  syncBurgMapAudio(){this.muted=!this.burgMusic&&(this.burgScope===1?currentMap!==1:this.burgScope===2?currentMap!==2:this.burgScope==='player'?this.burgPlayedMap!==currentMap:false);}
+};
 function gameArmTimer(id,item){
   item.native=gameNativeTimeout(()=>{if(gamePaused)return;gameTimers.delete(id);item.fn(...item.args);},Math.max(0,item.due-gameNow()));
 }
@@ -36,6 +43,12 @@ const map = document.getElementById('map');
 const bgMusic = document.getElementById('bgMusic');
 const player = document.getElementById('player');
 const irisTransition = document.getElementById('irisTransition');
+
+/* v139: exterior visuals never bleed into the interior; scribe HUD stays untagged. */
+function markMap1Visual(el){el.dataset.mapOneOnly='';}
+const map1VisualScopeStyle=document.createElement('style');
+map1VisualScopeStyle.textContent='#game[data-active-map="2"] [data-map-one-only]{visibility:hidden!important}';
+document.head.appendChild(map1VisualScopeStyle);
 
 /* Türsound – einmal pro tatsächlichem Durchgang. */
 const doorPassSound=new Audio('assets/audio/Door Open Sound.mp3');
@@ -441,7 +454,7 @@ function ensureMap1BockRider(){
     display:'none',opacity:'1',zIndex:'19000',
     willChange:'left,top,transform,opacity,filter'
   });
-  world.appendChild(map1BockRider);
+  markMap1Visual(map1BockRider);world.appendChild(map1BockRider);
   return map1BockRider;
 }
 
@@ -466,7 +479,7 @@ function showBockPuff(x,y){
     background:'radial-gradient(circle, rgba(255,255,255,.98) 0%, rgba(255,255,255,.78) 28%, rgba(235,240,245,.40) 53%, rgba(255,255,255,0) 76%)',
     filter:'blur(7px)',animation:'bockPuff 720ms ease-out forwards'
   });
-  world.appendChild(map1BockPuff);
+  markMap1Visual(map1BockPuff);world.appendChild(map1BockPuff);
   gameSetTimeout(()=>{map1BockPuff?.remove();map1BockPuff=null;},760);
 }
 
@@ -589,7 +602,7 @@ function ensureMap1BockThought(){
   const cloud=document.createElement('div'); Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
   const beer=document.createElement('img'); beer.src='assets/npc/bock-wunsch.png?v=38'; beer.alt=''; beer.draggable=false; Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'}); cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div'); [c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'})); Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'}); Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
-  map1BockThought.append(c1,c2,cloud); world.appendChild(map1BockThought); return map1BockThought;
+  map1BockThought.append(c1,c2,cloud); markMap1Visual(map1BockThought);world.appendChild(map1BockThought); return map1BockThought;
 }
 function showMap1BockThought(){ if(map1BockBeerCount>=MAP1_BOCK_BEERS_REQUIRED)return; const b=ensureMap1BockThought(); b.style.display='block';b.style.opacity='0';b.style.transform='scale(.72)';gameRequestAnimationFrame(()=>gameRequestAnimationFrame(()=>{b.style.opacity='1';b.style.transform='scale(1)';})); }
 function hideMap1BockThought(){if(map1BockThought){map1BockThought.style.opacity='0';map1BockThought.style.transform='scale(.84)';gameSetTimeout(()=>{if(map1BockThought&&map1BockThought.style.opacity==='0')map1BockThought.style.display='none';},280);}}
@@ -614,7 +627,7 @@ function dropMap1BockMug(index){
   const finalX=endX+slideX,finalY=endY+slideY;
   Object.assign(mug.style,{position:'absolute',left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,width:'21.7px',height:'auto',transform:'translate(-50%,-100%) rotate(0deg)',transformOrigin:'50% 72%',pointerEvents:'none',zIndex:'400',filter:'none'});
   mug.dataset.x=String(finalX); mug.dataset.y=String(finalY); mug.dataset.landed='0'; mug.dataset.picked='0';
-  map1BockMugs.push(mug); world.appendChild(mug);
+  map1BockMugs.push(mug); markMap1Visual(mug);world.appendChild(mug);
   // Sanfter Wurf: nur leichte Drehung in der Luft, danach zwei kleine Bounces + kurzes Rutschen.
   const anim=mug.animate([
     {left:`${MAP1_BOCK_PATH_END[0]}px`,top:`${MAP1_BOCK_PATH_END[1]-115}px`,transform:'translate(-50%,-100%) rotate(0deg)'},
@@ -660,7 +673,7 @@ function showMap1MugPlusOne(mug){
   const x=+mug.dataset.x,y=+mug.dataset.y;
   const plus=document.createElement('div'); plus.textContent='+1';
   Object.assign(plus.style,{position:'absolute',left:`${x}px`,top:`${y-18}px`,transform:'translate(-50%,-50%)',font:'700 22px/1 sans-serif',color:'#f4c542',textShadow:'0 2px 3px rgba(0,0,0,.8)',pointerEvents:'none',zIndex:'30000',opacity:'1'});
-  world.appendChild(plus);
+  markMap1Visual(plus);world.appendChild(plus);
   plus.animate([{transform:'translate(-50%,8px)',opacity:1},{transform:'translate(-50%,-30px)',opacity:1,offset:.55},{transform:'translate(-50%,-48px)',opacity:0}],{duration:1500,easing:'ease-out',fill:'forwards'});
   gameSetTimeout(()=>plus.remove(),1550);
 }
@@ -765,7 +778,7 @@ function ensureMap1BockFinal(){
   map1BockFinal.src='assets/npc/bock-final.png?v=30';
   map1BockFinal.alt=''; map1BockFinal.draggable=false;
   Object.assign(map1BockFinal.style,{position:'absolute',left:'0',top:'0',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',opacity:'1',zIndex:'750'});
-  world.appendChild(map1BockFinal);
+  markMap1Visual(map1BockFinal);world.appendChild(map1BockFinal);
   const sync=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||96;map1BockFinal.style.width=`${w*1.15}px`;};
   sync();gameRequestAnimationFrame(sync);return map1BockFinal;
 }
@@ -929,7 +942,7 @@ function ensureMap1Event3Farmer(){
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',zIndex:'13000',willChange:'left,top,transform'
   });
-  world.appendChild(map1Event3Farmer);
+  markMap1Visual(map1Event3Farmer);world.appendChild(map1Event3Farmer);
   return map1Event3Farmer;
 }
 function ensureMap1Event3Bock(){
@@ -943,7 +956,7 @@ function ensureMap1Event3Bock(){
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',
     display:'none',zIndex:'19000',willChange:'left,top,transform'
   });
-  world.appendChild(map1Event3Bock);
+  markMap1Visual(map1Event3Bock);world.appendChild(map1Event3Bock);
   return map1Event3Bock;
 }
 function ensureMap1Event3Blood(){
@@ -958,7 +971,7 @@ function ensureMap1Event3Blood(){
     background:'radial-gradient(ellipse at center,rgba(118,0,0,.96) 0%,rgba(151,5,5,.94) 48%,rgba(91,0,0,.88) 72%,rgba(80,0,0,0) 76%)',
     filter:'blur(.45px)',willChange:'transform,opacity'
   });
-  world.appendChild(map1Event3Blood);
+  markMap1Visual(map1Event3Blood);world.appendChild(map1Event3Blood);
   return map1Event3Blood;
 }
 function ensureMap1Event3Slash(){
@@ -973,7 +986,7 @@ function ensureMap1Event3Slash(){
     boxShadow:'0 0 7px rgba(255,255,255,.98),0 0 15px rgba(255,210,115,.95)',
     filter:'blur(.15px)',willChange:'transform,opacity'
   });
-  world.appendChild(map1Event3Slash);
+  markMap1Visual(map1Event3Slash);world.appendChild(map1Event3Slash);
   return map1Event3Slash;
 }
 function showMap1Event3Slash(x,y){
@@ -1251,7 +1264,7 @@ function ensureMap1Event4Kalif(){
   map1Event4Kalif=document.createElement('img');map1Event4Kalif.id='map1Event4Kalif';map1Event4Kalif.alt='';map1Event4Kalif.draggable=false;
   map1Event4Kalif.src='assets/npc/kalif-1.png?v=82';
   Object.assign(map1Event4Kalif.style,{position:'absolute',left:'0',top:'0',width:'112px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'19500',willChange:'left,top,transform'});
-  world.appendChild(map1Event4Kalif);return map1Event4Kalif;
+  markMap1Visual(map1Event4Kalif);world.appendChild(map1Event4Kalif);return map1Event4Kalif;
 }
 function finishMap1Event4(){
   if(!map1Event4Active)return;map1Event4Active=false;map1Event4Walking=false;
@@ -1397,14 +1410,14 @@ function ensureMap1Event5Farmer(){
   map1Event5Farmer.dataset.npcRole='event5Farmer';
   map1Event5Farmer.src='assets/npc/event3-bauer-walk.png?v=71';
   Object.assign(map1Event5Farmer.style,{position:'absolute',left:'0',top:'0',width:'176.4px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'13000',willChange:'left,top,transform'});
-  world.appendChild(map1Event5Farmer);return map1Event5Farmer;
+  markMap1Visual(map1Event5Farmer);world.appendChild(map1Event5Farmer);return map1Event5Farmer;
 }
 function ensureMap1Event5Kalif(){
   if(map1Event5Kalif)return map1Event5Kalif;
   map1Event5Kalif=document.createElement('img');map1Event5Kalif.id='map1Event5Kalif';map1Event5Kalif.alt='';map1Event5Kalif.draggable=false;
   map1Event5Kalif.src='assets/npc/kalif-1.png?v=82';
   Object.assign(map1Event5Kalif.style,{position:'absolute',left:'0',top:'0',width:'112px',height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'19500',willChange:'left,top,transform'});
-  world.appendChild(map1Event5Kalif);return map1Event5Kalif;
+  markMap1Visual(map1Event5Kalif);world.appendChild(map1Event5Kalif);return map1Event5Kalif;
 }
 function stopMap1Event5BurnSounds(){
   map1Event5Scream.pause();map1Event5Scream.currentTime=0;
@@ -1561,7 +1574,7 @@ let baseScale = 1;
 let pointerX = 0.5, pointerY = 0.5;
 let currentX = 0, currentY = 0, targetX = 0, targetY = 0;
 let rafId = 0;
-let currentMap = 1;
+let currentMap = 1;game.dataset.activeMap=String(currentMap);syncEventAudioForCurrentMap();
 let mapTransitioning = false;
 
 /* MAP 1: exakt nur der bisher markierte Eingang ist in der Wirtschafts-Hitbox offen. */
@@ -1881,7 +1894,7 @@ function ensureMap1Runner(){
     transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',
     zIndex:'12000',willChange:'left,top,transform'
   });
-  world.appendChild(map1Runner);
+  markMap1Visual(map1Runner);world.appendChild(map1Runner);
   // Frau exakt auf dieselbe Basisgröße wie die Spielfigur setzen.
   const syncRunnerSize=()=>{
     const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
@@ -2116,7 +2129,7 @@ function ensureMap1Bear(){
     willChange:'left,top,transform'
   });
 
-  world.appendChild(map1Bear);
+  markMap1Visual(map1Bear);world.appendChild(map1Bear);
 
   const syncBearSize=()=>{
     const w=player?.offsetWidth || parseFloat(getComputedStyle(player).width) || 96;
@@ -2229,6 +2242,7 @@ function clampPosition(){
   targetY=Math.max(-maxY,Math.min(maxY,targetY));
 }
 function syncMap1EventVisibility(){
+  game.dataset.activeMap=String(currentMap);
   const onMap1=currentMap===1; // v99: wie Spieler – bis zum echten Map-Swap sichtbar, beim Rückswap sofort sichtbar
   if(map1King)map1King.style.visibility=onMap1&&map1KingActive?'visible':'hidden';
   if(map1KingThought)map1KingThought.style.visibility=onMap1&&map1KingActive?'visible':'hidden';
@@ -2253,12 +2267,7 @@ function syncMap1EventVisibility(){
 /* In Map 2 laufen die Event-Zeitachsen weiter. Mitgenommen werden aber ausschließlich
    die Event-SONGS; Schreie/Bärensounds/Bock-SFX bleiben innen stumm. */
 function syncEventAudioForCurrentMap(){
-  if(currentMap===2){
-    map1KingArrivalSound.pause();map1KingGreetingSound.pause();map1KingStandSound.pause();
-    map1RunnerSound.pause();
-    stopMap1BearAudioLoop();
-    [map1BockDepartureSound,map1BockDrinkSound,map1BockBurpSound].forEach(a=>a.pause());
-  }
+  for(const audio of gameAudio)audio.syncBurgMapAudio?.();
 }
 
 /* v110: Eigenständiges Krötenevent; keine Kollision oder Änderung der Teichregeln. */
@@ -2313,7 +2322,7 @@ function crossbowHitLiveToad(b,distance,now){
     const dead=EVENT_IMAGE_CACHE.get(MAP1_TOAD_DEAD_SOURCE);if(!dead?.naturalWidth)return false;
     const el=document.createElement('img');el.src=dead.src||MAP1_TOAD_DEAD_SOURCE;el.alt='';el.draggable=false;
     Object.assign(el.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',left:`${x}px`,top:`${y}px`,width:'58px',height:`${58*dead.naturalHeight/dead.naturalWidth}px`,transformOrigin:'50% 100%',transform:`translate(-50%,-100%) scaleX(${mirror?-1:1})`});
-    world.appendChild(el);map1DeadToads.push({el,x,y,expires:now+20000});map1ToadCollectedCycle=cycle;map1Toad.style.display='none';map1Toad.style.filter='none';
+    markMap1Visual(el);world.appendChild(el);map1DeadToads.push({el,x,y,expires:now+20000});map1ToadCollectedCycle=cycle;map1Toad.style.display='none';map1Toad.style.filter='none';
     map1ToadSound.pause();map1ToadSound.currentTime=0;playLoudInteractionSound(crossbowHitSounds[Math.floor(Math.random()*2)]);updateMap1DeadToads(now);return true;
   }
   return false;
@@ -2330,8 +2339,8 @@ const map1HareRustleSound=new Audio('assets/audio/harvest_01_converted_by_sounda
 map1HareRustleSound.preload='auto';map1HareRustleSound.volume=1;
 let map1Hare=null,map1HareLeaves=null,map1HareEpoch=null,map1HareWindow=-1,map1HareDue=0,map1HareSpawned=false,map1HareEvent=null,map1HareNextFromTop=true;
 function ensureMap1Hare(){
-  if(!map1Hare){map1Hare=document.createElement('img');map1Hare.alt='';map1Hare.draggable=false;Object.assign(map1Hare.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',height:'44px',display:'none',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});world.appendChild(map1Hare);}
-  if(!map1HareLeaves){map1HareLeaves=document.createElement('div');Object.assign(map1HareLeaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});world.appendChild(map1HareLeaves);}
+  if(!map1Hare){map1Hare=document.createElement('img');map1Hare.alt='';map1Hare.draggable=false;Object.assign(map1Hare.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',height:'44px',display:'none',transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});markMap1Visual(map1Hare);world.appendChild(map1Hare);}
+  if(!map1HareLeaves){map1HareLeaves=document.createElement('div');Object.assign(map1HareLeaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});markMap1Visual(map1HareLeaves);world.appendChild(map1HareLeaves);}
 }
 function map1HareForestEffect(){
   if(currentMap!==1)return;
@@ -2384,7 +2393,7 @@ let map1Chicken=null,map1ChickenState=null,map1ChickenLast=null,map1ChickenNext=
 function ensureMap1Chicken(){
   if(map1Chicken)return;
   map1Chicken=document.createElement('img');map1Chicken.alt='';map1Chicken.draggable=false;
-  Object.assign(map1Chicken.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',display:'none',height:`${MAP1_CHICKEN_HEIGHT}px`,transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});world.appendChild(map1Chicken);
+  Object.assign(map1Chicken.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',display:'none',height:`${MAP1_CHICKEN_HEIGHT}px`,transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});markMap1Visual(map1Chicken);world.appendChild(map1Chicken);
 }
 function map1ChickenInside(x,y,region,padding=7){
   const r=MAP1_CHICKEN_REGIONS[region];return ((x-r.x)/(r.rx-padding))**2+((y-r.y)/(r.ry-padding))**2<=1;
@@ -2419,7 +2428,7 @@ function showMap1ChickenDamage(s,critical,now){
   const el=document.createElement('div');
   Object.assign(el.style,{position:'absolute',left:`${s.x}px`,top:`${s.y-MAP1_CHICKEN_HEIGHT-8}px`,font:'700 22px/1 sans-serif',color:'#ff3535',textShadow:'0 2px 3px rgba(0,0,0,.8)',textAlign:'center',pointerEvents:'none',zIndex:'30000',whiteSpace:'nowrap'});
   if(critical){const label=document.createElement('div');label.textContent='KRIT!';el.appendChild(label);}
-  const value=document.createElement('div');value.textContent='-20';el.appendChild(value);world.appendChild(el);map1ChickenDamage.push({el,at:now});
+  const value=document.createElement('div');value.textContent='-20';el.appendChild(value);markMap1Visual(el);world.appendChild(el);map1ChickenDamage.push({el,at:now});
 }
 function updateMap1ChickenDamage(now){
   for(let i=map1ChickenDamage.length-1;i>=0;i--){const p=map1ChickenDamage[i],t=(now-p.at)/1050;if(t>=1){p.el.remove();map1ChickenDamage.splice(i,1);continue;}
@@ -2516,7 +2525,7 @@ function ensureMap1Toad(){
   map1Toad=document.createElement('img');
   map1Toad.id='map1Toad';map1Toad.alt='';map1Toad.draggable=false;
   Object.assign(map1Toad.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',display:'none',transformOrigin:'50% 100%'});
-  world.appendChild(map1Toad);
+  markMap1Visual(map1Toad);world.appendChild(map1Toad);
 }
 function map1ToadPose(age){
   // Frame 1: 180 ms; beide Flugbilder je 220 ms; Boden: 2000 + 1000 ms.
@@ -2610,7 +2619,7 @@ function startMap1AppleShakeEffects(){
   const state=map1AppleShake;if(!state)return;
   const leaves=document.createElement('div');
   Object.assign(leaves.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});
-  world.appendChild(leaves);
+  markMap1Visual(leaves);world.appendChild(leaves);
   const fx={leaves,stopTimer:0,leafTimer:0,extraTimer:0};map1AppleEffects=fx;
   const playNext=()=>{
     if(map1AppleEffects!==fx||!map1AppleShake||gameNow()-state.start>=3000)return;
@@ -2643,7 +2652,7 @@ function startMap1AppleShake(){
     map1AppleShakeEl=document.createElement('img');map1AppleShakeEl.src=MAP1_APPLE_SHAKE_IMAGE;
     map1AppleShakeEl.alt='';map1AppleShakeEl.draggable=false;
     Object.assign(map1AppleShakeEl.style,{position:'absolute',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 100%'});
-    world.appendChild(map1AppleShakeEl);
+    markMap1Visual(map1AppleShakeEl);world.appendChild(map1AppleShakeEl);
   }
   // Sichtbare Höhe des aktuellen W-Sprites, nicht die Breite des neuen Bildes, bestimmt die Größe.
   const cached=PLAYER_IMAGE_CACHE.get(playerSpritePath('back',PLAYER.frame));
@@ -2709,7 +2718,7 @@ function dropMap1Apple(now){
   if(!dx&&!dy)return;
   const el=document.createElement('img');el.src=MAP1_APPLE_IMAGE;el.alt='';el.draggable=false;
   Object.assign(el.style,{position:'absolute',width:'13px',height:'auto',maxWidth:'none',pointerEvents:'none',transformOrigin:'50% 75%'});
-  el.dataset.picked='0';el.dataset.landed='0';world.appendChild(el);
+  el.dataset.picked='0';el.dataset.landed='0';markMap1Visual(el);world.appendChild(el);
   map1Apples.push({el,start:now,from,landY,dx,dy,distance,x:from.x,y:landY,rotation:0});
 }
 function map1NearbyApple(){
@@ -2767,7 +2776,7 @@ function ensureMap1King(){
   if(map1King)return map1King;
   map1King=document.createElement('img');map1King.id='map1KingPhilipp';map1King.alt='';map1King.draggable=false;
   Object.assign(map1King.style,{position:'absolute',height:'110px',width:'auto',maxWidth:'none',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'501'});
-  world.appendChild(map1King);return map1King;
+  markMap1Visual(map1King);world.appendChild(map1King);return map1King;
 }
 function ensureMap1KingThought(){
   if(map1KingThought)return map1KingThought;
@@ -2779,7 +2788,7 @@ function ensureMap1KingThought(){
   Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));
   Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
-  b.append(c1,c2,cloud);world.appendChild(b);return b;
+  b.append(c1,c2,cloud);markMap1Visual(b);world.appendChild(b);return b;
 }
 function setMap1KingPose(index,mirror=false){
   const el=ensureMap1King(),src=MAP1_KING_IMAGES[index];if(el.getAttribute('src')!==src)el.src=src;
@@ -3028,7 +3037,6 @@ function draw(now){
   updateMap1King(now);
   syncMap1NpcPlayerDepth();
   syncMap1KingDepth();
-  syncCrossbowNpcFootDepth();
   if(playerFight&&playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
   updateMap1DeadToads(now);
   updateCrossbowBolts(now);
@@ -3520,7 +3528,7 @@ function ensureTableMug(tableSprite){
     mug.alt=''; mug.draggable=false;
     mug.src='assets/npc/bock-wunsch.png?v=38';
     Object.assign(mug.style,{position:'absolute',width:'28px',height:'28px',objectFit:'contain',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'750',transform:'translate(-50%,-100%)'});
-    world.appendChild(mug); map1TableMugs.set(id,mug);
+    markMap1Visual(mug);world.appendChild(mug); map1TableMugs.set(id,mug);
   }
   // Jeder neue Ausschank ist wieder ein VOLLER Krug; ein eventuell vom Gast
   // zurückgelassener leerer Krug wird dadurch am selben Platz ersetzt.
@@ -3600,7 +3608,7 @@ function dropMap1GuestMoney(tableId,kind,valueMultiplier=1){
   const [anchorX,anchorY]=MAP1_COIN_ANCHORS[count-1];
   Object.assign(el.style,{position:'absolute',left:`${x}px`,top:`${y}px`,width:`${MAP1_COIN_WIDTHS[count-1]}px`,height:'auto',maxWidth:'none',transform:`translate(${-anchorX*100}%,${-anchorY*100}%)`,pointerEvents:'none',zIndex:String((Number(mug.style.zIndex)||750)+1)});
   el.dataset.x=String(x);el.dataset.y=String(y);el.dataset.picked='0';
-  world.appendChild(el);map1GuestMoney.push({el,count,value:count*valueMultiplier,x,y,tableId,mug});
+  markMap1Visual(el);world.appendChild(el);map1GuestMoney.push({el,count,value:count*valueMultiplier,x,y,tableId,mug});
 }
 function map1NearbyMoney(){
   if(currentMap!==1||mapTransitioning||gamePaused)return null;
@@ -3644,7 +3652,7 @@ function showMap1GuestEmotion(tableId,kind){
     width:`${28.8*sx}px`,height:'auto', // exakt 40 % kleiner als bisherige 48 Weltpixel
     transform:'translate(-50%,0)',pointerEvents:'none',userSelect:'none',zIndex:'80000',opacity:'1'
   });
-  game.appendChild(fx);
+  markMap1Visual(fx);game.appendChild(fx);
   fx.animate([
     {transform:'translate(-50%,0) scale(.82)',opacity:1},
     {transform:`translate(-50%,${-72*sy}px) scale(1)`,opacity:1,offset:.62},
@@ -3687,7 +3695,7 @@ function ensureMap1Guest(){
   map1GuestEl.src='assets/npc/gast-bauer-front-1.png?v=92';map1GuestEl.alt='';map1GuestEl.draggable=false;
   Object.assign(map1GuestEl.style,{position:'absolute',left:'0',top:'0',width:`${MAP1_GUEST_WIDTH}px`,height:'auto',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'12500',willChange:'left,top,transform,filter'});
   const syncGuestSize=()=>{const w=player?.offsetWidth||parseFloat(getComputedStyle(player).width)||MAP1_GUEST_WIDTH;map1GuestEl.style.width=`${w*1.05}px`;};syncGuestSize();gameRequestAnimationFrame(syncGuestSize);
-  world.appendChild(map1GuestEl);return map1GuestEl;
+  markMap1Visual(map1GuestEl);world.appendChild(map1GuestEl);return map1GuestEl;
 }
 function ensureMap1GuestThought(){
   if(map1GuestThought)return map1GuestThought;
@@ -3696,7 +3704,7 @@ function ensureMap1GuestThought(){
   const cloud=document.createElement('div');Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
   const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});
-  map1GuestThought.append(c1,c2,cloud);world.appendChild(map1GuestThought);return map1GuestThought;
+  map1GuestThought.append(c1,c2,cloud);markMap1Visual(map1GuestThought);world.appendChild(map1GuestThought);return map1GuestThought;
 }
 function map1GuestDockPoint(){
   const el=document.getElementById('stehtischRechts');
@@ -3887,14 +3895,14 @@ function ensureMap1Woman(){
   // v98: feste BILDHÖHE statt feste Breite. Dadurch haben Walk + Order trotz unterschiedlicher
   // Quell-Seitenverhältnisse exakt dieselbe sichtbare Höhe und derselbe Fußanker bleibt stehen.
   Object.assign(map1WomanEl.style,{position:'absolute',left:'0',top:'0',width:'auto',height:'117.3612px',objectFit:'contain',transformOrigin:'50% 100%',pointerEvents:'none',userSelect:'none',display:'none',zIndex:'498',willChange:'left,top,transform,filter'});
-  world.appendChild(map1WomanEl);return map1WomanEl;
+  markMap1Visual(map1WomanEl);world.appendChild(map1WomanEl);return map1WomanEl;
 }
 function ensureMap1WomanThought(){
   if(map1WomanThought)return map1WomanThought;
   map1WomanThought=document.createElement('div');Object.assign(map1WomanThought.style,{position:'absolute',width:'92.4px',height:'75.6px',pointerEvents:'none',display:'none',opacity:'0',transform:'scale(.72)',transformOrigin:'20% 90%',zIndex:'23000',transition:'opacity 260ms ease, transform 340ms cubic-bezier(.2,.9,.2,1)'});
   const cloud=document.createElement('div');Object.assign(cloud.style,{position:'absolute',left:'12px',top:'0',width:'80.4px',height:'61.2px',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'52% 48% 46% 54% / 48% 55% 45% 52%',boxShadow:'0 4px 12px rgba(0,0,0,.28)'});
   const beer=document.createElement('img');beer.src='assets/npc/bock-wunsch.png?v=38';beer.alt='';beer.draggable=false;Object.assign(beer.style,{position:'absolute',left:'50%',top:'50%',width:'45.6px',height:'45.6px',objectFit:'contain',transform:'translate(-50%,-50%)'});cloud.appendChild(beer);
-  const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);world.appendChild(map1WomanThought);return map1WomanThought;
+  const c1=document.createElement('div'),c2=document.createElement('div');[c1,c2].forEach(c=>Object.assign(c.style,{position:'absolute',background:'rgba(255,255,255,.97)',border:'3px solid rgba(55,45,35,.82)',borderRadius:'50%',boxSizing:'border-box'}));Object.assign(c1.style,{left:'2px',top:'62px',width:'9px',height:'9px'});Object.assign(c2.style,{left:'6px',top:'49px',width:'15px',height:'15px'});map1WomanThought.append(c1,c2,cloud);markMap1Visual(map1WomanThought);world.appendChild(map1WomanThought);return map1WomanThought;
 }
 /* v102: Ziel aus der echten Rest-Hitbox, nicht aus transparenten PNG-Rändern.
    Der Fußkreis berührt den Tisch von links; die Route endet genau dort. */
@@ -4024,13 +4032,13 @@ function ensureMap1TreeHideFX(){
     map1TreeLeafLayer=document.createElement('div');
     map1TreeLeafLayer.id='map1TreeLeafLayer';
     Object.assign(map1TreeLeafLayer.style,{position:'absolute',left:'0',top:'0',width:'100%',height:'100%',pointerEvents:'none',overflow:'visible',zIndex:'503'});
-    world.appendChild(map1TreeLeafLayer);
+    markMap1Visual(map1TreeLeafLayer);world.appendChild(map1TreeLeafLayer);
   }
   if(!map1TreeHideImage){
     map1TreeHideImage=document.createElement('img');
     map1TreeHideImage.id='map1TreeHideImage';map1TreeHideImage.src=MAP1_TREE_HIDE_IMAGE;map1TreeHideImage.alt='';map1TreeHideImage.draggable=false;
     Object.assign(map1TreeHideImage.style,{position:'absolute',display:'none',opacity:'0',height:'auto',objectFit:'contain',pointerEvents:'none',userSelect:'none',zIndex:'502',transition:'opacity 360ms ease,transform 420ms cubic-bezier(.2,.85,.25,1)',willChange:'opacity,transform'});
-    world.appendChild(map1TreeHideImage);
+    markMap1Visual(map1TreeHideImage);world.appendChild(map1TreeHideImage);
   }
   syncMap1TreeHideImagePosition();
   return {image:map1TreeHideImage,leaves:map1TreeLeafLayer};
@@ -4432,7 +4440,7 @@ async function enterWirtschaft(){
   setIrisRadius(0); // während des Map-Tauschs garantiert geschlossen
   await mapReady;
 
-  currentMap=2;
+  currentMap=2;game.dataset.activeMap=String(currentMap);syncEventAudioForCurrentMap();
   map2Room='guestroom';
   map2InMiddleWall=false;
   map2MiddleDoorPassArmed=true;
@@ -4471,7 +4479,7 @@ async function leaveWirtschaft(){
   await animateIris(150,0,650);
   setIrisRadius(0);
   await mapReady;
-  currentMap=1; map2Room='guestroom'; map2InMiddleWall=false; map2MiddleDoorPassArmed=true;
+  currentMap=1;game.dataset.activeMap=String(currentMap);syncEventAudioForCurrentMap(); map2Room='guestroom'; map2InMiddleWall=false; map2MiddleDoorPassArmed=true;
   document.body.classList.remove('map2');
   updateMap2BarVisibility();
   swapMapInstant('assets/maps/terrasse.jpg');
@@ -4821,6 +4829,7 @@ function renderPlayerCrossbow(){
     const progress=Math.min(1,playerCrossbowLoadSound.currentTime/duration);
     playerCrossbowCircle.style.background=`conic-gradient(#f32b2b ${progress*360}deg,rgba(65,0,0,.55) 0deg)`;
   }
+  syncPlayerFootDepth();
 }
 function updatePlayerCrossbow(now){
   if(!playerCrossbow)return;
@@ -4828,7 +4837,6 @@ function updatePlayerCrossbow(now){
   if(playerCrossbow.phase==='shot'&&now-playerCrossbow.shotAt>=1000)playerCrossbow.phase='rest';
   if(playerCrossbow.phase==='loading'&&playerCrossbowLoadSound.ended)finishCrossbowReload();
   renderPlayerCrossbow();PLAYER.moving=false;playerLastTime=now;
-  updateMap2Occlusion();updateMap2BarDepth();updateStandingTableDepth();
 }
 function updateCrossbowBolts(now){
   for(let i=playerCrossbowBolts.length-1;i>=0;i--){const b=playerCrossbowBolts[i],distance=(now-b.at)*.7,x=b.x+b.dx*distance,y=b.y+b.dy*distance;
@@ -4848,6 +4856,30 @@ game.addEventListener('wheel',e=>{
   if(!e.deltaY||gamePaused)return;e.preventDefault();
   if(playerCrossbow)stopPlayerCrossbow();else startPlayerCrossbow();
 },{passive:false});
+
+function syncPlayerFootDepth(){
+  player.style.left=`${PLAYER.x}px`;
+  player.style.top=`${PLAYER.y}px`;
+  player.style.zIndex=String(100+Math.round(PLAYER.y));
+  updateMap2Occlusion();
+  updateMap2BarDepth();
+  updateMap2BarInteractionCue();
+  updateStandingTableDepth();
+  updateMap1TableInteractionCue();
+  // Bock-Charaktertiefe, OHNE die bereits berechnete MAP-1-Prop-Ebene zu überschreiben.
+  if(currentMap===1 && map1BockFinal && map1BockFinal.style.display!=='none'){
+    const playerIsBehindProp = Number(player.style.zIndex)===MAP1_PLAYER_BEHIND_Z;
+    if(playerIsBehindProp){
+      map1BockFinal.style.zIndex='498';
+    }else if(PLAYER.y>MAP1_BOCK_FOOT_Y){
+      map1BockFinal.style.zIndex='750';
+      player.style.zIndex=String(MAP1_PLAYER_FRONT_Z);
+    }else{
+      map1BockFinal.style.zIndex='750';
+      player.style.zIndex='749';
+    }
+  }
+}
 
 function updatePlayer(now){
   if(!player)return;
@@ -4898,27 +4930,7 @@ function updatePlayer(now){
     PLAYER.frameClock=0;
   }
 
-  player.style.left=`${PLAYER.x}px`;
-  player.style.top=`${PLAYER.y}px`;
-  player.style.zIndex=String(100+Math.round(PLAYER.y));
-  updateMap2Occlusion();
-  updateMap2BarDepth();
-  updateMap2BarInteractionCue();
-  updateStandingTableDepth();
-  updateMap1TableInteractionCue();
-  // Bock-Charaktertiefe, OHNE die bereits berechnete MAP-1-Prop-Ebene zu überschreiben.
-  if(currentMap===1 && map1BockFinal && map1BockFinal.style.display!=='none'){
-    const playerIsBehindProp = Number(player.style.zIndex)===MAP1_PLAYER_BEHIND_Z;
-    if(playerIsBehindProp){
-      map1BockFinal.style.zIndex='498';
-    }else if(PLAYER.y>MAP1_BOCK_FOOT_Y){
-      map1BockFinal.style.zIndex='750';
-      player.style.zIndex=String(MAP1_PLAYER_FRONT_Z);
-    }else{
-      map1BockFinal.style.zIndex='750';
-      player.style.zIndex='749';
-    }
-  }
+  syncPlayerFootDepth();
 }
 
 window.addEventListener('keydown',e=>{
