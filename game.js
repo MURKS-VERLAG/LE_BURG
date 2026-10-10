@@ -2370,6 +2370,80 @@ function updateMap1Hare(now){
   Object.assign(map1Hare.style,{display:currentMap===1?'block':'none',left:`${x}px`,top:`${y}px`,width:`${44*img.naturalWidth/img.naturalHeight}px`,transform:'translate(-50%,-100%)',opacity:String(opacity),zIndex:String((Number(player.style.zIndex)||1000)+(y>PLAYER.y?1:-1))});
 }
 
+/* v136: ein Huhn, ausschließlich in den beiden Referenz-Ellipsen. */
+const MAP1_CHICKEN_IMAGES={back:'assets/npc/huhn-back.png?v=136',backMirror:'assets/npc/huhn-back-mirror.png?v=136',left:'assets/npc/huhn-left.png?v=136',front:'assets/npc/huhn-front.png?v=136',frontMirror:'assets/npc/huhn-front-mirror.png?v=136',right:'assets/npc/huhn-right.png?v=136',peckRight:'assets/npc/huhn-peck-right.png?v=136',peckFront:'assets/npc/huhn-peck-front.png?v=136',peckLeft:'assets/npc/huhn-peck-left.png?v=136',escape:'assets/npc/huhn-escape.png?v=136'};
+// Referenz 1920x1072: spielbare Map x=159..1761, y=2..1070.
+const MAP1_CHICKEN_REGIONS=[{x:(260-159)*1536/1602,y:(488-2)*1024/1068,rx:241*1536/1602,ry:127*1024/1068,edge:0},{x:(1625-159)*1536/1602,y:(767-2)*1024/1068,rx:248*1536/1602,ry:148*1024/1068,edge:1536}];
+const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34;
+const map1ChickenHitSound=new Audio('assets/audio/begauk_converted_by_soundandgo.com_.mp3?v=136');map1ChickenHitSound.preload='auto';map1ChickenHitSound.volume=1;
+let map1Chicken=null,map1ChickenState=null,map1ChickenLast=null,map1ChickenNext=0,map1ChickenNextRegion=0,map1ChickenReady=false;
+function ensureMap1Chicken(){
+  if(map1Chicken)return;
+  map1Chicken=document.createElement('img');map1Chicken.alt='';map1Chicken.draggable=false;
+  Object.assign(map1Chicken.style,{position:'absolute',pointerEvents:'none',maxWidth:'none',display:'none',height:`${MAP1_CHICKEN_HEIGHT}px`,transform:'translate(-50%,-100%)',transformOrigin:'50% 100%',transition:'none'});world.appendChild(map1Chicken);
+}
+function map1ChickenInside(x,y,region,padding=7){
+  const r=MAP1_CHICKEN_REGIONS[region];return ((x-r.x)/(r.rx-padding))**2+((y-r.y)/(r.ry-padding))**2<=1;
+}
+function map1ChickenChooseDirection(s,now){
+  const vectors={back:[0,-1],front:[0,1],left:[-1,0],right:[1,0]};
+  const candidates=Object.keys(vectors).filter(d=>{const [dx,dy]=vectors[d];return map1ChickenInside(s.x+dx*22,s.y+dy*22,s.region);});
+  s.direction=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:(s.region===0?'left':'right');
+  s.changed=now;s.until=now+2400+Math.random()*3100;s.peckUntil=0;s.nextPeck=now+1100+Math.random()*2400;
+}
+function map1ChickenCanBeHit(s){
+  if(currentMap!==1||!playerFight||s.phase==='escape'||s.phase==='entry')return false;
+  const t=playerFightSound.currentTime,hit=[.5,1.028,1.606,2.215].findIndex(at=>t>=at&&t<at+.3);
+  if(hit<0||playerFight.frame!==`hit${hit}`)return false;
+  const dx=s.x-PLAYER.x,dy=s.y-PLAYER.y;
+  const direction=Math.abs(dy)>=Math.abs(dx)?(dy<0?'back':'front'):(dx<0?'left':'right');
+  if(direction!==playerFight.direction)return false;
+  const forward=direction==='back'?-dy:direction==='front'?dy:direction==='left'?-dx:dx;
+  const sideways=direction==='back'||direction==='front'?Math.abs(dx):Math.abs(dy);
+  return forward>=0&&forward<=62&&sideways<=24;
+}
+function updateMap1Chicken(now){
+  if(!map1ChickenReady)return;ensureMap1Chicken();
+  // Keine nachträglichen Sprünge nach Mapwechsel; globale Spielpause verwendet gameNow.
+  const dt=map1ChickenLast===null?0:Math.max(0,Math.min(50,now-map1ChickenLast))/1000;map1ChickenLast=now;
+  if(currentMap!==1){map1Chicken.style.display='none';return;}
+  if(!map1ChickenState){
+    if(now<map1ChickenNext){map1Chicken.style.display='none';return;}
+    const region=map1ChickenNextRegion,r=MAP1_CHICKEN_REGIONS[region];
+    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
+  }
+  const s=map1ChickenState;
+  if(map1ChickenCanBeHit(s)){s.phase='escape';s.changed=now;s.peckUntil=0;playLoudInteractionSound(map1ChickenHitSound);}
+  let image,mirror=false,moving=true;
+  if(s.phase==='escape'){
+    image='escape';mirror=s.region===0;s.x+=(s.region===0?-1:1)*82*dt;
+  }else{
+    if(s.phase==='entry'){
+      if((s.region===0&&s.x>=22)||(s.region===1&&s.x<=1514)){s.phase='wander';map1ChickenChooseDirection(s,now);}
+    }else if(now>=s.until)map1ChickenChooseDirection(s,now);
+    const age=now-s.changed,step=Math.floor(age/230)%2;
+    if(s.direction==='left'||s.direction==='right'){
+      const peck=age%1150>=720;moving=!peck;image=peck?(s.direction==='left'?'peckLeft':'peckRight'):s.direction;
+    }else{
+      if(s.direction==='front'&&now>=s.nextPeck){s.peckUntil=now+320+Math.random()*180;s.nextPeck=now+1600+Math.random()*3000;}
+      moving=now>=s.peckUntil;image=!moving?'peckFront':s.direction+(step?'Mirror':'');
+    }
+    if(moving){
+      const dx=s.direction==='right'?1:s.direction==='left'?-1:0,dy=s.direction==='front'?1:s.direction==='back'?-1:0;
+      const nx=s.x+dx*MAP1_CHICKEN_SPEED*dt,ny=s.y+dy*MAP1_CHICKEN_SPEED*dt;
+      if(map1ChickenInside(nx,ny,s.region)){s.x=nx;s.y=ny;}else map1ChickenChooseDirection(s,now);
+    }
+  }
+  // Erst beim tatsächlichen Betreten des braunen Randes wechseln: nie zwei Hühner.
+  if(s.phase!=='entry'&&(s.x<=0||s.x>=1536)){
+    map1ChickenNextRegion=1-s.region;map1ChickenNext=now+650;map1ChickenState=null;map1Chicken.style.display='none';return;
+  }
+  const src=MAP1_CHICKEN_IMAGES[image],img=EVENT_IMAGE_CACHE.get(src);
+  if(!img?.naturalWidth){map1Chicken.style.display='none';return;}
+  if(map1Chicken.getAttribute('src')!==src)map1Chicken.src=src;
+  Object.assign(map1Chicken.style,{display:'block',left:`${s.x}px`,top:`${s.y}px`,width:`${MAP1_CHICKEN_HEIGHT*img.naturalWidth/img.naturalHeight}px`,transform:`translate(-50%,-100%) scaleX(${mirror?-1:1})`,zIndex:String((Number(player.style.zIndex)||1000)+(s.y>PLAYER.y?1:-1))});
+}
+
 function ensureMap1Toad(){
   if(map1Toad)return;
   map1Toad=document.createElement('img');
@@ -2896,6 +2970,7 @@ function draw(now){
   syncMap1LandscapeDepth();
   updateMap1Toad(now);
   updateMap1Hare(now);
+  updateMap1Chicken(now);
   updateMap1Apples(now);
   updateMap1BockInteractionCue();
   updateMap1TreeInteractionCue();
@@ -4940,6 +5015,7 @@ async function preloadMap1BearFrames(){
      Dadurch müssen sie nach Inaktivität oder mehreren Eventwechseln nicht neu decodiert werden. */
   const paths=[
     ...Object.values(MAP1_HARE_IMAGES).flat(),
+    ...Object.values(MAP1_CHICKEN_IMAGES),
     MAP1_TOAD_DEAD_SOURCE,
     ...Object.values(PLAYER_CROSSBOW_IMAGES),
     ...Object.values(PLAYER_FIGHT_REST_IMAGES).flat(),
@@ -5056,6 +5132,7 @@ async function start(){
   ensureMap1Toad();
   map1ToadEpoch=gameNow();
   ensureMap1Hare();map1HareEpoch=gameNow();
+  ensureMap1Chicken();map1ChickenNextRegion=Math.random()<.5?0:1;map1ChickenReady=true;
   ensureMap2Bar();
   ensureMap2BarAction();
   updateMap2BarVisibility();
