@@ -2371,11 +2371,13 @@ function updateMap1Hare(now){
 }
 
 /* v136: ein Huhn, ausschließlich in den beiden Referenz-Ellipsen. */
-const MAP1_CHICKEN_IMAGES={back:'assets/npc/huhn-back.png?v=136',backMirror:'assets/npc/huhn-back-mirror.png?v=136',left:'assets/npc/huhn-left.png?v=136',front:'assets/npc/huhn-front.png?v=136',frontMirror:'assets/npc/huhn-front-mirror.png?v=136',right:'assets/npc/huhn-right.png?v=136',peckRight:'assets/npc/huhn-peck-right.png?v=136',peckFront:'assets/npc/huhn-peck-front.png?v=136',peckLeft:'assets/npc/huhn-peck-left.png?v=136',escape:'assets/npc/huhn-escape.png?v=136'};
+const MAP1_CHICKEN_IMAGES={back:'assets/npc/huhn-back.png?v=136',backMirror:'assets/npc/huhn-back-mirror.png?v=136',left:'assets/npc/huhn-left.png?v=136',front:'assets/npc/huhn-front.png?v=136',frontMirror:'assets/npc/huhn-front-mirror.png?v=136',right:'assets/npc/huhn-right.png?v=136',peckRight:'assets/npc/huhn-peck-right.png?v=136',peckFront:'assets/npc/huhn-peck-front.png?v=136',peckLeft:'assets/npc/huhn-peck-left.png?v=136',escape:'assets/npc/huhn-escape.png?v=136',dead:'assets/npc/huhn-dead.png?v=137',deadBolt:'assets/npc/huhn-dead-bolt.png?v=137'};
 // Referenz 1920x1072: spielbare Map x=159..1761, y=2..1070.
 const MAP1_CHICKEN_REGIONS=[{x:(260-159)*1536/1602,y:(488-2)*1024/1068,rx:241*1536/1602,ry:127*1024/1068,edge:0},{x:(1625-159)*1536/1602,y:(767-2)*1024/1068,rx:248*1536/1602,ry:148*1024/1068,edge:1536}];
-const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34;
+const MAP1_CHICKEN_SPEED=18,MAP1_CHICKEN_HEIGHT=34*1.20;
 const map1ChickenHitSound=new Audio('assets/audio/begauk_converted_by_soundandgo.com_.mp3?v=136');map1ChickenHitSound.preload='auto';map1ChickenHitSound.volume=1;
+const map1ChickenFlapSounds=[1,2].map(n=>new Audio(`assets/audio/huhn-flap-${n}.mp3?v=137`));map1ChickenFlapSounds.forEach(a=>{a.preload='auto';a.volume=1;});
+const map1ChickenDamage=[],crossbowChickenAlpha=new WeakMap();
 let map1Chicken=null,map1ChickenState=null,map1ChickenLast=null,map1ChickenNext=0,map1ChickenNextRegion=0,map1ChickenReady=false;
 function ensureMap1Chicken(){
   if(map1Chicken)return;
@@ -2391,18 +2393,66 @@ function map1ChickenChooseDirection(s,now){
   s.direction=candidates.length?candidates[Math.floor(Math.random()*candidates.length)]:(s.region===0?'left':'right');
   s.changed=now;s.until=now+2400+Math.random()*3100;s.peckUntil=0;s.nextPeck=now+1100+Math.random()*2400;
 }
-function map1ChickenCanBeHit(s){
-  if(currentMap!==1||!playerFight||s.phase==='escape'||s.phase==='entry')return false;
-  const t=playerFightSound.currentTime,hit=[.5,1.028,1.606,2.215].findIndex(at=>t>=at&&t<at+.3);
-  if(hit<0||playerFight.frame!==`hit${hit}`)return false;
-  const dx=s.x-PLAYER.x,dy=s.y-PLAYER.y;
-  const direction=Math.abs(dy)>=Math.abs(dx)?(dy<0?'back':'front'):(dx<0?'left':'right');
-  if(direction!==playerFight.direction)return false;
-  const forward=direction==='back'?-dy:direction==='front'?dy:direction==='left'?-dx:dx;
-  const sideways=direction==='back'||direction==='front'?Math.abs(dx):Math.abs(dy);
-  return forward>=0&&forward<=62&&sideways<=24;
+/* v137: gerichtete Schlagflächen; jeder einzelne Schlag trifft höchstens einmal. */
+function map1ChickenStrikeHit(s){
+  if(currentMap!==1||!playerFight||s.phase==='dead')return -1;
+  const hit=[.5,1.028,1.606,2.215].findIndex(at=>playerFightSound.currentTime>=at&&playerFightSound.currentTime<at+.3);
+  if(hit<0||playerFight.frame!==`hit${hit}`||(s.lastFight===playerFight&&s.lastStrike===playerFight.chickenStrike))return -1;
+  const f=playerFight,dir=f.direction,h=f.baseHeight*f.scale,cx=s.x,cy=s.y-MAP1_CHICKEN_HEIGHT*.45;
+  let inside=false;
+  if(dir==='left'||dir==='right'){
+    // Gleiche Quellanker/Höhe wie der unveränderte seitliche Armbrustbolzen.
+    const img=EVENT_IMAGE_CACHE.get(PLAYER_CROSSBOW_IMAGES.right);
+    const ch=img?.naturalHeight?f.baseHeight/playerFightVisibleRatio(img):f.baseHeight;
+    const width=img?.naturalHeight?ch*img.naturalWidth/img.naturalHeight:h*.65;
+    const side=dir==='left'?-1:1,x=PLAYER.x+side*(width/2-4)*f.scale,y=PLAYER.y-ch*f.scale*.84;
+    inside=(cx-PLAYER.x)*side>=-8&&Math.hypot(cx-x,cy-y)<=46+MAP1_CHICKEN_HEIGHT*.28;
+  }else{
+    const top=dir==='back'?PLAYER.y-h-18:PLAYER.y-h*.35,bottom=dir==='back'?PLAYER.y+8:PLAYER.y+52;
+    inside=(dir==='back'?s.y<=PLAYER.y+8:s.y>=PLAYER.y-8)&&Math.abs(cx-PLAYER.x)<=28+MAP1_CHICKEN_HEIGHT*.2&&cy>=top-MAP1_CHICKEN_HEIGHT*.35&&cy<=bottom+MAP1_CHICKEN_HEIGHT*.35;
+  }
+  return inside?hit:-1;
 }
+function showMap1ChickenDamage(s,critical,now){
+  const el=document.createElement('div');
+  Object.assign(el.style,{position:'absolute',left:`${s.x}px`,top:`${s.y-MAP1_CHICKEN_HEIGHT-8}px`,font:'700 22px/1 sans-serif',color:'#ff3535',textShadow:'0 2px 3px rgba(0,0,0,.8)',textAlign:'center',pointerEvents:'none',zIndex:'30000',whiteSpace:'nowrap'});
+  if(critical){const label=document.createElement('div');label.textContent='KRIT!';el.appendChild(label);}
+  const value=document.createElement('div');value.textContent='-20';el.appendChild(value);world.appendChild(el);map1ChickenDamage.push({el,at:now});
+}
+function updateMap1ChickenDamage(now){
+  for(let i=map1ChickenDamage.length-1;i>=0;i--){const p=map1ChickenDamage[i],t=(now-p.at)/1050;if(t>=1){p.el.remove();map1ChickenDamage.splice(i,1);continue;}
+    Object.assign(p.el.style,{display:currentMap===1?'block':'none',transform:`translate(-50%,${-26*t}px)`,opacity:String(t<.6?1:(1-t)/.4)});
+  }
+}
+function killMap1Chicken(s,bolt){
+  s.hp=0;s.phase='dead';s.deadImage=bolt?'deadBolt':'dead';s.deadMirror=s.direction==='right'||(s.phaseBeforeDeath==='escape'&&s.region===1);s.peckUntil=0;
+  playLoudInteractionSound(bolt?crossbowHitSounds[Math.floor(Math.random()*crossbowHitSounds.length)]:map1ChickenHitSound);
+}
+function damageMap1Chicken(s,hit,now){
+  s.lastFight=playerFight;s.lastStrike=playerFight.chickenStrike;
+  const critical=hit===3;s.hp=Math.max(0,(s.hp??100)-(critical?40:20));showMap1ChickenDamage(s,critical,now);
+  if(s.hp===0){s.phaseBeforeDeath=s.phase;killMap1Chicken(s,false);}else{s.phase='escape';s.changed=now;s.peckUntil=0;playLoudInteractionSound(map1ChickenFlapSounds[Math.floor(Math.random()*2)]);}
+}
+function crossbowChickenContact(b,distance){
+  const s=map1ChickenState;if(currentMap!==1||!s||s.phase==='dead'||!map1Chicken||map1Chicken.style.display==='none')return null;
+  const img=EVENT_IMAGE_CACHE.get(map1Chicken.getAttribute('src'));if(!img?.naturalWidth)return null;
+  let alpha=crossbowChickenAlpha.get(img);if(!alpha){try{const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0);alpha=ctx.getImageData(0,0,canvas.width,canvas.height).data;crossbowChickenAlpha.set(img,alpha);}catch(_){return null;}}
+  const h=MAP1_CHICKEN_HEIGHT,w=h*img.naturalWidth/img.naturalHeight,mirror=map1Chicken.style.transform.includes('scaleX(-1)'),from=b.previousDistance||0,to=Math.min(distance,2200),steps=Math.max(1,Math.ceil(to-from));
+  for(let i=0;i<=steps;i++){const distance=from+(to-from)*i/steps,travel=distance+10,x=b.x+b.dx*travel,y=b.y+b.dy*travel;
+    let u=(x-(s.x-w/2))/w;const v=(y-(s.y-h))/h;if(u<0||u>=1||v<0||v>=1)continue;if(mirror)u=1-u;
+    const sx=Math.min(img.naturalWidth-1,Math.floor(u*img.naturalWidth)),sy=Math.floor(v*img.naturalHeight);
+    if(alpha[(sy*img.naturalWidth+sx)*4+3]>=24)return {state:s,distance};
+  }return null;
+}
+function crossbowHitMap1Animal(b,distance,now){
+  const chicken=crossbowChickenContact(b,distance);
+  // Ein näherer Krötentreffer hat Vorrang; der Bolzen stoppt beim ersten Objekt.
+  if(crossbowHitLiveToad(b,chicken?chicken.distance:distance,now))return true;
+  if(!chicken)return false;chicken.state.phaseBeforeDeath=chicken.state.phase;killMap1Chicken(chicken.state,true);return true;
+}
+
 function updateMap1Chicken(now){
+  updateMap1ChickenDamage(now);
   if(!map1ChickenReady)return;ensureMap1Chicken();
   // Keine nachträglichen Sprünge nach Mapwechsel; globale Spielpause verwendet gameNow.
   const dt=map1ChickenLast===null?0:Math.max(0,Math.min(50,now-map1ChickenLast))/1000;map1ChickenLast=now;
@@ -2410,12 +2460,13 @@ function updateMap1Chicken(now){
   if(!map1ChickenState){
     if(now<map1ChickenNext){map1Chicken.style.display='none';return;}
     const region=map1ChickenNextRegion,r=MAP1_CHICKEN_REGIONS[region];
-    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
+    map1ChickenState={region,x:r.edge,y:r.y,direction:region===0?'right':'left',phase:'entry',hp:100,changed:now,until:now+2500,peckUntil:0,nextPeck:Infinity};
   }
   const s=map1ChickenState;
-  if(map1ChickenCanBeHit(s)){s.phase='escape';s.changed=now;s.peckUntil=0;playLoudInteractionSound(map1ChickenHitSound);}
+  const strike=map1ChickenStrikeHit(s);if(strike>=0)damageMap1Chicken(s,strike,now);
   let image,mirror=false,moving=true;
-  if(s.phase==='escape'){
+  if(s.phase==='dead'){image=s.deadImage;mirror=s.deadMirror;moving=false;
+  }else if(s.phase==='escape'){
     image='escape';mirror=s.region===0;s.x+=(s.region===0?-1:1)*82*dt;
   }else{
     if(s.phase==='entry'){
@@ -2435,7 +2486,7 @@ function updateMap1Chicken(now){
     }
   }
   // Erst beim tatsächlichen Betreten des braunen Randes wechseln: nie zwei Hühner.
-  if(s.phase!=='entry'&&(s.x<=0||s.x>=1536)){
+  if(s.phase!=='entry'&&s.phase!=='dead'&&(s.x<=0||s.x>=1536)){
     map1ChickenNextRegion=1-s.region;map1ChickenNext=now+650;map1ChickenState=null;map1Chicken.style.display='none';return;
   }
   const src=MAP1_CHICKEN_IMAGES[image],img=EVENT_IMAGE_CACHE.get(src);
@@ -4642,6 +4693,7 @@ function updatePlayerFight(){
     const footOffset=hit>=0&&dir==='front'&&index===2?height*(18.5/665)*scale:0;
     Object.assign(player.style,{height:`${height}px`,width:`${width}px`,transition:'none',transform:`translate(calc(-50% + ${footOffset}px),-100%) scale(${scale*mirror},${scale})`});
     player.src=img.src||src;state.frame=frame;
+    if(hit>=0)state.chickenStrike=(state.chickenStrike||0)+1;
   }
   if(playerFightMug&&playerFightMug.style.display!=='none')playerFightMug.style.zIndex=String((Number(player.style.zIndex)||1000)-1);
 }
@@ -4764,7 +4816,7 @@ function updatePlayerCrossbow(now){
 }
 function updateCrossbowBolts(now){
   for(let i=playerCrossbowBolts.length-1;i>=0;i--){const b=playerCrossbowBolts[i],distance=(now-b.at)*.7,x=b.x+b.dx*distance,y=b.y+b.dy*distance;
-    if(b.map===1&&currentMap===1&&crossbowHitLiveToad(b,distance,now)){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
+    if(b.map===1&&currentMap===1&&crossbowHitMap1Animal(b,distance,now)){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
     b.previousDistance=distance;
     if(b.map!==currentMap||x<0||x>WORLD_W||y<0||y>WORLD_H||distance>2200){b.el.remove();playerCrossbowBolts.splice(i,1);continue;}
     Object.assign(b.el.style,{left:`${x-10}px`,top:`${y-1.5}px`,transform:`rotate(${Math.atan2(b.dy,b.dx)}rad)`});
