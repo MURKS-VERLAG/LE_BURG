@@ -2941,8 +2941,10 @@ function updateFurniturePlayerMask(){
     [...STANDING_TABLE_IDS,'tafel'].map(id=>document.getElementById(id)):[];
   const pr=player.getBoundingClientRect();
   if(!pr.width||!pr.height||player.style.visibility==='hidden'){clearFurniturePlayerMask();return;}
-  const visible=props.filter(el=>{
-    if(!el||!el.complete||!el.naturalWidth||el.style.display==='none'||el.style.visibility==='hidden'||Number(el.style.zIndex)<=playerZ)return false;
+  // Fußlinien-Verdeckung erfolgt nur an der Gastkontur; Blasen sind keine Occluder.
+  const guestOccluders=currentMap===1?[map1GuestActive?map1GuestEl:null,map1WomanActive?map1WomanEl:null].filter(el=>el&&parseFloat(el.style.top)>PLAYER.y):[];
+  const visible=[...props,...guestOccluders].filter(el=>{
+    if(!el||!el.complete||!el.naturalWidth||el.style.display==='none'||el.style.visibility==='hidden'||(!guestOccluders.includes(el)&&Number(el.style.zIndex)<=playerZ))return false;
     const r=el.getBoundingClientRect();return r.left<pr.right&&r.right>pr.left&&r.top<pr.bottom&&r.bottom>pr.top;
   });
   if(!visible.length){if(furniturePlayerMaskKey)clearFurniturePlayerMask();return;}
@@ -4609,15 +4611,7 @@ function syncMap1NpcPlayerDepth(){
     {el:map1GuestEl,active:map1GuestActive,behind:map1GuestOccupiesRightTable()||map1GuestBehindProps()},
     {el:map1WomanEl,active:map1WomanActive,behind:true}
   ].filter(g=>g.active&&g.el&&g.el.style.display!=='none'&&g.el.style.visibility!=='hidden');
-  // Bei sichtbarer Überlappung hinter einem angedockten Gast bleibt auch der Tisch davor.
-  // Außerhalb der Sprites ändern sich die bisherigen Prop-Effektzonen des Wirts nicht.
-  for(const g of guests){
-    const foot=parseFloat(g.el.style.top),x=parseFloat(g.el.style.left);
-    const overlapX=Math.abs(PLAYER.x-x)<(player.offsetWidth*playerVisualScale()+g.el.offsetWidth)/2;
-    const overlapY=PLAYER.y>foot-g.el.offsetHeight&&PLAYER.y-playerWorldHeight()<foot;
-    if(g.behind&&PLAYER.y<foot&&overlapX&&overlapY&&Number(player.style.zIndex)>=MAP1_PLAYER_BEHIND_Z)
-      player.style.zIndex=String(MAP1_PLAYER_BEHIND_Z-2);
-  }
+  // v140: Gäste ändern niemals die globale Spieler-/Prop-Ebene.
   const guestPlayerZ=Number(player.style.zIndex)||playerZ;
   for(const g of guests){
     const foot=parseFloat(g.el.style.top);
